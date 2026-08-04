@@ -1,0 +1,61 @@
+name: Bug report
+description: Something behaves differently than it should
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please do not paste real ticket contents, customer names or tokens.
+        Redact them — the behaviour is what matters here.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, and what the system did instead of what you expected.
+      placeholder: |
+        Dragged a card from New to In progress. It snapped back and a toast said
+        "Error". The stage did not change after a reload either.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where
+      options:
+        - Dashboard
+        - Telegram bot
+        - Both
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Commit hash, tag, or the date you pulled.
+      placeholder: e.g. 0c66050, or "main as of 2026-08-04"
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: "3.13.4"
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Anything in the logs or the browser console
+      description: Tracebacks are the most useful thing you can attach. Redact first.
+      render: shell

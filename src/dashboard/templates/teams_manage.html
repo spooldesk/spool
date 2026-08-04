@@ -1,0 +1,58 @@
+{% extends "app_base.html" %}
+{% block title %}{{ T.m_teams_title }}{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl">
+  <h1 class="text-2xl font-semibold tracking-tight mb-1">{{ T.m_teams_title }}</h1>
+  <p class="text-sm text-zinc-500 mb-6">{{ T.m_teams_count.format(count=items|length) }}</p>
+
+  {% if flash_sent %}
+    <div class="mb-4 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm">
+      {% if flash_sent == 'created' %}{{ T.created_ok }}{% elif flash_sent == 'deleted' %}{{ T.deleted_ok }}{% endif %}
+    </div>
+  {% endif %}
+  {% if flash_err %}
+    <div class="mb-4 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">{{ flash_err }}</div>
+  {% endif %}
+
+  <!-- Create -->
+  <form method="post" action="/manage/teams/new" class="flex gap-2 mb-6">
+    <input name="name" required placeholder="{{ T.m_new_team_placeholder }}"
+           class="flex-1 px-3 py-2 rounded-lg bg-black border border-zinc-800 text-sm
+                  focus:border-brand-500 focus:outline-none text-zinc-100 placeholder:text-zinc-600">
+    <button class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium">
+      <i class="ti ti-plus" style="font-size:14px" aria-hidden="true"></i> {{ T.create }}
+    </button>
+  </form>
+
+  <div class="bg-zinc-950 border border-zinc-900 rounded-xl overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-zinc-950/80 border-b border-zinc-900">
+        <tr class="text-left text-xs uppercase tracking-wide text-zinc-500">
+          <th class="px-4 py-3">{{ T.name }}</th>
+          <th class="px-4 py-3 text-right">{{ T.th_users_cnt }}</th>
+          <th class="px-4 py-3 text-right">{{ T.th_templates_cnt }}</th>
+          <th class="px-4 py-3"></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-zinc-900">
+        {% for t in items %}
+          <tr class="hover:bg-zinc-900/50">
+            <td class="px-4 py-3 text-zinc-100 font-medium">{{ t.name }}</td>
+            <td class="px-4 py-3 text-right tabular-nums text-zinc-400">{{ t.users }}</td>
+            <td class="px-4 py-3 text-right tabular-nums text-zinc-400">{{ t.templates }}</td>
+            <td class="px-4 py-3 text-right">
+              <form method="post" action="/manage/teams/{{ t.id }}/delete" class="inline"
+                    onsubmit="return confirm('{{ T.m_team_delete_confirm.format(name=t.name, users=t.users, templates=t.templates) }}')">
+                <button class="text-zinc-400 hover:text-red-400" title="{{ T.delete }}"><i class="ti ti-trash" style="font-size:15px" aria-hidden="true"></i></button>
+              </form>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="4" class="px-4 py-10 text-center text-zinc-500">{{ T.m_no_teams }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

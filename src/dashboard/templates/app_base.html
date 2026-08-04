@@ -1,0 +1,594 @@
+<!doctype html>
+<html lang="{{ T.html_lang }}" class="h-full dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Dashboard{% endblock %} · {{ g_brand_name or 'Support' }}</title>
+
+  <!--
+    Theme init — runs synchronously before any paint to prevent flash.
+    Reads localStorage; defaults to dark if nothing saved.
+  -->
+  <script>
+    (function(){
+      var t = localStorage.getItem('dash-theme');
+      if (t === 'light') document.documentElement.classList.remove('dark');
+      else              document.documentElement.classList.add('dark');
+    })();
+  </script>
+
+  <!-- Compiled Tailwind (see tailwind.config.js) — no CDN, no runtime JIT -->
+  <link rel="stylesheet" href="/static/tw.css?v={{ g_asset_v }}">
+
+  <!-- Tabler Icons webfont (outline only) — no build step required -->
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+  <link rel="stylesheet" href="/static/app.css?v={{ g_asset_v }}">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <script>
+    // Auto-attach the CSRF token to same-origin mutating fetch() requests, so
+    // AJAX calls (ai-suggest, etc.) don't each have to set the header manually.
+    (function () {
+      var meta = document.querySelector('meta[name="csrf-token"]');
+      var token = meta ? meta.getAttribute('content') : '';
+      if (!token || !window.fetch) return;
+      var _fetch = window.fetch;
+      window.fetch = function (input, init) {
+        init = init || {};
+        var method = (init.method
+          || (input && typeof input !== 'string' && input.method)
+          || 'GET').toUpperCase();
+        if (method !== 'GET' && method !== 'HEAD') {
+          var headers = new Headers(init.headers
+            || (input && typeof input !== 'string' && input.headers) || {});
+          if (!headers.has('X-CSRF-Token')) headers.set('X-CSRF-Token', token);
+          init.headers = headers;
+        }
+        return _fetch(input, init);
+      };
+    })();
+  </script>
+  {% block head_extra %}{% endblock %}
+</head>
+<body class="h-full antialiased text-gray-900 dark:text-zinc-100">
+<div class="flex h-full">
+
+  <!-- ============================================================
+       SIDEBAR
+       Light: white bg, gray borders, violet-50 active highlight
+       Dark : zinc-950 bg, zinc-900 borders, brand purple active
+  ============================================================ -->
+  <aside id="sidebar"
+         class="fixed inset-y-0 left-0 z-40 w-64 -translate-x-full
+                transition-transform duration-200 ease-out
+                md:static md:z-auto md:w-56 md:translate-x-0
+                shrink-0 bg-white dark:bg-zinc-950
+                border-r border-gray-100 dark:border-zinc-900
+                flex flex-col select-none">
+
+    <!-- Logo -->
+    <div class="h-12 shrink-0 flex items-center gap-2.5 px-4
+                border-b border-gray-100 dark:border-zinc-900">
+      <div class="w-7 h-7 rounded-md bg-violet-600 flex items-center justify-center shrink-0">
+        <i class="ti ti-headset text-white" style="font-size:14px" aria-hidden="true"></i>
+      </div>
+      <span class="font-semibold text-sm text-gray-900 dark:text-zinc-100 truncate">
+        {{ g_brand_name or 'Support' }}
+      </span>
+    </div>
+
+    <!-- Workspace selector (placeholder until Phase 3 multi-tenancy) -->
+    <div class="px-3 py-2 border-b border-gray-100 dark:border-zinc-900">
+      <button class="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md
+                     hover:bg-gray-50 dark:hover:bg-zinc-900 transition-colors text-left"
+              title="Workspace (multi-tenant in a future release)">
+        <div class="w-5 h-5 rounded bg-violet-100 dark:bg-violet-900/40
+                    flex items-center justify-center shrink-0">
+          <span class="text-[9px] font-bold text-violet-700 dark:text-violet-400">W</span>
+        </div>
+        <span class="flex-1 text-xs font-medium text-gray-700 dark:text-zinc-300 truncate">Workspace</span>
+        <i class="ti ti-selector text-gray-300 dark:text-zinc-600" style="font-size:12px" aria-hidden="true"></i>
+      </button>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="flex-1 overflow-y-auto px-2 py-3 space-y-5">
+
+      {# ----------------------------------------------------------
+         navitem macro — supports single key (string) or list of
+         keys (e.g. analytics section uses multiple active_page values).
+         Usage: {{ navitem('tickets', '/tickets', 'ti-ticket', 'Tickets') }}
+      ---------------------------------------------------------- #}
+      {% macro navitem(key, href, icon, label, badge_id=None) %}
+        {# accept a single string or a comma-separated list #}
+        {% set _keys = key.split(',') if ',' in key|string else [key] %}
+        {% set _active = active_page in _keys %}
+        <a href="{{ href }}"
+           class="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm transition-colors
+                  {% if _active %}
+                    bg-violet-50 text-violet-700 font-medium
+                    dark:bg-brand-600/20 dark:text-white
+                  {% else %}
+                    text-gray-500 dark:text-zinc-400
+                    hover:bg-gray-50 dark:hover:bg-zinc-900
+                    hover:text-gray-800 dark:hover:text-zinc-100
+                  {% endif %}">
+          <i class="ti {{ icon }} shrink-0" style="font-size:16px;width:16px" aria-hidden="true"></i>
+          <span>{{ label }}</span>
+          {% if badge_id %}
+            {# Filled by the queue-status poll; hidden while the count is 0 #}
+            <span id="{{ badge_id }}"
+                  class="hidden ml-auto px-1.5 py-0.5 rounded-full text-[10px] font-semibold tabular-nums
+                         bg-amber-500/15 text-amber-500 dark:text-amber-400 border border-amber-500/30"
+                  title="{{ T.queue_badge_title }}"></span>
+          {% endif %}
+        </a>
+      {% endmacro %}
+
+      {# RBAC: the nav mirrors router permissions (bootstrap session = owner) #}
+      {% set _role = current_user.role if current_user else 'owner' %}
+
+      <div>
+        <p class="px-3 mb-1 text-[10px] font-semibold uppercase tracking-wider
+                  text-gray-300 dark:text-zinc-600">{{ T.nav_management }}</p>
+        {{ navitem('tickets',    '/tickets',    'ti-ticket',  T.nav_tickets, badge_id='nav-queue-badge') }}
+        {{ navitem('board',      '/board',      'ti-layout-kanban', T.nav_board) }}
+        {{ navitem('users',      '/users',      'ti-users',   T.nav_users) }}
+        {% if _role in ('admin', 'owner') %}
+          {{ navitem('broadcast', '/broadcast', 'ti-speakerphone', T.nav_broadcast) }}
+        {% endif %}
+      </div>
+
+      {% if _role in ('admin', 'owner') %}
+      <div>
+        <p class="px-3 mb-1 text-[10px] font-semibold uppercase tracking-wider
+                  text-gray-300 dark:text-zinc-600">{{ T.nav_configure }}</p>
+        {{ navitem('templates',    '/manage/templates',    'ti-message-circle', T.nav_templates) }}
+        {{ navitem('categories',   '/manage/categories',   'ti-category-2',     T.nav_categories) }}
+        {{ navitem('close_reasons','/manage/close-reasons','ti-circle-check',   T.nav_close_reasons) }}
+        {{ navitem('teams',        '/manage/teams',        'ti-building',       T.nav_teams) }}
+        {{ navitem('tags',         '/manage/tags',         'ti-tag',            T.nav_tags) }}
+        {{ navitem('settings',     '/manage/settings',     'ti-settings-2',     T.nav_settings) }}
+        {% if _role == 'owner' %}
+          {{ navitem('admins',     '/manage/admins',       'ti-shield-lock',    T.nav_operators) }}
+        {% endif %}
+      </div>
+
+      <div>
+        <p class="px-3 mb-1 text-[10px] font-semibold uppercase tracking-wider
+                  text-gray-300 dark:text-zinc-600">{{ T.nav_ai }}</p>
+        {{ navitem('ai_settings', '/manage/ai', 'ti-cpu', T.nav_ai_config) }}
+      </div>
+      {% endif %}
+
+      <div>
+        <p class="px-3 mb-1 text-[10px] font-semibold uppercase tracking-wider
+                  text-gray-300 dark:text-zinc-600">{{ T.nav_analytics }}</p>
+        {{ navitem('overview,ai,templates_analytics', '/overview', 'ti-chart-bar', T.nav_dashboard) }}
+        {% if _role in ('admin', 'owner') %}
+          {{ navitem('reports', '/reports', 'ti-report-analytics', T.nav_reports) }}
+        {% endif %}
+      </div>
+
+    </nav>
+
+    <!-- User footer — shows the logged-in operator -->
+    {% set _u_name = current_user.name if (current_user and current_user.name) else (current_user.email.split('@')[0] if current_user else 'Owner') %}
+    {% set _u_email = current_user.email if current_user else 'shared password' %}
+    <div class="shrink-0 border-t border-gray-100 dark:border-zinc-900 px-2 py-2">
+      <div class="flex items-center gap-2.5 px-2.5 py-1.5 rounded-md
+                  hover:bg-gray-50 dark:hover:bg-zinc-900 transition-colors cursor-default">
+        <div class="w-6 h-6 rounded-full bg-violet-100 dark:bg-violet-900/40
+                    flex items-center justify-center shrink-0">
+          <span class="text-[9px] font-bold text-violet-700 dark:text-violet-400 uppercase">{{ _u_name[0] }}</span>
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-xs font-medium text-gray-800 dark:text-zinc-200 truncate">{{ _u_name }}</p>
+          <p class="text-[10px] text-gray-400 dark:text-zinc-600 truncate">{{ _u_email }}</p>
+        </div>
+        <a href="/logout"
+           class="text-gray-300 dark:text-zinc-600
+                  hover:text-gray-600 dark:hover:text-zinc-300 transition-colors"
+           title="Log out">
+          <i class="ti ti-logout" style="font-size:14px" aria-hidden="true"></i>
+        </a>
+      </div>
+    </div>
+
+  </aside>
+  <!-- end sidebar -->
+
+  <!-- Mobile drawer backdrop (click to close) -->
+  <div id="sidebar-backdrop"
+       class="hidden fixed inset-0 z-30 bg-black/50 md:hidden"
+       aria-hidden="true"></div>
+
+  <!-- ============================================================
+       RIGHT PANEL: topbar + optional sub-tabs + main content
+  ============================================================ -->
+  <div class="flex-1 min-w-0 flex flex-col overflow-hidden">
+
+    <!-- Topbar -->
+    <header class="h-11 shrink-0 bg-white dark:bg-zinc-950
+                   border-b border-gray-100 dark:border-zinc-900
+                   flex items-center px-3 sm:px-5 gap-2">
+
+      <!-- Burger (mobile only) -->
+      <button id="sidebar-toggle"
+              aria-label="{{ T.menu_open }}"
+              class="md:hidden w-8 h-8 shrink-0 rounded-md flex items-center justify-center
+                     text-gray-500 dark:text-zinc-400
+                     hover:bg-gray-50 dark:hover:bg-zinc-900 transition-colors">
+        <i class="ti ti-menu-2" style="font-size:18px" aria-hidden="true"></i>
+      </button>
+
+      <!-- Breadcrumb — page label auto-derived from active_page -->
+      {% set _names = {
+        'tickets':             T.nav_tickets,
+        'board':               T.nav_board,
+        'broadcast':           T.nav_broadcast,
+        'users':               T.nav_users,
+        'templates':           T.nav_templates,
+        'categories':          T.nav_categories,
+        'close_reasons':       T.nav_close_reasons,
+        'teams':               T.nav_teams,
+        'tags':                T.nav_tags,
+        'settings':            T.nav_settings,
+        'admins':              T.nav_operators,
+        'ai_settings':         T.nav_ai_config,
+        'overview':            T.nav_analytics,
+        'ai':                  T.nav_ai_analytics,
+        'templates_analytics': T.nav_template_analytics,
+        'reports':             T.nav_reports,
+      } %}
+      <nav class="flex items-center gap-1 text-sm flex-1 min-w-0" aria-label="Breadcrumb">
+        <span class="text-gray-300 dark:text-zinc-600 text-xs truncate shrink-0">
+          {{ g_brand_name or 'Support' }}
+        </span>
+        <i class="ti ti-chevron-right shrink-0 text-gray-200 dark:text-zinc-700"
+           style="font-size:11px" aria-hidden="true"></i>
+        <span class="text-gray-700 dark:text-zinc-200 font-medium truncate">
+          {% block breadcrumb %}{{ _names.get(active_page, 'Dashboard') }}{% endblock %}
+        </span>
+        {% if g_demo_mode %}
+          <span class="ml-2 shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full
+                       text-[10px] font-semibold uppercase tracking-wider
+                       bg-amber-100 text-amber-700 border border-amber-200
+                       dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/30"
+                title="{{ T.demo_badge_title }}">
+            <i class="ti ti-flask" style="font-size:11px" aria-hidden="true"></i> Demo
+          </span>
+        {% endif %}
+      </nav>
+
+      <!-- Right-side controls -->
+      <div class="flex items-center gap-0.5 shrink-0">
+
+        <!-- Light/Dark toggle -->
+        <button id="theme-toggle"
+                aria-label="Toggle colour theme"
+                title="Toggle light/dark"
+                class="w-8 h-8 rounded-md flex items-center justify-center
+                       text-gray-400 dark:text-zinc-500
+                       hover:bg-gray-50 dark:hover:bg-zinc-900
+                       hover:text-gray-600 dark:hover:text-zinc-200 transition-colors">
+          <!-- Sun shown in dark mode (click to go light) -->
+          <i class="ti ti-sun hidden dark:block" style="font-size:16px" aria-hidden="true"></i>
+          <!-- Moon shown in light mode (click to go dark) -->
+          <i class="ti ti-moon dark:hidden" style="font-size:16px" aria-hidden="true"></i>
+        </button>
+
+        <!-- New-ticket notifications toggle -->
+        <button id="notify-toggle"
+                aria-label="{{ T.notify_toggle_title }}"
+                title="{{ T.notify_toggle_title }}"
+                class="w-8 h-8 rounded-md flex items-center justify-center
+                       text-gray-400 dark:text-zinc-500
+                       hover:bg-gray-50 dark:hover:bg-zinc-900
+                       hover:text-gray-600 dark:hover:text-zinc-200 transition-colors">
+          <i id="notify-icon-on" class="ti ti-bell-ringing hidden text-brand-400" style="font-size:16px" aria-hidden="true"></i>
+          <i id="notify-icon-off" class="ti ti-bell" style="font-size:16px" aria-hidden="true"></i>
+        </button>
+
+        <!-- Help -->
+        <a href="https://t.me/" target="_blank" rel="noopener"
+           title="Help"
+           class="w-8 h-8 rounded-md flex items-center justify-center
+                  text-gray-400 dark:text-zinc-500
+                  hover:bg-gray-50 dark:hover:bg-zinc-900
+                  hover:text-gray-600 dark:hover:text-zinc-200 transition-colors">
+          <i class="ti ti-question-mark" style="font-size:16px" aria-hidden="true"></i>
+        </a>
+
+      </div>
+    </header>
+    <!-- end topbar -->
+
+    <!-- Optional sub-tabs row (used by analytics base.html) -->
+    {% block topbar_tabs %}{% endblock %}
+
+    {#
+      Main scrollable content.
+      Override the "main_overflow" block to 'overflow-hidden' on pages that
+      manage their own internal scroll (e.g. ticket_detail full-height layout).
+    #}
+    {# Page padding lives here, not in each template. It used to be each
+       template's own business, and they had drifted: most had p-6, the board
+       had 4px, and Overview, AI, Templates and Broadcast had none at all, so
+       their headings sat flush against the sidebar. Pages that manage their
+       own full-height layout clear it with {% block main_pad %}{% endblock %}. #}
+    <main class="flex-1 min-w-0 {% block main_overflow %}overflow-y-auto{% endblock %} {% block main_pad %}p-6{% endblock %} bg-gray-50 dark:bg-black">
+      {% block content %}{% endblock %}
+    </main>
+
+  </div>
+  <!-- end right panel -->
+
+</div>
+
+<!-- ============================================================
+     TOAST NOTIFICATION SYSTEM
+     Trigger via URL param: ?toast=Message&toast_type=success|error|info
+     Or programmatically: window.showToast('Message', 'success')
+============================================================ -->
+<div id="toast-container"
+     class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"
+     role="status" aria-live="polite"></div>
+
+{% block scripts %}{% endblock %}
+
+<script>
+(function () {
+  // ---- CSRF: inject the token as a hidden field into every POST form ----
+  // (AJAX requests are covered by the fetch() patch in <head>.)
+  (function () {
+    var meta = document.querySelector('meta[name="csrf-token"]');
+    var token = meta ? meta.getAttribute('content') : '';
+    if (!token) return;
+    document.querySelectorAll('form[method="post" i]').forEach(function (form) {
+      if (form.querySelector('input[name="csrf_token"]')) return;
+      var inp = document.createElement('input');
+      inp.type = 'hidden';
+      inp.name = 'csrf_token';
+      inp.value = token;
+      form.appendChild(inp);
+    });
+  })();
+
+  // ---- Mobile sidebar drawer ----
+  var sidebar = document.getElementById('sidebar');
+  var backdrop = document.getElementById('sidebar-backdrop');
+  var sbToggle = document.getElementById('sidebar-toggle');
+
+  function drawer(open) {
+    if (!sidebar || !backdrop) return;
+    sidebar.classList.toggle('-translate-x-full', !open);
+    backdrop.classList.toggle('hidden', !open);
+  }
+  if (sbToggle) sbToggle.addEventListener('click', function () {
+    drawer(sidebar.classList.contains('-translate-x-full'));
+  });
+  if (backdrop) backdrop.addEventListener('click', function () { drawer(false); });
+  // Selecting a nav item closes the drawer (page will navigate anyway,
+  // but this feels instant on slow connections).
+  if (sidebar) sidebar.addEventListener('click', function (e) {
+    if (e.target.closest('a')) drawer(false);
+  });
+
+  // ---- Theme toggle ----
+  var btn = document.getElementById('theme-toggle');
+  if (btn) {
+    btn.addEventListener('click', function () {
+      var isDark = document.documentElement.classList.toggle('dark');
+      localStorage.setItem('dash-theme', isDark ? 'dark' : 'light');
+    });
+  }
+
+  // ---- Toast system ----
+  var container = document.getElementById('toast-container');
+
+  var _icons = {
+    success: 'ti-circle-check',
+    error:   'ti-alert-circle',
+    info:    'ti-info-circle',
+    warning: 'ti-alert-triangle',
+  };
+  var _colors = {
+    success: 'border-emerald-500/30 text-emerald-400',
+    error:   'border-red-500/30 text-red-400',
+    info:    'border-brand-500/30 text-brand-400',
+    warning: 'border-amber-500/30 text-amber-400',
+  };
+
+  window.showToast = function (msg, type) {
+    if (!container || !msg) return;
+    type = type || 'success';
+    var color = _colors[type] || _colors.info;
+    var icon  = _icons[type]  || _icons.info;
+
+    var el = document.createElement('div');
+    el.className = [
+      'pointer-events-auto flex items-center gap-3',
+      'bg-zinc-950 border rounded-xl px-4 py-3',
+      'text-sm shadow-xl',
+      'translate-y-2 opacity-0 transition-all duration-200',
+      color,
+    ].join(' ');
+    el.innerHTML =
+      '<i class="ti ' + icon + ' text-base shrink-0" aria-hidden="true"></i>' +
+      '<span class="text-zinc-100">' + msg + '</span>' +
+      '<button onclick="this.parentElement.remove()" ' +
+              'class="ml-auto text-zinc-500 hover:text-zinc-300" aria-label="Dismiss">' +
+        '<i class="ti ti-x" style="font-size:14px" aria-hidden="true"></i>' +
+      '</button>';
+
+    container.appendChild(el);
+    // Animate in
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        el.classList.remove('translate-y-2', 'opacity-0');
+      });
+    });
+    // Auto-dismiss after 4s
+    setTimeout(function () {
+      el.classList.add('opacity-0', 'translate-y-2');
+      setTimeout(function () { el.remove(); }, 200);
+    }, 4000);
+  };
+
+  // Read toast from URL params on page load
+  (function () {
+    var p = new URLSearchParams(window.location.search);
+    var msg  = p.get('toast');
+    var type = p.get('toast_type') || 'success';
+    if (msg) {
+      window.showToast(decodeURIComponent(msg), type);
+      // Clean the param from URL without page reload
+      var url = new URL(window.location);
+      url.searchParams.delete('toast');
+      url.searchParams.delete('toast_type');
+      history.replaceState(null, '', url.toString());
+    }
+  })();
+
+  // ---- Queue badge + new-ticket notifications ----
+  // One 20s poll feeds both: the amber "awaiting reply" badge on the Tickets
+  // nav item and (opt-in via the bell) browser notifications for new tickets.
+  var queueBadge = document.getElementById('nav-queue-badge');
+  var notifyBtn  = document.getElementById('notify-toggle');
+  var NOTIFY_KEY = 'dash-notify';
+  var LAST_KEY   = 'dash-last-ticket';
+
+  function notifyEnabled() {
+    return localStorage.getItem(NOTIFY_KEY) === '1'
+        && 'Notification' in window
+        && Notification.permission === 'granted';
+  }
+
+  function renderBell() {
+    if (!notifyBtn) return;
+    var on = notifyEnabled();
+    document.getElementById('notify-icon-on').classList.toggle('hidden', !on);
+    document.getElementById('notify-icon-off').classList.toggle('hidden', on);
+  }
+
+  if (notifyBtn) {
+    notifyBtn.addEventListener('click', function () {
+      if (notifyEnabled()) {
+        localStorage.setItem(NOTIFY_KEY, '0');
+        renderBell();
+        window.showToast('{{ T.js_notify_off }}', 'info');
+        return;
+      }
+      if (!('Notification' in window)) {
+        window.showToast('{{ T.js_notify_unsupported }}', 'warning');
+        return;
+      }
+      Promise.resolve(
+        Notification.permission === 'granted'
+          ? 'granted' : Notification.requestPermission()
+      ).then(function (perm) {
+        if (perm === 'granted') {
+          localStorage.setItem(NOTIFY_KEY, '1');
+          renderBell();
+          window.showToast('{{ T.js_notify_on }}', 'success');
+        } else {
+          window.showToast('{{ T.js_notify_denied }}', 'warning');
+        }
+      });
+    });
+  }
+
+  function pollQueue() {
+    fetch('/api/queue-status', { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d || typeof d.awaiting !== 'number') return;
+        if (queueBadge) {
+          if (d.awaiting > 0) {
+            queueBadge.textContent = d.awaiting;
+            queueBadge.classList.remove('hidden');
+          } else {
+            queueBadge.classList.add('hidden');
+          }
+        }
+        var last = parseInt(localStorage.getItem(LAST_KEY) || '0', 10);
+        // Notify only about tickets that appeared AFTER we set a baseline —
+        // the very first poll stays silent.
+        if (last && d.latest_ticket_id > last) {
+          var tid = d.latest_ticket_id;
+          window.showToast('{{ T.js_new_ticket }} #' + tid, 'info');
+          if (notifyEnabled()) {
+            var n = new Notification('{{ T.js_new_ticket }} #' + tid, {
+              tag: 'new-ticket-' + tid,
+            });
+            n.onclick = function () {
+              window.focus();
+              window.location.href = '/tickets/' + tid;
+            };
+          }
+        }
+        if (d.latest_ticket_id > last) {
+          localStorage.setItem(LAST_KEY, String(d.latest_ticket_id));
+        }
+      })
+      .catch(function () { /* transient — retry next tick */ });
+  }
+
+  renderBell();
+  pollQueue();
+  setInterval(pollQueue, 20000);
+})();
+</script>
+
+<script>
+  /* Labels ui.js needs but cannot look up: it is a static file, outside Jinja. */
+  window.UI_WEEKDAYS = {{ T.weekdays_short|tojson }}.split(',');
+  window.UI_TODAY = {{ T.date_today|tojson }};
+  window.UI_CLEAR = {{ T.date_clear|tojson }};
+</script>
+<script src="/static/ui.js?v={{ g_asset_v }}" defer></script>
+
+<script>
+/* One submit per click.
+ *
+ * Every POST here does something outward-facing — sends a message, closes a
+ * ticket, starts a broadcast — and the page does not repaint until the server
+ * answers. An operator who thinks nothing happened clicks again, and the
+ * customer gets the message twice. Applies to every form on every page, so a
+ * new form is protected without anyone remembering to.
+ *
+ * The server refuses duplicates too; this is the half that keeps the button
+ * from lying about what it is doing.
+ */
+(function () {
+  document.addEventListener('submit', function (e) {
+    const form = e.target;
+    if (!(form instanceof HTMLFormElement) || form.method.toLowerCase() !== 'post') return;
+
+    if (form.dataset.submitting === '1') {
+      e.preventDefault();
+      return;
+    }
+    form.dataset.submitting = '1';
+
+    const buttons = form.querySelectorAll('button[type=submit], button:not([type]), input[type=submit]');
+    buttons.forEach(function (b) {
+      b.disabled = true;
+      b.classList.add('opacity-60', 'cursor-not-allowed');
+    });
+
+    // If the navigation never happens — a validation bounce, a dropped
+    // connection — the operator must not be left with a dead button.
+    setTimeout(function () {
+      form.dataset.submitting = '';
+      buttons.forEach(function (b) {
+        b.disabled = false;
+        b.classList.remove('opacity-60', 'cursor-not-allowed');
+      });
+    }, 10000);
+  }, true);
+})();
+</script>
+</body>
+</html>

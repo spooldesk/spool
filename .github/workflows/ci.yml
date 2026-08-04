@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run tests
+        run: pytest -q
+
+      - name: Sanity-check demo seed
+        run: |
+          python scripts/seed_demo_data.py
+          python - <<'EOF'
+          import sqlite3
+          db = sqlite3.connect("demo_support.db")
+          tickets = db.execute("SELECT COUNT(*) FROM tickets").fetchone()[0]
+          assert tickets > 0, "demo seed produced no tickets"
+          print(f"demo seed OK: {tickets} tickets")
+          EOF

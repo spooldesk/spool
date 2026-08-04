@@ -1,0 +1,287 @@
+{% extends "base.html" %}
+{% block title %}{{ T.overview_title }}{% endblock %}
+
+{% block content %}
+<div class="mb-6 flex items-end justify-between gap-4 flex-wrap">
+  <div>
+    <h1 class="text-2xl font-semibold">{{ T.overview_title }}</h1>
+    <p class="text-sm text-zinc-400 mt-1">{{ T.overview_subtitle }}</p>
+  </div>
+  <div class="flex items-center gap-2">
+    <span class="text-xs uppercase tracking-wide text-zinc-400 mr-1">{{ T.period }}</span>
+    {% for d in period_choices %}
+      <a href="/overview?days={{ d }}"
+         class="px-3 py-1.5 rounded-md text-sm font-medium border
+                {% if period_days == d %}
+                  bg-brand-600 border-brand-500 text-white
+                {% else %}
+                  border-zinc-800 text-zinc-300 hover:bg-zinc-900
+                {% endif %}">
+        {{ d }} {{ T.days_suffix }}
+      </a>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- KPI cards -->
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+  {% for kpi in kpis %}
+    <div class="bg-zinc-950 border {% if kpi.alert %}border-amber-500/40{% else %}border-zinc-900{% endif %} rounded-xl p-5">
+      <div class="text-xs uppercase tracking-wide text-zinc-400">{{ kpi.label }}</div>
+      <div class="mt-2 text-3xl font-semibold tabular-nums {% if kpi.alert %}text-amber-400{% endif %}">{{ kpi.value }}</div>
+      {% if kpi.hint %}
+        <div class="mt-1 text-xs text-zinc-500">{{ kpi.hint }}</div>
+      {% endif %}
+    </div>
+  {% endfor %}
+</div>
+
+<!-- Charts -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+  <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-5">
+    <h2 class="font-medium mb-3">{{ T.chart_trend.format(days=period_days) }}</h2>
+    <div class="h-64"><canvas id="chart-trend"></canvas></div>
+  </div>
+
+  <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-5">
+    <h2 class="font-medium mb-3">{{ T.chart_categories }}</h2>
+    <div class="h-64"><canvas id="chart-categories"></canvas></div>
+  </div>
+
+  <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-5">
+    <h2 class="font-medium mb-3">{{ T.chart_top_users }}</h2>
+    <div style="height: {{ users_chart_height }}px;"><canvas id="chart-users"></canvas></div>
+  </div>
+
+  <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-5">
+    <h2 class="font-medium mb-3">{{ T.chart_heatmap }}</h2>
+    {% if heatmap_max == 0 %}
+      <div class="h-64 flex items-center justify-center text-zinc-500 text-sm">
+        {{ T.no_data_yet }}
+      </div>
+    {% else %}
+      <div class="overflow-x-auto scroll-pretty">
+        <table class="text-[10px] border-separate" style="border-spacing: 2px;">
+          <thead>
+            <tr>
+              <th class="text-zinc-500 font-normal pr-2 text-right"></th>
+              {% for h in range(24) %}
+                <th class="text-zinc-500 font-normal w-6 text-center">{{ h }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% set days = T.weekdays.split(',') %}
+            {% for row in heatmap_rows %}
+              <tr>
+                <td class="text-zinc-500 pr-2 text-right">{{ days[loop.index0] }}</td>
+                {% for v in row %}
+                  {% set ratio = (v / heatmap_max) if heatmap_max else 0 %}
+                  <td title="{{ days[loop.index0 if false else (loop.index0)] }} — {{ v }}"
+                      class="w-6 h-6 rounded text-center text-zinc-200"
+                      style="background-color: rgba(124,58,237, {{ '%.2f' % (0.05 + ratio * 0.85) }});">
+                    {% if v > 0 %}{{ v }}{% endif %}
+                  </td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="mt-3 text-xs text-zinc-500">
+        {{ T.heatmap_hint }}
+      </p>
+    {% endif %}
+  </div>
+
+  <!-- Dynamics — full width, two side-by-side line charts -->
+  <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-5 lg:col-span-2">
+    <h2 class="font-medium mb-4">
+      {{ T.chart_dynamics.format(days=period_days) }}
+    </h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div>
+        <div class="flex items-baseline justify-between mb-2">
+          <div class="text-xs uppercase tracking-wide text-zinc-400">
+            {{ T.kpi_first_response }}
+          </div>
+          <div class="text-sm text-zinc-300">
+            <span class="text-zinc-500 mr-1">{{ T.for_period }}</span>
+            <span class="font-semibold tabular-nums">{{ fmt_hours(avg_first_response_hours_period) }}</span>
+          </div>
+        </div>
+        <div class="h-56"><canvas id="chart-first-response"></canvas></div>
+      </div>
+      <div>
+        <div class="flex items-baseline justify-between mb-2">
+          <div class="text-xs uppercase tracking-wide text-zinc-400">
+            {{ T.kpi_close_time }}
+          </div>
+          <div class="text-sm text-zinc-300">
+            <span class="text-zinc-500 mr-1">{{ T.for_period }}</span>
+            <span class="font-semibold tabular-nums">{{ fmt_hours(avg_close_hours_period) }}</span>
+          </div>
+        </div>
+        <div class="h-56"><canvas id="chart-close-time"></canvas></div>
+      </div>
+    </div>
+    <p class="mt-3 text-xs text-zinc-500">
+      {{ T.dynamics_note }}
+    </p>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Adapt Chart.js defaults to the current colour theme
+  const isDark = document.documentElement.classList.contains('dark');
+  Chart.defaults.color         = isDark ? '#94a3b8' : '#6b7280';
+  Chart.defaults.borderColor   = isDark ? 'rgba(148,163,184,0.15)' : 'rgba(107,114,128,0.12)';
+  Chart.defaults.font.family   = "ui-sans-serif, system-ui, -apple-system, sans-serif";
+
+  const BRAND      = '#7c3aed';
+  const BRAND_FADED = 'rgba(124, 58, 237, 0.18)';
+  const DONUT_BORDER = isDark ? '#0f172a' : '#ffffff';
+  const PALETTE = [
+    '#7c3aed', '#06b6d4', '#f59e0b', '#10b981',
+    '#ef4444', '#8b5cf6', '#3b82f6', '#84cc16',
+  ];
+
+  // ----- Trend (line) -----
+  new Chart(document.getElementById('chart-trend'), {
+    type: 'line',
+    data: {
+      labels: {{ trend_labels_json|safe }},
+      datasets: [{
+        data: {{ trend_values_json|safe }},
+        borderColor: BRAND,
+        backgroundColor: BRAND_FADED,
+        fill: true,
+        tension: 0.35,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        borderWidth: 2,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 10 } },
+        y: { beginAtZero: true, ticks: { precision: 0 } },
+      },
+    },
+  });
+
+  // ----- Categories (doughnut) -----
+  new Chart(document.getElementById('chart-categories'), {
+    type: 'doughnut',
+    data: {
+      labels: {{ category_labels_json|safe }},
+      datasets: [{
+        data: {{ category_values_json|safe }},
+        backgroundColor: PALETTE,
+        borderColor: DONUT_BORDER,
+        borderWidth: 2,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '60%',
+      plugins: {
+        legend: { position: 'right', labels: { boxWidth: 12, padding: 12 } },
+      },
+    },
+  });
+
+  // ----- First-response dynamics (HOURS per day) -----
+  new Chart(document.getElementById('chart-first-response'), {
+    type: 'line',
+    data: {
+      labels: {{ first_response_labels_json|safe }},
+      datasets: [{
+        label: '{{ T.hour_short }}',
+        data: {{ first_response_values_json|safe }},
+        borderColor: '#06b6d4',  // cyan-500
+        backgroundColor: 'rgba(6, 182, 212, 0.18)',
+        fill: true,
+        tension: 0.35,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        borderWidth: 2,
+        spanGaps: false,  // break the line on null instead of bridging it
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: (c) => c.parsed.y == null ? '{{ T.no_data_tooltip }}' : `${c.parsed.y} {{ T.hour_short }}` } },
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 10 } },
+        y: { beginAtZero: true, ticks: { callback: (v) => v + '{{ T.hour_short }}' } },
+      },
+    },
+  });
+
+  // ----- Close-time dynamics (hours per day) -----
+  new Chart(document.getElementById('chart-close-time'), {
+    type: 'line',
+    data: {
+      labels: {{ close_time_labels_json|safe }},
+      datasets: [{
+        label: '{{ T.hour_short }}',
+        data: {{ close_time_values_json|safe }},
+        borderColor: '#f59e0b',  // amber-500
+        backgroundColor: 'rgba(245, 158, 11, 0.18)',
+        fill: true,
+        tension: 0.35,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        borderWidth: 2,
+        spanGaps: false,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: (c) => c.parsed.y == null ? '{{ T.no_data_tooltip }}' : `${c.parsed.y} {{ T.hour_short }}` } },
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 10 } },
+        y: { beginAtZero: true, ticks: { callback: (v) => v + '{{ T.hour_short }}' } },
+      },
+    },
+  });
+
+  // ----- Top users (horizontal bar) -----
+  new Chart(document.getElementById('chart-users'), {
+    type: 'bar',
+    data: {
+      labels: {{ users_labels_json|safe }},
+      datasets: [{
+        data: {{ users_values_json|safe }},
+        backgroundColor: BRAND,
+        borderRadius: 6,
+      }],
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { beginAtZero: true, ticks: { precision: 0 } },
+        y: { grid: { display: false } },
+      },
+    },
+  });
+</script>
+{% endblock %}

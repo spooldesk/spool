@@ -1,0 +1,40 @@
+{#
+  Analytics base — extends the unified app_base.html and adds
+  the secondary tab bar (Overview / AI / Templates).
+  All analytics templates extend this file instead of app_base.html directly.
+#}
+{% extends "app_base.html" %}
+
+{# Chart.js — only analytics pages need it, so we load it here, not in app_base #}
+{% block head_extra %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block topbar_tabs %}
+<div class="shrink-0 bg-white dark:bg-zinc-950
+            border-b border-gray-100 dark:border-zinc-900
+            px-5 flex items-center gap-1 h-9">
+
+  {% set _tabs = [
+    ('overview',            '/overview',   'Overview'),
+    ('ai',                  '/ai',         'AI'),
+    ('templates_analytics', '/templates',  'Templates'),
+  ] %}
+
+  {% for key, href, label in _tabs %}
+    <a href="{{ href }}"
+       class="px-3 py-1 rounded-md text-xs font-medium transition-colors
+              {% if active_page == key %}
+                bg-gray-100 dark:bg-zinc-800
+                text-gray-800 dark:text-zinc-100
+              {% else %}
+                text-gray-400 dark:text-zinc-500
+                hover:bg-gray-50 dark:hover:bg-zinc-900
+                hover:text-gray-700 dark:hover:text-zinc-200
+              {% endif %}">
+      {{ label }}
+    </a>
+  {% endfor %}
+
+</div>
+{% endblock %}

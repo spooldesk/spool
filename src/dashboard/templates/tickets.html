@@ -1,0 +1,256 @@
+{% extends "app_base.html" %}
+{% block title %}{{ T.tickets_title }}{% endblock %}
+
+{% block content %}
+<div>
+<div class="mb-6 flex items-end justify-between gap-4">
+  <div>
+    <h1 class="text-2xl font-semibold">{{ T.tickets_title }}</h1>
+    <p class="text-sm text-zinc-400 mt-1">
+      {{ T.total_by_filter }} <span class="text-zinc-200 tabular-nums">{{ total }}</span>
+    </p>
+  </div>
+  <a href="{{ export_url }}"
+     class="inline-flex items-center gap-2 px-3 py-2 rounded-lg
+            bg-emerald-600/20 border border-emerald-500/40 text-emerald-300
+            hover:bg-emerald-600/30 text-sm font-medium"
+     title="{{ T.export_excel_hint }}">
+    <i class="ti ti-table-export" style="font-size:15px" aria-hidden="true"></i>
+    {{ T.export_excel }}
+  </a>
+</div>
+
+<!-- Filters -->
+<form method="get" action="/tickets"
+      class="bg-zinc-950 border border-zinc-900 rounded-xl p-4 mb-4
+             grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
+
+  <!-- Search — full-width row above the selects -->
+  <div class="md:col-span-6 relative">
+    <i class="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none"
+       style="font-size:14px" aria-hidden="true"></i>
+    <input type="text" name="q" value="{{ filters.q }}" maxlength="200"
+           placeholder="{{ T.search_placeholder }}"
+           class="w-full pl-9 pr-9 py-2 rounded-lg bg-black border border-zinc-800 text-sm
+                  focus:border-brand-500 focus:outline-none text-zinc-100 placeholder:text-zinc-600">
+    {% if filters.q %}
+      <a href="/tickets" title="{{ T.search_reset }}"
+         class="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-200">
+        <i class="ti ti-x" style="font-size:14px" aria-hidden="true"></i>
+      </a>
+    {% endif %}
+  </div>
+
+  <div>
+    <label class="block text-xs uppercase tracking-wide text-zinc-400 mb-1">{{ T.f_status }}</label>
+    <select name="status" class="w-full px-2 py-1.5 rounded-md bg-black border border-zinc-800 text-sm">
+      <option value="">{{ T.all }}</option>
+      <option value="active"  {% if filters.status == 'active' %}selected{% endif %}>{{ T.opt_active }}</option>
+      <option value="closed"  {% if filters.status == 'closed' %}selected{% endif %}>{{ T.opt_closed }}</option>
+    </select>
+  </div>
+
+  <div>
+    <label class="block text-xs uppercase tracking-wide text-zinc-400 mb-1">{{ T.stage }}</label>
+    <select name="stage" class="w-full px-2 py-1.5 rounded-md bg-black border border-zinc-800 text-sm">
+      <option value="">{{ T.all }}</option>
+      {% for s in ('new', 'in_progress', 'waiting') %}
+        <option value="{{ s }}" {% if filters.stage == s %}selected{% endif %}>{{ T['stage_' ~ s] }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div>
+    <label class="block text-xs uppercase tracking-wide text-zinc-400 mb-1">{{ T.f_team }}</label>
+    <select name="team_id" class="w-full px-2 py-1.5 rounded-md bg-black border border-zinc-800 text-sm">
+      <option value="">{{ T.all }}</option>
+      {% for tid, name in teams %}
+        <option value="{{ tid }}" {% if filters.team_id|string == tid|string %}selected{% endif %}>{{ name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div>
+    <label class="block text-xs uppercase tracking-wide text-zinc-400 mb-1">{{ T.f_category }}</label>
+    <select name="category" class="w-full px-2 py-1.5 rounded-md bg-black border border-zinc-800 text-sm">
+      <option value="">{{ T.all }}</option>
+      {% for c in categories %}
+        <option value="{{ c }}" {% if filters.category == c %}selected{% endif %}>{{ c }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div>
+    <label class="block text-xs uppercase tracking-wide text-zinc-400 mb-1">{{ T.f_operator }}</label>
+    <select name="assigned" class="w-full px-2 py-1.5 rounded-md bg-black border border-zinc-800 text-sm">
+      <option value="">{{ T.all }}</option>
+      <option value="me"   {% if filters.assigned == 'me' %}selected{% endif %}>{{ T.mine }}</option>
+      <option value="none" {% if filters.assigned == 'none' %}selected{% endif %}>{{ T.not_assigned }}</option>
+      {% for op in operators %}
+        <option value="{{ op.id }}" {% if filters.assigned == op.id|string %}selected{% endif %}>{{ op.label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div>
+    <label class="block text-xs uppercase tracking-wide text-zinc-400 mb-1">{{ T.f_date_from }}</label>
+    <input type="date" name="date_from" value="{{ filters.date_from }}"
+           class="w-full px-2 py-1.5 rounded-md bg-black border border-zinc-800 text-sm
+                  [color-scheme:dark]">
+  </div>
+
+  <div>
+    <label class="block text-xs uppercase tracking-wide text-zinc-400 mb-1">{{ T.f_date_to }}</label>
+    <input type="date" name="date_to" value="{{ filters.date_to }}"
+           class="w-full px-2 py-1.5 rounded-md bg-black border border-zinc-800 text-sm
+                  [color-scheme:dark]">
+  </div>
+
+  <div class="flex gap-2">
+    <button type="submit"
+            class="px-3 py-1.5 rounded-md bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium">
+      {{ T.apply }}
+    </button>
+    <a href="/tickets"
+       class="px-3 py-1.5 rounded-md border border-zinc-800 text-zinc-300 hover:bg-zinc-900 text-sm">
+      {{ T.reset }}
+    </a>
+  </div>
+</form>
+
+<!-- Table -->
+<div class="bg-zinc-950 border border-zinc-900 rounded-xl overflow-hidden">
+  <div class="overflow-x-auto scroll-pretty">
+    <table class="w-full text-sm">
+      <thead class="bg-zinc-950/80 border-b border-zinc-900">
+        <tr class="text-left text-xs uppercase tracking-wide text-zinc-400">
+          <th class="px-4 py-3">{{ T.th_id }}</th>
+          <th class="px-4 py-3">{{ T.th_status }}</th>
+          <th class="px-4 py-3">{{ T.th_team }}</th>
+          <th class="px-4 py-3">{{ T.th_user }}</th>
+          <th class="px-4 py-3">{{ T.th_operator }}</th>
+          <th class="px-4 py-3">{{ T.th_category }}</th>
+          <th class="px-4 py-3">{{ T.th_created }}</th>
+          <th class="px-4 py-3">{{ T.th_closed }}</th>
+          <th class="px-4 py-3">{{ T.th_time }}</th>
+          <th class="px-4 py-3 text-center" title="{{ T.csat_col_hint }}">CSAT</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-zinc-900">
+        {% for r in rows %}
+          <tr class="hover:bg-zinc-900/50 transition cursor-pointer"
+              onclick="window.location='/tickets/{{ r.id }}'">
+            <td class="px-4 py-2.5 font-mono tabular-nums">
+              <a href="/tickets/{{ r.id }}" class="text-brand-500 hover:text-brand-600">
+                #{{ r.id }}
+              </a>
+              {% if r.is_sensitive %}<i class="ti ti-lock text-amber-400/80 ml-1" style="font-size:12px" title="{{ T.sensitive_hint }}" aria-hidden="true"></i>{% endif %}
+            </td>
+            <td class="px-4 py-2.5 whitespace-nowrap">
+              {% if r.status == 'active' %}
+                {% set _sc = {'new': 'bg-sky-500/15 text-sky-300',
+                              'in_progress': 'bg-brand-500/15 text-brand-300',
+                              'waiting': 'bg-amber-500/15 text-amber-300'} %}
+                <span class="px-2 py-0.5 rounded text-xs {{ _sc.get(r.stage, _sc['new']) }}">{{ T['stage_' ~ (r.stage or 'new')] }}</span>
+              {% elif r.status == 'closed' %}
+                <span class="px-2 py-0.5 rounded text-xs bg-slate-500/15 text-zinc-300">closed</span>
+              {% else %}
+                <span class="px-2 py-0.5 rounded text-xs bg-slate-500/15">{{ r.status }}</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-2.5 text-zinc-300">{{ r.team }}</td>
+            <td class="px-4 py-2.5">
+              {{ r.user_label }}
+              {% if r.local_user_id %}
+                <span class="text-zinc-500 text-xs">· {{ r.team }}:{{ r.local_user_id }}</span>
+              {% endif %}
+              {% if r.linked_work %}
+                <div class="flex items-center gap-1 text-xs text-amber-400/80 mt-0.5">
+                  <i class="ti ti-link" style="font-size:11px" aria-hidden="true"></i> {{ T.linked_personal }} {{ r.linked_work }}
+                </div>
+              {% endif %}
+            </td>
+            <td class="px-4 py-2.5">
+              {% if r.operator %}
+                <span class="inline-flex items-center gap-1.5 text-zinc-300">
+                  <span class="w-4 h-4 rounded-full bg-violet-900/40 flex items-center justify-center shrink-0">
+                    <span class="text-[8px] font-bold text-violet-400 uppercase">{{ r.operator[0] }}</span>
+                  </span>
+                  {{ r.operator }}
+                </span>
+              {% else %}
+                <span class="text-zinc-600">—</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-2.5 text-zinc-300">{{ r.category or '—' }}</td>
+            <td class="px-4 py-2.5 text-zinc-400 text-xs tabular-nums">
+              {{ r.created_at.strftime('%Y-%m-%d %H:%M') if r.created_at else '—' }}
+            </td>
+            <td class="px-4 py-2.5 text-zinc-400 text-xs tabular-nums">
+              {{ r.closed_at.strftime('%Y-%m-%d %H:%M') if r.closed_at else '—' }}
+            </td>
+            <td class="px-4 py-2.5 text-zinc-400 tabular-nums">
+              {{ fmt_seconds(r.processing_time_seconds) }}
+            </td>
+            <td class="px-4 py-2.5 text-center">
+              {% if r.csat_rating %}
+                <span class="inline-flex items-center gap-1 tabular-nums text-xs
+                             {% if r.csat_rating >= 4 %}text-emerald-400
+                             {% elif r.csat_rating == 3 %}text-amber-400
+                             {% else %}text-red-400{% endif %}">
+                  <i class="ti ti-star-filled" style="font-size:11px" aria-hidden="true"></i>{{ r.csat_rating }}
+                </span>
+              {% else %}
+                <span class="text-zinc-700">—</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="10" class="px-4 py-10 text-center text-zinc-500">
+              {{ T.nothing_found }}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Pagination -->
+  {% if total_pages > 1 %}
+    <div class="flex items-center justify-between px-4 py-3 border-t border-zinc-900 bg-zinc-950/50">
+      <div class="text-xs text-zinc-500">
+        {{ T.page_of.format(page=page + 1, pages=total_pages, shown=rows|length, total=total) }}
+      </div>
+      <div class="flex gap-1">
+        {% if prev_url %}
+          <a href="{{ prev_url }}"
+             class="px-3 py-1 rounded border border-zinc-800 hover:bg-zinc-900 text-sm">← {{ T.back }}</a>
+        {% endif %}
+        {% if next_url %}
+          <a href="{{ next_url }}"
+             class="px-3 py-1 rounded border border-zinc-800 hover:bg-zinc-900 text-sm">{{ T.forward }} →</a>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Live-refresh the list. Re-fetches the current URL so filters and sorting
+  // are preserved, then swaps only the table body — no flash, no scroll jump.
+  // ui.js is deferred, so it has not run yet when this inline block executes.
+  document.addEventListener('DOMContentLoaded', () => window.liveRefresh({
+    apply(doc) {
+      const newBody = doc.querySelector('table tbody');
+      const curBody = document.querySelector('table tbody');
+      if (newBody && curBody && newBody.innerHTML !== curBody.innerHTML) {
+        curBody.replaceWith(newBody);
+      }
+    },
+  }));
+</script>
+{% endblock %}

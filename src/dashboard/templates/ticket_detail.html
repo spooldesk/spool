@@ -1,0 +1,761 @@
+{% extends "app_base.html" %}
+{% block title %}{{ T.ticket }} #{{ t.id }}{% endblock %}
+{% block main_overflow %}overflow-hidden{% endblock %}
+{# Two full-height panes with their own headers and a docked composer — a
+   frame around them would only cost the conversation vertical room. #}
+{% block main_pad %}{% endblock %}
+
+{% block content %}
+<div class="flex flex-col md:flex-row h-full" data-ticket-id="{{ t.id }}">
+
+  <!-- ===== Conversation column ===== -->
+  <div id="convo" class="flex-1 min-w-0 min-h-0 flex flex-col relative">
+
+    <!-- Drag overlay -->
+    <div id="drop-overlay"
+         class="absolute inset-0 z-20 hidden items-center justify-center
+                bg-black/80 border-2 border-dashed border-brand-500 rounded-lg m-2 pointer-events-none">
+      <div class="text-center">
+        <i class="ti ti-paperclip text-brand-400 mb-2" style="font-size:40px" aria-hidden="true"></i>
+        <div class="text-brand-400 font-medium">{{ T.drop_file_here }}</div>
+      </div>
+    </div>
+
+    <!-- Header -->
+    <div class="border-b border-zinc-900 px-6 py-4 flex items-center justify-between gap-4">
+      <div class="min-w-0">
+        <div class="flex items-center gap-3">
+          {# href is rewritten by ui.js to wherever this ticket was opened
+             from; /tickets is the fallback for a direct link. #}
+          <a href="/tickets" id="back-link"
+             class="text-zinc-500 hover:text-zinc-200 text-sm">←</a>
+          <h1 class="text-lg font-semibold tracking-tight truncate">{{ T.ticket }} #{{ t.id }}</h1>
+          <span id="status-badge">
+            {% if t.status == 'active' %}
+              <span class="px-2 py-0.5 rounded-full text-xs bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">active</span>
+            {% elif t.status == 'closed' %}
+              <span class="px-2 py-0.5 rounded-full text-xs bg-zinc-700/40 text-zinc-400 border border-zinc-700">closed</span>
+            {% endif %}
+          </span>
+          {% if t.status == 'active' %}
+            {% set _sc = {'new': 'bg-sky-500/15 text-sky-400 border-sky-500/20',
+                          'in_progress': 'bg-brand-500/15 text-brand-400 border-brand-500/20',
+                          'waiting': 'bg-amber-500/15 text-amber-400 border-amber-500/20'} %}
+            <span class="px-2 py-0.5 rounded-full text-xs border {{ _sc.get(t.stage, _sc['new']) }}">
+              {{ T['stage_' ~ (t.stage or 'new')] }}
+            </span>
+          {% endif %}
+          {% if t.is_sensitive %}<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-amber-500/15 text-amber-400"><i class="ti ti-lock" style="font-size:11px" aria-hidden="true"></i> sensitive</span>{% endif %}
+        </div>
+        <div class="text-xs text-zinc-500 mt-1">
+          {{ T.created_at }} {{ t.created_at.strftime('%Y-%m-%d %H:%M') if t.created_at else '—' }}
+          · {{ t.category or '—' }}
+          · <span id="live-dot" class="text-emerald-500">● live</span>
+        </div>
+        <!-- Somebody else has this ticket open. Shown in the header rather than
+             next to the composer: the point is to be noticed before typing a
+             reply, not after. -->
+        <div id="presence" class="hidden mt-1.5 text-xs text-amber-400 items-center gap-1.5">
+          <i class="ti ti-eye" style="font-size:12px" aria-hidden="true"></i>
+          <span id="presence-text"></span>
+        </div>
+      </div>
+    </div>
+
+    {% if flash_sent %}
+      <div class="mx-6 mt-4 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm">
+        {% if flash_sent == 'closed' %}{{ T.flash_closed }}{% elif flash_sent == 'category' %}{{ T.flash_category }}{% elif flash_sent == 'assigned' %}{{ T.flash_assigned }}{% elif flash_sent == 'stage' %}{{ T.stage_changed }}{% elif flash_sent == 'note' %}{{ T.note_added }}{% elif flash_sent == 'deleted' %}{{ T.flash_deleted }}{% else %}{{ T.flash_sent_user }}{% endif %}
+      </div>
+    {% endif %}
+    {% if flash_err %}
+      <div class="mx-6 mt-4 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">{{ flash_err }}</div>
+    {% endif %}
+
+    <!-- Timeline -->
+    <div id="timeline" class="flex-1 overflow-y-auto px-6 py-5 space-y-4 scroll-pretty" data-user-label="{{ t.user_label }}">
+      {% for m in t.messages %}
+        <div class="msg group flex {% if m.is_internal %}justify-center{% elif m.sender_type == 'admin' %}justify-end{% endif %}"
+             data-message-id="{{ m.id }}">
+          <div class="{% if m.is_internal %}w-full max-w-[92%] rounded-xl px-4 py-3 bg-amber-500/[0.07] border border-dashed border-amber-500/40
+                      {% else %}max-w-[80%] rounded-2xl px-4 py-3
+                        {% if m.sender_type == 'admin' %}bg-brand-600/20 border border-brand-500/25{% else %}bg-zinc-900 border border-zinc-800{% endif %}
+                      {% endif %}">
+            <div class="text-[10px] uppercase tracking-wide text-zinc-500 flex items-center gap-2 mb-1">
+              <span class="inline-flex items-center gap-1">
+                {% if m.is_internal %}
+                  <i class="ti ti-notes text-amber-400" style="font-size:11px" aria-hidden="true"></i>
+                  <span class="text-amber-400">{{ T.internal_note }}</span>
+                {% elif m.sender_type == 'admin' %}
+                  <i class="ti ti-tool" style="font-size:11px" aria-hidden="true"></i> admin
+                {% else %}
+                  <i class="ti ti-user" style="font-size:11px" aria-hidden="true"></i> {{ t.user_label }}
+                {% endif %}
+              </span>
+              {% if m.is_internal %}
+                <span class="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400/90 text-[9px] normal-case tracking-normal">
+                  <i class="ti ti-eye-off" style="font-size:9px" aria-hidden="true"></i> {{ T.note_badge }}
+                </span>
+              {% endif %}
+              {% if m.is_template_reply %}<span class="px-1.5 py-0.5 rounded bg-brand-500/20 text-brand-400 text-[9px]">{{ T.badge_template }}</span>{% endif %}
+              <span class="text-zinc-600">{{ m.created_at.strftime('%m-%d %H:%M') }}</span>
+              {% if m.can_delete %}
+                <form method="post" action="/tickets/{{ t.id }}/message/{{ m.id }}/delete"
+                      class="ml-auto opacity-0 group-hover:opacity-100 transition"
+                      onsubmit="return confirm('{{ T.msg_unsend_confirm }}')">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <button class="text-zinc-500 hover:text-red-400 normal-case tracking-normal"
+                          title="{{ T.msg_unsend }}">
+                    <i class="ti ti-trash" style="font-size:12px" aria-hidden="true"></i>
+                  </button>
+                </form>
+              {% endif %}
+            </div>
+            {% if m.deleted_at %}
+              <div class="text-sm italic text-zinc-500 flex items-center gap-1.5">
+                <i class="ti ti-trash" style="font-size:12px" aria-hidden="true"></i>
+                {{ T.msg_withdrawn }}
+              </div>
+              {# The text stays in the transcript. The next operator needs to
+                 know what was said and taken back, not just that something was. #}
+              <div class="text-xs text-zinc-600 line-through whitespace-pre-wrap break-words mt-1">{{ m.text }}</div>
+            {% else %}
+              <div class="text-sm whitespace-pre-wrap break-words text-zinc-100">{{ m.text }}</div>
+            {% endif %}
+            {% if m.has_attachment %}
+              {% if m.is_image and m.attachment_url %}
+                <a href="{{ m.attachment_url }}" target="_blank" class="block mt-2">
+                  <img src="{{ m.attachment_url }}" alt="{{ m.file_name }}"
+                       class="rounded-lg max-h-64 border border-zinc-800 hover:opacity-90">
+                </a>
+              {% elif m.attachment_url %}
+                <a href="{{ m.attachment_url }}" target="_blank"
+                   class="mt-2 inline-flex items-center gap-1.5 text-xs text-brand-400 hover:text-brand-300">
+                  <i class="ti ti-paperclip" style="font-size:12px" aria-hidden="true"></i>
+                  {{ m.file_name or T.file }} <span class="text-zinc-600">· {{ T.download }}</span>
+                </a>
+              {% else %}
+                <div class="mt-2 inline-flex items-center gap-1 text-xs text-zinc-500">
+                  <i class="ti ti-paperclip" style="font-size:12px" aria-hidden="true"></i>
+                  {{ m.file_name or T.file }}
+                </div>
+              {% endif %}
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+    <!-- Reply composer -->
+    <div id="composer" class="border-t border-zinc-900 px-6 py-4 {% if t.status != 'active' %}hidden{% endif %}">
+      <!-- Reply vs Note: two modes on one composer. Note mode never calls the
+           Bot API — the text stays in the dashboard. -->
+      <div class="flex items-center gap-1 mb-2 text-xs">
+        <button type="button" id="mode-reply"
+                class="px-2.5 py-1 rounded-lg border border-brand-500/40 bg-brand-600/20 text-brand-300">
+          <i class="ti ti-send" style="font-size:12px" aria-hidden="true"></i> {{ T.reply_tab }}
+        </button>
+        <button type="button" id="mode-note"
+                class="px-2.5 py-1 rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-zinc-200">
+          <i class="ti ti-notes" style="font-size:12px" aria-hidden="true"></i> {{ T.note_tab }}
+        </button>
+      </div>
+      <form id="reply-form" method="post" action="/tickets/{{ t.id }}/reply" enctype="multipart/form-data" class="space-y-2"
+            data-reply-action="/tickets/{{ t.id }}/reply" data-note-action="/tickets/{{ t.id }}/note">
+        <div class="flex items-end gap-2">
+          <textarea id="reply-text" name="text" rows="2" placeholder="{{ T.reply_placeholder }}"
+                    data-reply-placeholder="{{ T.reply_placeholder }}" data-note-placeholder="{{ T.note_placeholder }}"
+                    class="flex-1 px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800
+                           focus:border-brand-500 focus:outline-none text-sm resize-y
+                           text-zinc-100 placeholder:text-zinc-600"></textarea>
+          <button type="submit" id="composer-submit"
+                  data-reply-label="{{ T.send }}" data-note-label="{{ T.note_add }}"
+                  class="px-4 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium shrink-0">
+            {{ T.send }}
+          </button>
+        </div>
+        <div id="reply-tools" class="flex items-center gap-3 text-xs relative">
+          <button type="button" id="tpl-btn"
+                  class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800">
+            <i class="ti ti-message-dots" style="font-size:13px" aria-hidden="true"></i> {{ T.templates }}
+          </button>
+          <button type="button" id="ai-btn"
+                  class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800">
+            <i class="ti ti-robot" style="font-size:13px" aria-hidden="true"></i> {{ T.ask_ai }}
+          </button>
+          <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 cursor-pointer">
+            <i class="ti ti-paperclip" style="font-size:13px" aria-hidden="true"></i> {{ T.attach_file }}
+            <input type="file" name="attachments" multiple class="hidden" id="file-input"
+                   data-max-files="{{ max_upload_files }}" data-max-bytes="{{ max_upload_bytes }}">
+          </label>
+          <span id="ai-status" class="text-zinc-500"></span>
+          <span class="ml-auto text-zinc-600 hidden sm:inline">{{ T.composer_hint }}</span>
+
+          <!-- Templates popup -->
+          <div id="tpl-popup"
+               class="hidden absolute bottom-9 left-0 z-30 w-96 max-h-80 overflow-y-auto
+                      bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl scroll-pretty">
+            <div class="px-3 py-2 text-[10px] uppercase tracking-wide text-zinc-500 border-b border-zinc-900 sticky top-0 bg-zinc-950">
+              {{ T.team_templates }}
+            </div>
+            <div id="tpl-list" class="py-1"></div>
+          </div>
+        </div>
+        {# Picked files, each removable: attaching five and spotting one wrong
+           should not mean starting the selection over. #}
+        <div id="file-chips" class="hidden flex-wrap gap-1.5 text-xs"></div>
+        <div id="note-hint" class="hidden text-xs text-amber-400/80 flex items-center gap-1.5">
+          <i class="ti ti-eye-off" style="font-size:12px" aria-hidden="true"></i> {{ T.note_badge }}
+        </div>
+      </form>
+    </div>
+    <div id="closed-note" class="border-t border-zinc-900 px-6 py-4 text-center text-sm text-zinc-600 {% if t.status == 'active' %}hidden{% endif %}">
+      {{ T.ticket_closed_note }}
+    </div>
+  </div>
+
+  <!-- ===== Properties sidebar ===== -->
+  <aside class="w-full md:w-72 shrink-0 max-h-[40%] md:max-h-none
+                border-t md:border-t-0 md:border-l border-zinc-900
+                bg-zinc-950 overflow-y-auto p-5 space-y-6">
+    <div>
+      <div class="text-xs uppercase tracking-wide text-zinc-500 mb-2">{{ T.user }}</div>
+      <div class="text-sm space-y-1">
+        <div class="flex items-center gap-1.5">
+          <i class="ti ti-user text-zinc-500 shrink-0" style="font-size:13px" aria-hidden="true"></i>
+          {% if t.user_db_id %}<a href="/users/{{ t.user_db_id }}" class="text-zinc-100 hover:text-brand-400">{{ t.user_label }}</a>
+          {% else %}<span class="text-zinc-100">{{ t.user_label }}</span>{% endif %}
+        </div>
+        {% if t.local_user_id %}<div class="text-zinc-500 text-xs">{{ t.team }}:{{ t.local_user_id }}</div>{% endif %}
+        <div class="text-zinc-500 text-xs">tg_id: {{ t.user_tg_id or '—' }}</div>
+        {% if t.linked_work %}
+          <div class="inline-flex items-start gap-1 text-xs text-amber-400/90 mt-1">
+            <i class="ti ti-link shrink-0 mt-0.5" style="font-size:11px" aria-hidden="true"></i>
+            {{ T.writes_from_personal|safe }} {{ t.linked_work }}
+          </div>
+        {% elif t.linked_personals %}
+          <div class="inline-flex items-start gap-1 text-xs text-zinc-400 mt-1">
+            <i class="ti ti-link shrink-0 mt-0.5" style="font-size:11px" aria-hidden="true"></i>
+            {{ T.work_account_personals }} {{ t.linked_personals|join(', ') }}
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div>
+      <div class="text-xs uppercase tracking-wide text-zinc-500 mb-2">{{ T.properties }}</div>
+      <div class="text-sm space-y-1.5">
+        <div class="flex justify-between"><span class="text-zinc-500">{{ T.f_team }}</span><span>{{ t.team }}</span></div>
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-zinc-500 shrink-0">{{ T.th_operator }}</span>
+          <form method="post" action="/tickets/{{ t.id }}/assign" class="flex items-center gap-1 min-w-0"
+                onchange="this.requestSubmit()">
+            <select name="admin_id"
+                    class="min-w-0 max-w-[170px] px-2 py-1 rounded-lg bg-black border border-zinc-800 text-sm
+                           text-zinc-100 focus:border-brand-500 focus:outline-none">
+              <option value="" {% if not t.assigned_admin_id %}selected{% endif %}>— {{ T.not_assigned }} —</option>
+              {% for op in operators %}
+                <option value="{{ op.id }}" {% if t.assigned_admin_id == op.id %}selected{% endif %}>{{ op.label }}</option>
+              {% endfor %}
+            </select>
+          </form>
+        </div>
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-zinc-500 shrink-0">{{ T.th_category }}</span>
+          <form method="post" action="/tickets/{{ t.id }}/category" class="flex items-center gap-1 min-w-0"
+                onchange="this.requestSubmit()">
+            {% set known = ticket_categories | map(attribute='name') | list %}
+            <select name="category"
+                    class="min-w-0 max-w-[170px] px-2 py-1 rounded-lg bg-black border border-zinc-800 text-sm
+                           text-zinc-100 focus:border-brand-500 focus:outline-none">
+              <option value="" {% if not t.category %}selected{% endif %}>{{ T.no_category }}</option>
+              {% for c in ticket_categories %}
+                <option value="{{ c.name }}" {% if t.category == c.name %}selected{% endif %}>{{ (c.emoji ~ ' ') if c.emoji }}{{ c.name }}</option>
+              {% endfor %}
+              {% if t.category and t.category not in known %}
+                <option value="{{ t.category }}" selected>{{ t.category }} {{ T.hidden_suffix }}</option>
+              {% endif %}
+            </select>
+          </form>
+        </div>
+        {% if t.status == 'active' %}
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-zinc-500 shrink-0">{{ T.stage }}</span>
+            <form method="post" action="/tickets/{{ t.id }}/stage" class="flex items-center gap-1 min-w-0"
+                  onchange="this.requestSubmit()">
+              <select name="stage"
+                      class="min-w-0 max-w-[170px] px-2 py-1 rounded-lg bg-black border border-zinc-800 text-sm
+                             text-zinc-100 focus:border-brand-500 focus:outline-none">
+                {% for s in ('new', 'in_progress', 'waiting') %}
+                  <option value="{{ s }}" {% if (t.stage or 'new') == s %}selected{% endif %}>{{ T['stage_' ~ s] }}</option>
+                {% endfor %}
+              </select>
+            </form>
+          </div>
+        {% endif %}
+        <div class="flex justify-between"><span class="text-zinc-500">{{ T.time_in_progress }}</span><span>{{ fmt_seconds(t.processing_time_seconds) }}</span></div>
+        {% if t.status == 'closed' %}
+          <div class="flex justify-between items-center">
+            <span class="text-zinc-500">{{ T.csat_label }}</span>
+            {% if t.csat_rating %}
+              <span class="inline-flex items-center gap-0.5
+                           {% if t.csat_rating >= 4 %}text-emerald-400
+                           {% elif t.csat_rating == 3 %}text-amber-400
+                           {% else %}text-red-400{% endif %}">
+                {% for _ in range(t.csat_rating) %}<i class="ti ti-star-filled" style="font-size:12px" aria-hidden="true"></i>{% endfor %}
+                <span class="ml-1 text-xs tabular-nums">{{ t.csat_rating }}/5</span>
+              </span>
+            {% else %}
+              <span class="text-zinc-600 text-xs">{{ T.not_rated }}</span>
+            {% endif %}
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if t.admin_categories or t.custom_reason %}
+      <div>
+        <div class="text-xs uppercase tracking-wide text-zinc-500 mb-2">{{ T.close_reasons }}</div>
+        {% if t.admin_categories %}
+          <div class="flex flex-wrap gap-1.5 mb-2">
+            {% for c in t.admin_categories %}<span class="px-2 py-0.5 rounded text-xs bg-zinc-900 border border-zinc-800 text-zinc-200">{{ c }}</span>{% endfor %}
+          </div>
+        {% endif %}
+        {% if t.custom_reason %}<div class="text-zinc-300 italic text-sm">"{{ t.custom_reason }}"</div>{% endif %}
+      </div>
+    {% endif %}
+
+    {% if t.status == 'active' %}
+      <div class="pt-2 border-t border-zinc-900">
+        <div class="text-xs uppercase tracking-wide text-zinc-500 mb-2">{{ T.close_ticket }}</div>
+        <form method="post" action="/tickets/{{ t.id }}/close" class="space-y-2"
+              onsubmit="return confirm('{{ T.close_confirm.format(id=t.id) }}')">
+          <div class="space-y-1.5">
+            {% for c in close_categories %}
+              <label class="flex items-center gap-2 text-sm cursor-pointer hover:text-white">
+                <input type="checkbox" name="categories" value="{{ c.value }}"
+                       class="rounded bg-zinc-950 border-zinc-700 text-brand-600 focus:ring-brand-500">
+                <span>{{ c.label }}</span>
+              </label>
+            {% endfor %}
+          </div>
+          <input name="custom_reason" placeholder="{{ T.custom_reason_placeholder }}"
+                 class="w-full px-2 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-sm
+                        text-zinc-100 placeholder:text-zinc-600">
+          <button type="submit"
+                  class="inline-flex items-center justify-center gap-2 w-full py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm font-medium">
+            <i class="ti ti-circle-check" style="font-size:15px" aria-hidden="true"></i> {{ T.close }}
+          </button>
+        </form>
+      </div>
+    {% endif %}
+  </aside>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const root = document.querySelector('[data-ticket-id]');
+  const ticketId = root.dataset.ticketId;
+  const timeline = document.getElementById('timeline');
+  const userLabel = timeline.dataset.userLabel;
+  const CSRF_TOKEN = {{ csrf_token|tojson }};
+
+  // Count only DIRECT message children — not nested .flex blocks.
+  // Cursor, not a count: the server sends only what comes after it, so a quiet
+  // ticket costs a few bytes instead of the whole conversation every few
+  // seconds. Seeded from what the server already rendered into the page.
+  const rendered = timeline.querySelectorAll(':scope > .msg[data-message-id]');
+  let lastSeenId = rendered.length
+    ? parseInt(rendered[rendered.length - 1].dataset.messageId, 10) || 0
+    : 0;
+
+  // ---- AI suggest ----
+  const aiBtn = document.getElementById('ai-btn');
+  const aiStatus = document.getElementById('ai-status');
+  if (aiBtn) {
+    aiBtn.addEventListener('click', async () => {
+      aiBtn.disabled = true; aiStatus.textContent = '{{ T.js_thinking }}';
+      try {
+        const r = await fetch(`/tickets/${ticketId}/ai-suggest`, { method: 'POST' });
+        const data = await r.json();
+        if (data.ok) {
+          document.getElementById('reply-text').value = data.draft;
+          aiStatus.textContent = '{{ T.js_ai_inserted }}';
+        } else {
+          aiStatus.textContent = '! ' + (data.error || '{{ T.js_ai_none }}');
+        }
+      } catch (e) { aiStatus.textContent = '! {{ T.js_error }}'; }
+      aiBtn.disabled = false;
+    });
+  }
+
+  // ---- Templates popup ----
+  const tplBtn = document.getElementById('tpl-btn');
+  const tplPopup = document.getElementById('tpl-popup');
+  const tplList = document.getElementById('tpl-list');
+  let tplLoaded = false;
+
+  async function loadTemplates() {
+    tplList.innerHTML = '<div class="px-3 py-2 text-zinc-500 text-sm">{{ T.js_loading }}</div>';
+    try {
+      const r = await fetch(`/tickets/${ticketId}/templates.json`);
+      const data = await r.json();
+      if (!data.ok || !data.templates.length) {
+        tplList.innerHTML = '<div class="px-3 py-3 text-zinc-500 text-sm">{{ T.js_no_templates }}</div>';
+        return;
+      }
+      tplList.innerHTML = '';
+      data.templates.forEach(t => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'w-full text-left px-3 py-2 hover:bg-zinc-900 border-b border-zinc-900/60';
+        const cat = t.category ? `<span class="text-[9px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 ml-1">${escapeHtml(t.category)}</span>` : '';
+        item.innerHTML =
+          `<div class="text-sm text-zinc-100">${escapeHtml(t.title)}${cat}</div>
+           <div class="text-xs text-zinc-500 truncate mt-0.5">${escapeHtml(t.body.slice(0,90))}</div>`;
+        item.addEventListener('click', () => {
+          document.getElementById('reply-text').value = t.body;
+          tplPopup.classList.add('hidden');
+          document.getElementById('reply-text').focus();
+        });
+        tplList.appendChild(item);
+      });
+    } catch (e) {
+      tplList.innerHTML = '<div class="px-3 py-2 text-red-400 text-sm">{{ T.js_load_error }}</div>';
+    }
+  }
+
+  if (tplBtn) {
+    tplBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const isHidden = tplPopup.classList.contains('hidden');
+      if (isHidden) {
+        tplPopup.classList.remove('hidden');
+        if (!tplLoaded) { await loadTemplates(); tplLoaded = true; }
+      } else {
+        tplPopup.classList.add('hidden');
+      }
+    });
+    // close on outside click
+    document.addEventListener('click', (e) => {
+      if (!tplPopup.contains(e.target) && e.target !== tplBtn) tplPopup.classList.add('hidden');
+    });
+  }
+
+  // ---- Attachments ----
+  // The <input> is the source of truth so the form still submits normally, but
+  // it is only ever written through here: picking, dropping and pasting all
+  // add to the selection instead of replacing it.
+  const fileInput = document.getElementById('file-input');
+  const fileChips = document.getElementById('file-chips');
+  const MAX_FILES = parseInt(fileInput.dataset.maxFiles, 10);
+  const MAX_BYTES = parseInt(fileInput.dataset.maxBytes, 10);
+
+  // `picked` is the model, not the input: the native dialog replaces its
+  // selection, so a second trip to it would silently drop the first files.
+  let picked = [];
+
+  function syncInput() {
+    const dt = new DataTransfer();
+    picked.forEach(f => dt.items.add(f));
+    fileInput.files = dt.files;
+    showFiles();
+  }
+
+  function addFiles(incoming) {
+    for (const f of incoming) {
+      if (f.size > MAX_BYTES) { flashComposer('{{ T.e_file_too_large }}'); continue; }
+      // Same name and size twice is a double-drop, not two files.
+      if (picked.some(c => c.name === f.name && c.size === f.size)) continue;
+      if (picked.length >= MAX_FILES) {
+        flashComposer('{{ T.e_too_many_files }}'.replace('{limit}', MAX_FILES));
+        break;
+      }
+      picked.push(f);
+    }
+    syncInput();
+  }
+
+  function removeFile(index) {
+    picked.splice(index, 1);
+    syncInput();
+  }
+
+  function clearFiles() {
+    picked = [];
+    syncInput();
+  }
+
+  function humanSize(n) {
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return Math.round(n / 1024) + ' KB';
+    return (n / 1024 / 1024).toFixed(1) + ' MB';
+  }
+
+  function showFiles() {
+    fileChips.innerHTML = '';
+    fileChips.classList.toggle('hidden', picked.length === 0);
+    fileChips.classList.toggle('flex', picked.length > 0);
+    picked.forEach((f, i) => {
+      const chip = document.createElement('span');
+      chip.className = 'inline-flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-lg ' +
+                       // max-w is one the committed tw.css already carries: the
+                       // build needs Node, and one chip is not worth that.
+                       'bg-zinc-900 border border-zinc-800 text-zinc-300 max-w-[170px]';
+      const label = document.createElement('span');
+      label.className = 'truncate';
+      label.textContent = f.name;
+      const size = document.createElement('span');
+      size.className = 'text-zinc-600 shrink-0';
+      size.textContent = humanSize(f.size);
+      const kill = document.createElement('button');
+      kill.type = 'button';
+      kill.className = 'shrink-0 px-1 rounded text-zinc-500 hover:text-red-400 hover:bg-zinc-800';
+      kill.title = '{{ T.delete }}';
+      kill.setAttribute('aria-label', '{{ T.delete }} ' + f.name);
+      kill.innerHTML = '<i class="ti ti-x" style="font-size:12px" aria-hidden="true"></i>';
+      kill.addEventListener('click', () => removeFile(i));
+      chip.append(label, size, kill);
+      fileChips.appendChild(chip);
+    });
+  }
+
+  function flashComposer(msg) {
+    const el = document.getElementById('ai-status');
+    if (!el) return;
+    el.textContent = msg;
+    el.className = 'text-amber-400';
+    setTimeout(() => { el.textContent = ''; el.className = 'text-zinc-500'; }, 4000);
+  }
+
+  // The dialog hands us its own selection; fold it into what is already there.
+  fileInput.addEventListener('change', () => addFiles([...fileInput.files]));
+
+  // ---- Drag & drop ----
+  const convo = document.getElementById('convo');
+  const overlay = document.getElementById('drop-overlay');
+  if (convo && fileInput) {
+    let dragDepth = 0;
+    const show = () => { overlay.classList.remove('hidden'); overlay.classList.add('flex'); };
+    const hide = () => { overlay.classList.add('hidden'); overlay.classList.remove('flex'); };
+    convo.addEventListener('dragenter', e => { e.preventDefault(); dragDepth++; show(); });
+    convo.addEventListener('dragover', e => { e.preventDefault(); });
+    convo.addEventListener('dragleave', e => { e.preventDefault(); if (--dragDepth <= 0) hide(); });
+    convo.addEventListener('drop', e => {
+      e.preventDefault(); dragDepth = 0; hide();
+      if (e.dataTransfer.files && e.dataTransfer.files.length) {
+        addFiles(e.dataTransfer.files);
+        document.getElementById('reply-text').focus();
+      }
+    });
+  }
+
+  // ---- Who else is on this ticket ----
+  // Two operators answering the same customer at once is the failure this
+  // prevents; it is worth a request every few seconds to avoid.
+  (function () {
+    const box = document.getElementById('presence');
+    const label = document.getElementById('presence-text');
+    if (!box || !label) return;
+
+    const HERE = {{ T.presence_here|tojson }};
+    const HERE_MANY = {{ T.presence_here_many|tojson }};
+    const TYPING = {{ T.presence_typing|tojson }};
+    let typingUntil = 0;
+
+    function render(others) {
+      if (!others.length) { box.classList.add('hidden'); box.classList.remove('flex'); return; }
+      const typing = others.filter(o => o.typing);
+      const names = (typing.length ? typing : others).map(o => o.name);
+      const tmpl = typing.length ? TYPING : (others.length > 1 ? HERE_MANY : HERE);
+      label.textContent = tmpl.replace('{who}', names.join(', '));
+      box.classList.remove('hidden');
+      box.classList.add('flex');
+    }
+
+    async function beat(extra) {
+      // A background tab is not "watching" — stop claiming the ticket.
+      if (document.hidden && !extra) return;
+      try {
+        const body = new FormData();
+        body.append('csrf_token', CSRF_TOKEN);
+        Object.entries(extra || {}).forEach(([k, v]) => body.append(k, v));
+        const r = await fetch(`/api/tickets/${ticketId}/presence`, { method: 'POST', body });
+        const d = await r.json();
+        if (d.ok) render(d.others || []);
+      } catch (e) { /* a missed beat expires on its own */ }
+    }
+
+    const ta = document.getElementById('reply-text');
+    if (ta) {
+      ta.addEventListener('input', function () {
+        const now = Date.now();
+        if (now < typingUntil) return;   // one signal per few seconds, not per keystroke
+        typingUntil = now + 3000;
+        beat({ typing: '1' });
+      });
+    }
+
+    beat();
+    setInterval(beat, 5000);
+    // Tell the others straight away instead of making them wait out the TTL.
+    window.addEventListener('pagehide', function () {
+      const body = new FormData();
+      body.append('csrf_token', CSRF_TOKEN);
+      body.append('leaving', '1');
+      navigator.sendBeacon(`/api/tickets/${ticketId}/presence`, body);
+    });
+  })();
+
+  // ---- Ctrl+Enter sends ----
+  // Enter alone stays a newline: support replies are often several lines, and
+  // sending half a sentence to a customer is not recoverable.
+  const replyBox = document.getElementById('reply-text');
+  if (replyBox) {
+    replyBox.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        const form = document.getElementById('reply-form');
+        if (form && replyBox.value.trim()) form.requestSubmit();
+      }
+    });
+  }
+
+  // ---- Paste a screenshot straight into the composer ----
+  // The most common attachment in support is a screenshot that lives in the
+  // clipboard and nowhere else; without this the operator has to save it to
+  // disk first just to pick it back up.
+  if (replyBox) {
+    replyBox.addEventListener('paste', function (e) {
+      const items = (e.clipboardData || {}).items || [];
+      const shots = [];
+      for (const item of items) {
+        if (item.kind !== 'file' || !item.type.startsWith('image/')) continue;
+        const blob = item.getAsFile();
+        if (!blob) continue;
+        // Clipboard images arrive nameless; give them something recognisable
+        // in the ticket rather than "blob". Two pastes in the same second
+        // would collide on the timestamp alone, hence the index.
+        const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+        const ext = (item.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+        const suffix = shots.length ? `-${shots.length + 1}` : '';
+        shots.push(new File([blob], `screenshot-${stamp}${suffix}.${ext}`, { type: item.type }));
+      }
+      if (shots.length) {
+        e.preventDefault();
+        addFiles(shots);
+      }
+    });
+  }
+
+  // ---- Composer mode: reply (goes to the user) vs note (stays here) ----
+  const form = document.getElementById('reply-form');
+  const modeReply = document.getElementById('mode-reply');
+  const modeNote = document.getElementById('mode-note');
+  const submitBtn = document.getElementById('composer-submit');
+  const replyTools = document.getElementById('reply-tools');
+  const noteHint = document.getElementById('note-hint');
+  const textArea = document.getElementById('reply-text');
+  const ON = 'px-2.5 py-1 rounded-lg border border-brand-500/40 bg-brand-600/20 text-brand-300';
+  const ON_NOTE = 'px-2.5 py-1 rounded-lg border border-amber-500/40 bg-amber-500/15 text-amber-300';
+  const OFF = 'px-2.5 py-1 rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-zinc-200';
+
+  function setMode(note) {
+    if (!form) return;
+    form.action = note ? form.dataset.noteAction : form.dataset.replyAction;
+    modeReply.className = note ? OFF : ON;
+    modeNote.className = note ? ON_NOTE : OFF;
+    submitBtn.textContent = note ? submitBtn.dataset.noteLabel : submitBtn.dataset.replyLabel;
+    submitBtn.classList.toggle('bg-amber-600', note);
+    submitBtn.classList.toggle('hover:bg-amber-500', note);
+    submitBtn.classList.toggle('bg-brand-600', !note);
+    submitBtn.classList.toggle('hover:bg-brand-500', !note);
+    textArea.placeholder = note ? textArea.dataset.notePlaceholder : textArea.dataset.replyPlaceholder;
+    // Attachments/templates/AI are reply-only; a note has no channel to send on.
+    replyTools.classList.toggle('hidden', note);
+    noteHint.classList.toggle('hidden', !note);
+    if (note && fileInput) clearFiles();
+  }
+  if (modeReply && modeNote) {
+    modeReply.addEventListener('click', () => setMode(false));
+    modeNote.addEventListener('click', () => setMode(true));
+  }
+
+  // ---- Live polling ----
+  function escapeHtml(s){ return (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+  function renderMessage(m) {
+    const wrap = document.createElement('div');
+    wrap.className = 'msg group flex' +
+      (m.is_internal ? ' justify-center' : (m.sender_type === 'admin' ? ' justify-end' : ''));
+    wrap.dataset.messageId = m.id;
+    const bubble = document.createElement('div');
+    bubble.className = m.is_internal
+      ? 'w-full max-w-[92%] rounded-xl px-4 py-3 bg-amber-500/[0.07] border border-dashed border-amber-500/40'
+      : 'max-w-[80%] rounded-2xl px-4 py-3 ' +
+        (m.sender_type === 'admin' ? 'bg-brand-600/20 border border-brand-500/25' : 'bg-zinc-900 border border-zinc-800');
+    const whoIcon = m.is_internal
+      ? '<i class="ti ti-notes text-amber-400" style="font-size:11px" aria-hidden="true"></i> <span class="text-amber-400">{{ T.internal_note }}</span>'
+      : (m.sender_type === 'admin'
+          ? '<i class="ti ti-tool" style="font-size:11px" aria-hidden="true"></i> admin'
+          : '<i class="ti ti-user" style="font-size:11px" aria-hidden="true"></i> ' + userLabel);
+    const who = `<span class="inline-flex items-center gap-1">${whoIcon}</span>`;
+    const noteBadge = m.is_internal
+      ? ' <span class="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400/90 text-[9px] normal-case tracking-normal">{{ T.note_badge }}</span>'
+      : '';
+    const tpl = m.is_template ? ' <span class="px-1.5 py-0.5 rounded bg-brand-500/20 text-brand-400 text-[9px]">{{ T.badge_template }}</span>' : '';
+    let att = '';
+    if (m.has_attachment && m.is_image && m.attachment_url) {
+      att = `<a href="${m.attachment_url}" target="_blank" class="block mt-2">
+               <img src="${m.attachment_url}" class="rounded-lg max-h-64 border border-zinc-800 hover:opacity-90"></a>`;
+    } else if (m.has_attachment && m.attachment_url) {
+      att = `<a href="${m.attachment_url}" target="_blank" class="mt-2 inline-flex items-center gap-1.5 text-xs text-brand-400 hover:text-brand-300"><i class="ti ti-paperclip" style="font-size:12px" aria-hidden="true"></i> ${escapeHtml(m.file_name || '{{ T.file }}')} · {{ T.download }}</a>`;
+    } else if (m.has_attachment) {
+      att = `<div class="mt-2 inline-flex items-center gap-1 text-xs text-zinc-500"><i class="ti ti-paperclip" style="font-size:12px" aria-hidden="true"></i> ${escapeHtml(m.file_name || '{{ T.file }}')}</div>`;
+    }
+    bubble.innerHTML =
+      `<div class="text-[10px] uppercase tracking-wide text-zinc-500 flex items-center gap-2 mb-1">
+         <span>${who}</span>${noteBadge}${tpl}<span class="text-zinc-600">${m.created_at}</span></div>
+       <div class="text-sm whitespace-pre-wrap break-words text-zinc-100">${escapeHtml(m.text)}</div>${att}`;
+    wrap.appendChild(bubble);
+    return wrap;
+  }
+
+  const liveDot = document.getElementById('live-dot');
+  async function poll() {
+    try {
+      const r = await fetch(`/tickets/${ticketId}/messages.json?after_id=${lastSeenId}`);
+      if (!r.ok) return;
+      const data = await r.json();
+      if (!data.ok) return;
+      if (liveDot) liveDot.className = 'text-emerald-500';
+
+      if (data.messages && data.messages.length) {
+        // Stay pinned to the bottom only if the operator was already there —
+        // yanking the view while they read older messages is worse than a
+        // missed scroll.
+        const atBottom = timeline.scrollHeight - timeline.scrollTop - timeline.clientHeight < 100;
+        data.messages.forEach(m => timeline.appendChild(renderMessage(m)));
+        if (atBottom) timeline.scrollTop = timeline.scrollHeight;
+      }
+      // Advance even on an empty batch: the server reports the newest id it
+      // knows, which is also how the cursor recovers if a message is deleted.
+      if (typeof data.latest_id === 'number') lastSeenId = data.latest_id;
+      if (data.status !== 'active') {
+        document.getElementById('composer')?.classList.add('hidden');
+        document.getElementById('closed-note')?.classList.remove('hidden');
+        const badge = document.getElementById('status-badge');
+        if (badge) badge.innerHTML = '<span class="px-2 py-0.5 rounded-full text-xs bg-zinc-700/40 text-zinc-400 border border-zinc-700">closed</span>';
+      }
+    } catch (e) {
+      if (liveDot) liveDot.className = 'text-zinc-600';  // dim the dot on network hiccup
+    }
+  }
+
+  timeline.scrollTop = timeline.scrollHeight;
+  // Once the poll only carries what is new, a second costs less than four used
+  // to: ~105 bytes, and the time is per-request overhead we'd pay either way.
+  setInterval(poll, 1000);
+})();
+</script>
+{% endblock %}

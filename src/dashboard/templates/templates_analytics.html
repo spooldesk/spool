@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}{{ T.templates }}{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+  <h1 class="text-2xl font-semibold">{{ T.templates }}</h1>
+  <p class="text-sm text-zinc-400 mt-1">
+    {{ T.ta_subtitle.format(count=rows|length) }}
+  </p>
+</div>
+
+<!-- Usage table -->
+<div class="bg-zinc-950 border border-zinc-900 rounded-xl overflow-hidden mb-6">
+  <div class="px-5 py-3 border-b border-zinc-900 font-medium">{{ T.ta_usage }}</div>
+  <div class="overflow-x-auto scroll-pretty">
+    <table class="w-full text-sm">
+      <thead class="bg-zinc-950/80 border-b border-zinc-900">
+        <tr class="text-left text-xs uppercase tracking-wide text-zinc-400">
+          <th class="px-4 py-3">ID</th>
+          <th class="px-4 py-3">{{ T.title }}</th>
+          <th class="px-4 py-3">{{ T.th_team }}</th>
+          <th class="px-4 py-3">{{ T.th_category }}</th>
+          <th class="px-4 py-3 text-right">{{ T.ta_used }}</th>
+          <th class="px-4 py-3">{{ T.th_created }}</th>
+          <th class="px-4 py-3">{{ T.ta_last_used }}</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-zinc-900">
+        {% for r in rows %}
+          <tr class="hover:bg-zinc-900/50 transition">
+            <td class="px-4 py-2.5 font-mono tabular-nums text-zinc-400">#{{ r.id }}</td>
+            <td class="px-4 py-2.5">{{ r.title }}</td>
+            <td class="px-4 py-2.5 text-zinc-300">{{ r.team }}</td>
+            <td class="px-4 py-2.5 text-zinc-300">{{ r.category }}</td>
+            <td class="px-4 py-2.5 text-right tabular-nums">
+              {% if r.usage_count > 0 %}
+                <span class="font-medium">{{ r.usage_count }}</span>
+              {% else %}
+                <span class="text-zinc-500">0</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-2.5 text-xs text-zinc-400 tabular-nums">
+              {{ r.created_at.strftime('%Y-%m-%d') if r.created_at else '—' }}
+            </td>
+            <td class="px-4 py-2.5 text-xs text-zinc-400 tabular-nums">
+              {% if r.last_used %}
+                {{ r.last_used[:16] if r.last_used is string else r.last_used.strftime('%Y-%m-%d %H:%M') }}
+              {% else %}
+                <span class="text-zinc-500">{{ T.ta_never }}</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="7" class="px-4 py-10 text-center text-zinc-500">{{ T.ta_no_templates }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Removal candidates -->
+{% if candidates %}
+<div class="bg-amber-500/5 border border-amber-500/30 rounded-xl p-5 mb-6">
+  <h2 class="font-medium text-amber-300 mb-2">
+    <i class="ti ti-trash inline-block mr-1" style="font-size:15px;vertical-align:-2px" aria-hidden="true"></i>{{ T.ta_removal_candidates.format(count=candidates|length) }}
+  </h2>
+  <p class="text-sm text-zinc-400 mb-3">
+    {{ T.ta_removal_hint.format(days=candidate_threshold_days) }}
+  </p>
+  <ul class="space-y-1 text-sm">
+    {% for c in candidates %}
+      <li class="text-zinc-300">
+        <span class="font-mono text-zinc-500">#{{ c.id }}</span>
+        — <span class="text-zinc-200">{{ c.title }}</span>
+        <span class="text-zinc-500 text-xs">· {{ c.team }} · {{ c.category }}</span>
+      </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<!-- Admin × Template matrix -->
+<div class="bg-zinc-950 border border-zinc-900 rounded-xl p-5">
+  <h2 class="font-medium mb-3">{{ T.ta_who_uses }}</h2>
+  {% if matrix.admins and matrix.templates %}
+    {# Build a 2D grid for easy rendering #}
+    {% set grid = [] %}
+    {% for _ in matrix.admins %}
+      {% set _ = grid.append([0] * matrix.templates|length) %}
+    {% endfor %}
+    {% set max_cell = namespace(v=0) %}
+    {% for cell in matrix.cells %}
+      {% set _ = grid[cell.admin_idx].__setitem__(cell.template_idx, cell.count) %}
+      {% if cell.count > max_cell.v %}{% set max_cell.v = cell.count %}{% endif %}
+    {% endfor %}
+
+    <div class="overflow-x-auto scroll-pretty">
+      <table class="text-xs border-separate" style="border-spacing: 2px;">
+        <thead>
+          <tr>
+            <th class="text-zinc-500 font-normal pr-3 text-left">{{ T.ta_matrix_header }}</th>
+            {% for t in matrix.templates %}
+              <th class="text-zinc-400 font-normal px-2 text-center align-bottom"
+                  style="writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap;"
+                  title="#{{ t.id }} {{ t.title }}">
+                {{ t.title[:24] }}{% if t.title|length > 24 %}…{% endif %}
+              </th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for admin in matrix.admins %}
+            <tr>
+              <td class="text-zinc-300 pr-3 whitespace-nowrap">{{ admin.label }}</td>
+              {% for v in grid[loop.index0] %}
+                {% set ratio = (v / max_cell.v) if max_cell.v else 0 %}
+                <td class="text-center text-slate-100 rounded"
+                    style="min-width: 28px; height: 28px;
+                           background-color: rgba(124,58,237, {{ '%.2f' % (0.05 + ratio * 0.85) if v > 0 else '0.03' }});">
+                  {% if v > 0 %}{{ v }}{% endif %}
+                </td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="mt-3 text-xs text-zinc-500">
+      {{ T.ta_matrix_note }}
+    </p>
+  {% else %}
+    <div class="text-zinc-500 text-sm py-6 text-center">
+      {{ T.ta_matrix_empty }}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

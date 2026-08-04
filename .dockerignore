@@ -1,0 +1,46 @@
+# Keep the build context small and secrets out of the image.
+
+# Secrets & local data
+.env
+.env.*
+!.env.example
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Python caches / envs
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+venv/
+.venv/
+env/
+ENV/
+
+# Logs & backups
+logs/
+*.log
+*.bak
+*.backup
+*.dump
+
+# Tooling / editor / VCS
+.git/
+.gitignore
+.idea/
+.vscode/
+.claude/
+*.swp
+
+# Docs & build files not needed at runtime
+*.md
+Dockerfile
+docker-compose.yml
+.dockerignore

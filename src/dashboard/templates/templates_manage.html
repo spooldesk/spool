@@ -1,0 +1,79 @@
+{% extends "app_base.html" %}
+{% block title %}{{ T.templates }}{% endblock %}
+
+{% block content %}
+<div>
+  <div class="mb-6 flex items-end justify-between gap-4">
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight">{{ T.m_templates_title }}</h1>
+      <p class="text-sm text-zinc-500 mt-1">{{ T.m_templates_count.format(count=items|length) }}</p>
+    </div>
+    <a href="/manage/templates/new"
+       class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium">
+      <i class="ti ti-plus" style="font-size:14px" aria-hidden="true"></i> {{ T.m_template_new }}
+    </a>
+  </div>
+
+  {% if flash_sent %}
+    <div class="mb-4 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm">
+      {% if flash_sent == 'created' %}{{ T.created_ok }}{% elif flash_sent == 'updated' %}{{ T.m_template_updated }}{% elif flash_sent == 'archived' %}{{ T.m_template_archived }}{% endif %}
+    </div>
+  {% endif %}
+
+  <!-- Team filter -->
+  <form method="get" action="/manage/templates" class="mb-4 flex items-center gap-2">
+    <label class="text-xs uppercase tracking-wide text-zinc-500">{{ T.f_team }}:</label>
+    <select name="team" onchange="this.form.submit()"
+            class="px-2 py-1.5 rounded-md bg-black border border-zinc-800 text-sm">
+      <option value="">{{ T.all }}</option>
+      {% for tid, name in teams %}
+        <option value="{{ tid }}" {% if filter_team == tid %}selected{% endif %}>{{ name }}</option>
+      {% endfor %}
+    </select>
+  </form>
+
+  <div class="bg-zinc-950 border border-zinc-900 rounded-xl overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-zinc-950/80 border-b border-zinc-900">
+        <tr class="text-left text-xs uppercase tracking-wide text-zinc-500">
+          <th class="px-4 py-3">{{ T.title }}</th>
+          <th class="px-4 py-3">{{ T.th_team }}</th>
+          <th class="px-4 py-3">{{ T.th_category }}</th>
+          <th class="px-4 py-3 text-right">{{ T.th_usage }}</th>
+          <th class="px-4 py-3"></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-zinc-900">
+        {% for t in items %}
+          <tr class="hover:bg-zinc-900/50 transition">
+            <td class="px-4 py-3">
+              <a href="/manage/templates/{{ t.id }}/edit" class="text-zinc-100 hover:text-brand-400 font-medium">{{ t.title }}</a>
+              <div class="text-xs text-zinc-600 truncate max-w-md">{{ t.preview }}</div>
+            </td>
+            <td class="px-4 py-3 text-zinc-400">{{ t.team }}</td>
+            <td class="px-4 py-3">
+              {% if t.category %}<span class="px-2 py-0.5 rounded text-xs bg-zinc-900 border border-zinc-800 text-zinc-300">{{ t.category }}</span>{% else %}<span class="text-zinc-600">—</span>{% endif %}
+            </td>
+            <td class="px-4 py-3 text-right tabular-nums text-zinc-400">{{ t.usage }}</td>
+            <td class="px-4 py-3 text-right">
+              <a href="/manage/templates/{{ t.id }}/edit"
+                 class="inline-flex items-center text-zinc-400 hover:text-zinc-100 mr-3"
+                 title="{{ T.edit }}">
+                <i class="ti ti-pencil" style="font-size:15px" aria-hidden="true"></i>
+              </a>
+              <form method="post" action="/manage/templates/{{ t.id }}/archive" class="inline"
+                    onsubmit="return confirm('{{ T.m_archive_confirm.format(title=t.title) }}')">
+                <button class="text-zinc-400 hover:text-red-400" title="{{ T.m_archive }}">
+                  <i class="ti ti-archive" style="font-size:15px" aria-hidden="true"></i>
+                </button>
+              </form>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5" class="px-4 py-10 text-center text-zinc-500">{{ T.m_no_templates }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

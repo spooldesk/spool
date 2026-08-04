@@ -1,0 +1,221 @@
+/* ================================================================
+   Support Bot Dashboard — global CSS
+   Philosophy: keep this file minimal; prefer Tailwind utility classes.
+   This file handles:
+     1. Base resets & scroll behaviour
+     2. Light-mode content-area overrides (dark Tailwind classes → light palette)
+     3. Toast animations
+     4. Scrollbar polish
+     5. Focus rings
+     6. Misc utilities
+================================================================ */
+
+/* --- 1. Base --------------------------------------------------- */
+html { scroll-behavior: smooth; }
+
+body {
+  /* Smooth theme transition on chrome elements (sidebar, topbar).
+     Content area is intentionally excluded to avoid jarring table repaints. */
+  --transition-theme: background-color 150ms ease, border-color 150ms ease, color 100ms ease;
+}
+
+/* --- 2. Light-mode content-area overrides ----------------------
+   When the <html> does NOT have the .dark class (= light mode),
+   we remap the zinc/black Tailwind classes that the page templates
+   use — so they render on a light background without touching the
+   individual template files.
+
+   Scope: .content-area wraps the <main> scroll region in app_base.html,
+   so these overrides are isolated to the scrollable content region.
+   The sidebar and topbar use paired Tailwind dark: variants instead.
+   ---------------------------------------------------------------- */
+
+/* Surfaces. One hue family (zinc) throughout — the first pass mixed slate
+   backgrounds with gray borders, which is what made the light theme look
+   muddy rather than merely light. */
+html:not(.dark) .bg-black            { background-color: #f9fafb !important; }
+html:not(.dark) .bg-zinc-950         { background-color: #ffffff !important; }
+html:not(.dark) .bg-zinc-900         { background-color: #f4f4f5 !important; }
+html:not(.dark) .bg-zinc-800         { background-color: #e4e4e7 !important; }
+html:not(.dark) .bg-zinc-700,
+html:not(.dark) .bg-zinc-600         { background-color: #d4d4d8 !important; }
+
+/* Translucent variants. Every one of these was missing, which is why board
+   cards (bg-zinc-900/70) stayed black in light mode while the page around
+   them turned white. */
+html:not(.dark) .bg-zinc-950\/80,
+html:not(.dark) .bg-zinc-950\/50     { background-color: rgba(255,255,255,0.85) !important; }
+html:not(.dark) .bg-black\/80,
+html:not(.dark) .bg-black\/50        { background-color: rgba(249,250,251,0.85) !important; }
+html:not(.dark) .bg-zinc-900\/70,
+html:not(.dark) .bg-zinc-900\/60,
+html:not(.dark) .bg-zinc-900\/50,
+html:not(.dark) .bg-zinc-900\/40,
+html:not(.dark) .bg-zinc-700\/40     { background-color: rgba(244,244,245,0.85) !important; }
+
+/* Text. The dark theme's scale runs bright-to-dim; inverted it must run
+   dark-to-light, and it has to stop while still readable. The first pass
+   mapped zinc-500 to #9ca3af and zinc-600 to #d1d5db — 2.3:1 and 1.5:1 on
+   white, well under the 4.5:1 that body text needs. That was the washed-out
+   look: not a wrong hue, just text too pale to read. */
+html:not(.dark) .text-white,
+html:not(.dark) .text-zinc-100       { color: #18181b !important; }
+html:not(.dark) .text-zinc-200       { color: #27272a !important; }
+html:not(.dark) .text-zinc-300       { color: #3f3f46 !important; }
+html:not(.dark) .text-zinc-400       { color: #52525b !important; }
+html:not(.dark) .text-zinc-500,
+html:not(.dark) .text-zinc-600       { color: #61616a !important; }  /* 5.1:1 on a card */
+html:not(.dark) .text-zinc-700       { color: #52525b !important; }
+
+/* Borders */
+html:not(.dark) .border-zinc-900,
+html:not(.dark) .border-zinc-900\/60 { border-color: #e4e4e7 !important; }
+html:not(.dark) .border-zinc-800     { border-color: #d4d4d8 !important; }
+html:not(.dark) .border-zinc-700     { border-color: #a1a1aa !important; }
+
+/* Divide utilities (table row separators) */
+html:not(.dark) .divide-zinc-900 > * + * { border-color: #e4e4e7 !important; }
+html:not(.dark) .divide-zinc-800 > * + * { border-color: #e4e4e7 !important; }
+
+/* Hover states */
+html:not(.dark) .hover\:bg-zinc-900:hover       { background-color: #f4f4f5 !important; }
+html:not(.dark) .hover\:bg-zinc-900\/50:hover   { background-color: rgba(244,244,245,0.6) !important; }
+html:not(.dark) .hover\:bg-zinc-800:hover       { background-color: #e4e4e7 !important; }
+html:not(.dark) .hover\:border-zinc-700:hover   { border-color: #a1a1aa !important; }
+html:not(.dark) .hover\:text-zinc-100:hover,
+html:not(.dark) .hover\:text-zinc-200:hover     { color: #18181b !important; }
+html:not(.dark) .hover\:text-zinc-300:hover     { color: #3f3f46 !important; }
+
+/* Form inputs inside content area */
+html:not(.dark) .bg-black.border-zinc-800,
+html:not(.dark) input.border-zinc-800,
+html:not(.dark) select.border-zinc-800,
+html:not(.dark) textarea.border-zinc-800 {
+  background-color: #ffffff !important;
+  border-color: #d4d4d8 !important;
+  color: #18181b !important;
+}
+
+/* Placeholder text */
+/* Placeholder text. Allowed to be lighter than body copy, but not invisible. */
+html:not(.dark) .placeholder\:text-zinc-600::placeholder { color: #71717a !important; }
+
+/* --- Enhanced controls -----------------------------------------
+   The native <select> and date input stay in the DOM: they hold the value and
+   submit with the form, so the page still works if ui.js never loads. Once it
+   does, they are hidden behind the widget — visually gone, still focusable by
+   assistive technology through the widget's own ARIA.
+   ---------------------------------------------------------------- */
+.sr-only-select {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0);
+  white-space: nowrap; border: 0;
+}
+
+/* Accents. Every one of these was picked to glow on near-black; at 300/400
+   weight they all wash out on white. The tinted /15 chip backgrounds stay as
+   they are — they read fine — but their labels have to come down the scale.
+   Internal-note amber is the one that matters most: it is the "the customer
+   never sees this" affordance, and it has to be unmistakable. */
+html:not(.dark) .text-amber-400,
+html:not(.dark) .text-amber-400\/90,
+html:not(.dark) .text-amber-400\/80,
+html:not(.dark) .text-amber-300      { color: #92400e !important; }
+html:not(.dark) .text-red-400,
+html:not(.dark) .text-red-300        { color: #b91c1c !important; }
+html:not(.dark) .text-emerald-500,
+html:not(.dark) .text-emerald-400,
+html:not(.dark) .text-emerald-300    { color: #065f46 !important; }
+html:not(.dark) .text-sky-400,
+html:not(.dark) .text-sky-300        { color: #0369a1 !important; }
+html:not(.dark) .text-brand-500,
+html:not(.dark) .text-brand-400,
+html:not(.dark) .text-brand-300,
+html:not(.dark) .text-violet-400     { color: #5b21b6 !important; }
+html:not(.dark) .hover\:text-brand-300:hover { color: #4c1d95 !important; }
+
+html:not(.dark) .bg-amber-500\/\[0\.07\] { background-color: #fffbeb !important; }
+html:not(.dark) .border-amber-500\/40    { border-color: #f59e0b !important; }
+html:not(.dark) .border-red-500\/40      { border-color: #ef4444 !important; }
+
+/* Filled brand buttons keep white labels: the text-white override above
+   would otherwise turn them near-black on violet. */
+html:not(.dark) .bg-brand-600,
+html:not(.dark) .bg-brand-500,
+html:not(.dark) .bg-brand-600.text-white,
+html:not(.dark) .bg-brand-500.text-white { color: #ffffff !important; }
+
+/* --- 2b. Dark-mode muted text ----------------------------------
+   Found while measuring the light theme, and worth fixing on its own: the
+   two dimmest tiers were below readable contrast in the DEFAULT theme too.
+   zinc-500 came out at 4.1:1 and zinc-600 at 2.6:1 on a card, and they are
+   what carries timestamps, team names and table metadata — the text people
+   actually squint at.
+
+   Both land on the same value now. That drops a tier, but a tier nobody
+   could read was not buying any hierarchy; zinc-400 still sits above them.
+   ---------------------------------------------------------------- */
+html.dark .text-zinc-500,
+html.dark .text-zinc-600  { color: #83838c !important; }
+html.dark .placeholder\:text-zinc-600::placeholder { color: #83838c !important; }
+html.dark .hover\:text-zinc-300:hover { color: #d4d4d8 !important; }
+
+/* --- 3. Scrollbar polish (WebKit) ------------------------------ */
+.scroll-pretty::-webkit-scrollbar       { height: 8px; width: 8px; }
+.scroll-pretty::-webkit-scrollbar-thumb { background: #334155; border-radius: 8px; }
+.scroll-pretty::-webkit-scrollbar-thumb:hover { background: #475569; }
+.scroll-pretty::-webkit-scrollbar-track { background: transparent; }
+
+/* Sidebar / main scrollbar (subtle) */
+aside::-webkit-scrollbar,
+main::-webkit-scrollbar  { width: 4px; }
+aside::-webkit-scrollbar-thumb,
+main::-webkit-scrollbar-thumb  { background: rgba(148,163,184,0.2); border-radius: 4px; }
+
+/* --- 4. Focus rings -------------------------------------------- */
+:focus-visible {
+  outline: 2px solid #7c3aed;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* --- 5. Toasts -------------------------------------------------- */
+#toast-container > div {
+  /* Toasts animate via Tailwind transition classes; this enforces min-width. */
+  min-width: 240px;
+  max-width: 380px;
+}
+
+/* --- 6. Utilities ---------------------------------------------- */
+
+/* Tabular numbers for IDs, times, stats */
+.tabular-nums { font-variant-numeric: tabular-nums; }
+
+/* Tight letter spacing for status badges */
+.badge-text { letter-spacing: 0.01em; }
+
+/* Color-scheme hint so browser date inputs follow the theme */
+html.dark  input[type="date"] { color-scheme: dark; }
+html:not(.dark) input[type="date"] { color-scheme: light; }
+
+/* Smooth sidebar nav transitions */
+aside a { transition: background-color 120ms ease, color 120ms ease; }
+
+/* --- 7. Mobile adjustments ------------------------------------- */
+@media (max-width: 767px) {
+  /* Any data table scrolls horizontally instead of squashing columns.
+     display:block on <table> keeps the inner table layout intact while
+     giving the element its own scroll context — no per-template wrappers. */
+  main table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+  }
+  /* Tighter page padding on small screens */
+  /* Page padding moved onto <main> itself; full-bleed pages clear the class
+     entirely, so this only tightens the ones that opted in. */
+  main.p-6 { padding: 1rem; }
+}

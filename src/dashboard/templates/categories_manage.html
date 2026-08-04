@@ -1,0 +1,115 @@
+{% extends "app_base.html" %}
+{% block title %}{{ T.th_category }}{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl">
+  <h1 class="text-2xl font-semibold tracking-tight mb-1">{{ T.m_categories_title }}</h1>
+  <p class="text-sm text-zinc-500 mb-6">{{ T.m_categories_hint }}</p>
+
+  {% if flash_sent %}
+    <div class="mb-4 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm">
+      {% if flash_sent == 'created' %}{{ T.m_category_created }}{% elif flash_sent == 'deleted' %}{{ T.m_category_deleted }}{% else %}{{ T.saved }}{% endif %}
+    </div>
+  {% endif %}
+  {% if flash_err %}
+    <div class="mb-4 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">{{ flash_err }}</div>
+  {% endif %}
+
+  <!-- Ask-category toggle -->
+  <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-5 mb-6">
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <div class="text-sm font-medium mb-1">{{ T.m_ask_category }}</div>
+        <p class="text-xs text-zinc-500 max-w-md">
+          {{ T.m_ask_category_hint }}
+        </p>
+      </div>
+      <form method="post" action="/manage/categories/ask" class="shrink-0">
+        <input type="hidden" name="ask_category" value="{{ '0' if ask_category else '1' }}">
+        <button class="px-4 py-2 rounded-lg text-sm font-medium border
+                       {% if ask_category %}bg-emerald-600/90 hover:bg-emerald-500 border-emerald-700 text-white{% else %}bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-300{% endif %}">
+          {% if ask_category %}✓ {{ T.enabled }}{% else %}{{ T.disabled }}{% endif %}
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Create -->
+  <form method="post" action="/manage/categories/new" class="flex gap-2 mb-6">
+    <input name="emoji" maxlength="8" placeholder="🔒"
+           class="w-20 px-3 py-2 rounded-lg bg-black border border-zinc-800 text-sm text-center
+                  focus:border-brand-500 focus:outline-none text-zinc-100 placeholder:text-zinc-600">
+    <input name="name" required maxlength="64" placeholder="{{ T.m_new_category_placeholder }}"
+           class="flex-1 px-3 py-2 rounded-lg bg-black border border-zinc-800 text-sm
+                  focus:border-brand-500 focus:outline-none text-zinc-100 placeholder:text-zinc-600">
+    <button class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium whitespace-nowrap">
+      <i class="ti ti-plus" style="font-size:14px" aria-hidden="true"></i> {{ T.create }}
+    </button>
+  </form>
+
+  <div class="bg-zinc-950 border border-zinc-900 rounded-xl overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-zinc-950/80 border-b border-zinc-900">
+        <tr class="text-left text-xs uppercase tracking-wide text-zinc-500">
+          <th class="px-4 py-3 w-10"></th>
+          <th class="px-4 py-3">{{ T.th_category }}</th>
+          <th class="px-4 py-3 text-center">{{ T.status }}</th>
+          <th class="px-4 py-3 text-right">{{ T.actions }}</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-zinc-900">
+        {% for c in items %}
+          <tr class="hover:bg-zinc-900/50 {% if not c.is_active %}opacity-50{% endif %}">
+            <td class="px-4 py-3 align-middle">
+              <div class="flex flex-col gap-1">
+                <form method="post" action="/manage/categories/{{ c.id }}/move" class="leading-none">
+                  <input type="hidden" name="direction" value="up">
+                  <button class="text-zinc-500 hover:text-zinc-200 text-xs" title="{{ T.m_up }}">▲</button>
+                </form>
+                <form method="post" action="/manage/categories/{{ c.id }}/move" class="leading-none">
+                  <input type="hidden" name="direction" value="down">
+                  <button class="text-zinc-500 hover:text-zinc-200 text-xs" title="{{ T.m_down }}">▼</button>
+                </form>
+              </div>
+            </td>
+            <td class="px-4 py-3">
+              <form method="post" action="/manage/categories/{{ c.id }}/edit" class="flex gap-2 items-center">
+                <input name="emoji" maxlength="8" value="{{ c.emoji }}" placeholder="—"
+                       class="w-14 px-2 py-1.5 rounded-lg bg-black border border-zinc-800 text-sm text-center
+                              focus:border-brand-500 focus:outline-none text-zinc-100">
+                <input name="name" required maxlength="64" value="{{ c.name }}"
+                       class="flex-1 px-2 py-1.5 rounded-lg bg-black border border-zinc-800 text-sm
+                              focus:border-brand-500 focus:outline-none text-zinc-100">
+                <button class="inline-flex items-center px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs" title="{{ T.save }}">
+                  <i class="ti ti-device-floppy" style="font-size:14px" aria-hidden="true"></i>
+                </button>
+              </form>
+            </td>
+            <td class="px-4 py-3 text-center">
+              <form method="post" action="/manage/categories/{{ c.id }}/toggle" class="inline">
+                <input type="hidden" name="is_active" value="{{ '0' if c.is_active else '1' }}">
+                {% if c.is_active %}
+                  <button class="px-2.5 py-1 rounded-full text-xs bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20">{{ T.m_visible }}</button>
+                {% else %}
+                  <button class="px-2.5 py-1 rounded-full text-xs bg-zinc-800 border border-zinc-700 text-zinc-400 hover:bg-zinc-700">{{ T.m_hidden }}</button>
+                {% endif %}
+              </form>
+            </td>
+            <td class="px-4 py-3 text-right">
+              <form method="post" action="/manage/categories/{{ c.id }}/delete" class="inline"
+                    onsubmit="return confirm('{{ T.m_category_delete_confirm.format(name=c.name) }}')">
+                <button class="text-zinc-400 hover:text-red-400" title="{{ T.delete }}"><i class="ti ti-trash" style="font-size:15px" aria-hidden="true"></i></button>
+              </form>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="4" class="px-4 py-10 text-center text-zinc-500">{{ T.m_no_categories }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="text-xs text-zinc-600 mt-3">
+    {{ T.m_categories_note }}
+  </p>
+</div>
+{% endblock %}

@@ -1,0 +1,232 @@
+{% extends "app_base.html" %}
+{% block title %}{{ T.user }} {{ u.label }}{% endblock %}
+
+{% block content %}
+<div>
+<div class="mb-4">
+  <a href="/users" class="text-sm text-zinc-400 hover:text-zinc-200">← {{ T.back_to_users }}</a>
+</div>
+
+<!-- Header -->
+<div class="bg-zinc-950 border border-zinc-900 rounded-xl p-5 mb-6">
+  <div class="flex flex-wrap items-start gap-4 justify-between">
+    <div>
+      <h1 class="text-2xl font-semibold">{{ u.label }}</h1>
+      <div class="mt-2 text-sm text-zinc-400 flex flex-wrap gap-x-6 gap-y-1">
+        <div class="flex items-center gap-1.5">
+          <i class="ti ti-device-mobile text-zinc-500" style="font-size:14px" aria-hidden="true"></i>
+          tg_id: <span class="text-zinc-200 tabular-nums">{{ u.tg_id }}</span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <i class="ti ti-building text-zinc-500" style="font-size:14px" aria-hidden="true"></i>
+          <span class="text-zinc-200">{{ u.team }}</span>
+          {% if u.local_user_id %}<span class="text-zinc-500">:{{ u.local_user_id }}</span>{% endif %}
+        </div>
+        <div class="flex items-center gap-1.5">
+          <i class="ti ti-world text-zinc-500" style="font-size:14px" aria-hidden="true"></i>
+          <span class="text-zinc-200">{{ u.language or '—' }}</span>
+        </div>
+        <div>
+          {% if u.is_verified and u.is_active %}
+            <span class="px-2 py-0.5 rounded text-xs bg-emerald-500/15 text-emerald-400">{{ T.verified }}</span>
+          {% elif not u.is_active %}
+            <span class="px-2 py-0.5 rounded text-xs bg-red-500/15 text-red-300">{{ T.blocked }}</span>
+          {% else %}
+            <span class="px-2 py-0.5 rounded text-xs bg-amber-500/15 text-amber-300">{{ T.unverified }}</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="text-right text-xs text-zinc-400 tabular-nums leading-relaxed">
+      <div>{{ T.registered_at }} <span class="text-zinc-200">
+        {{ u.created_at.strftime('%Y-%m-%d') if u.created_at else '—' }}
+      </span></div>
+    </div>
+  </div>
+</div>
+
+{% if flash_sent %}
+  <div class="mb-4 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm">
+    {% if flash_sent == 'blocked' %}{{ T.u_flash_blocked }}{% elif flash_sent == 'unblocked' %}{{ T.u_flash_unblocked }}{% elif flash_sent == 'team' %}{{ T.u_flash_team }}{% elif flash_sent == 'linked' %}{{ T.u_flash_linked }}{% elif flash_sent == 'unlinked' %}{{ T.u_flash_unlinked }}{% elif flash_sent == 'messaged' %}{{ T.u_flash_messaged }}{% elif flash_sent == 'removed' %}{{ T.u_flash_removed }}{% else %}{{ T.done }}{% endif %}
+  </div>
+{% endif %}
+{% if flash_err %}
+  <div class="mb-4 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">{{ flash_err }}</div>
+{% endif %}
+
+<!-- Management panel -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+  <!-- Block / unblock -->
+  <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-4">
+    <div class="text-xs uppercase tracking-wide text-zinc-500 mb-2">{{ T.access }}</div>
+    {% if u.is_active %}
+      <form method="post" action="/users/{{ u.user_db_id }}/block" onsubmit="return confirm('{{ T.block_confirm }}')">
+        <button class="inline-flex items-center justify-center gap-2 w-full py-2 rounded-lg bg-red-600/20 border border-red-500/40 text-red-300 hover:bg-red-600/30 text-sm font-medium">
+          <i class="ti ti-ban" style="font-size:15px" aria-hidden="true"></i> {{ T.block_user }}
+        </button>
+      </form>
+    {% else %}
+      <form method="post" action="/users/{{ u.user_db_id }}/unblock">
+        <button class="inline-flex items-center justify-center gap-2 w-full py-2 rounded-lg bg-emerald-600/20 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-600/30 text-sm font-medium">
+          <i class="ti ti-refresh" style="font-size:15px" aria-hidden="true"></i> {{ T.unblock_user }}
+        </button>
+      </form>
+    {% endif %}
+
+    <form method="post" action="/users/{{ u.user_db_id }}/remove" class="mt-2"
+          onsubmit="return confirm('{{ T.remove_confirm }}')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="inline-flex items-center justify-center gap-2 w-full py-1.5 rounded-lg
+                     bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-red-300
+                     hover:border-red-500/40 text-xs">
+        <i class="ti ti-user-off" style="font-size:14px" aria-hidden="true"></i> {{ T.remove_user }}
+      </button>
+    </form>
+    <p class="text-[11px] text-zinc-600 mt-1.5">{{ T.remove_hint }}</p>
+  </div>
+
+  <!-- Team -->
+  <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-4">
+    <div class="text-xs uppercase tracking-wide text-zinc-500 mb-2">{{ T.f_team }}</div>
+    <form method="post" action="/users/{{ u.user_db_id }}/team" class="flex gap-2">
+      <select name="team_id" class="flex-1 px-2 py-1.5 rounded-md bg-black border border-zinc-800 text-sm">
+        {% for tid, name in u.all_teams %}
+          <option value="{{ tid }}" {% if u.team_id == tid %}selected{% endif %}>{{ name }}</option>
+        {% endfor %}
+      </select>
+      <button class="px-3 py-1.5 rounded-md bg-brand-600 hover:bg-brand-500 text-white text-sm">OK</button>
+    </form>
+  </div>
+
+  <!-- Account link -->
+  <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-4">
+    <div class="text-xs uppercase tracking-wide text-zinc-500 mb-2">{{ T.account_link }}</div>
+    {% if u.linked_work %}
+      {# This is a PERSONAL account linked to a work one #}
+      <div class="flex items-center gap-1.5 text-sm text-zinc-300 mb-2"><i class="ti ti-link shrink-0" style="font-size:14px" aria-hidden="true"></i> {{ T.personal_linked_to }} <span class="text-zinc-100">{{ u.linked_work }}</span></div>
+      <form method="post" action="/users/{{ u.user_db_id }}/unlink"><button class="text-xs text-red-400 hover:text-red-300">{{ T.unlink }}</button></form>
+    {% elif u.pending_work %}
+      <div class="flex items-center gap-1.5 text-sm text-amber-400 mb-2"><i class="ti ti-clock shrink-0" style="font-size:14px" aria-hidden="true"></i> {{ T.pending_link_to }} {{ u.pending_work }}</div>
+      <form method="post" action="/users/{{ u.user_db_id }}/unlink"><button class="text-xs text-red-400 hover:text-red-300">{{ T.cancel }}</button></form>
+    {% elif u.personals %}
+      {# This is a WORK account — personals point at it. No "link" form here. #}
+      <div class="flex items-center gap-1.5 text-sm text-zinc-300 mb-1"><i class="ti ti-link shrink-0" style="font-size:14px" aria-hidden="true"></i> {{ T.work_account }}</div>
+      <div class="text-xs text-zinc-400">{{ T.personals }} {{ u.personals|join(', ') }}</div>
+      <form method="post" action="/users/{{ u.user_db_id }}/unlink-personals" class="mt-2"
+            onsubmit="return confirm('{{ T.unlink_all_confirm }}')">
+        <button class="text-xs text-red-400 hover:text-red-300">{{ T.unlink_all_personals }}</button>
+      </form>
+    {% else %}
+      {# Neither linked nor a work account → can be linked to a work account #}
+      <form method="post" action="/users/{{ u.user_db_id }}/link" class="flex gap-2">
+        <input name="identifier" placeholder="@work_acc / tg_id"
+               class="flex-1 px-2 py-1.5 rounded-md bg-black border border-zinc-800 text-sm text-zinc-100 placeholder:text-zinc-600">
+        <button class="inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-zinc-800 hover:bg-zinc-700 text-sm" title="{{ T.link }}">
+          <i class="ti ti-link" style="font-size:14px" aria-hidden="true"></i>
+        </button>
+      </form>
+      <p class="mt-1 text-xs text-zinc-600">{{ T.link_hint }}</p>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Direct message -->
+<div class="bg-zinc-950 border border-zinc-900 rounded-xl p-4 mb-6">
+  <div class="text-xs uppercase tracking-wide text-zinc-500 mb-2">{{ T.send_message }}</div>
+  <form method="post" action="/users/{{ u.user_db_id }}/message" class="flex items-end gap-2">
+    <textarea name="text" rows="2" required placeholder="{{ T.message_placeholder }}"
+              class="flex-1 px-3 py-2 rounded-lg bg-black border border-zinc-800 text-sm resize-y
+                     focus:border-brand-500 focus:outline-none text-zinc-100 placeholder:text-zinc-600"></textarea>
+    <button class="px-4 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium shrink-0">{{ T.send }}</button>
+  </form>
+</div>
+
+<!-- Counters -->
+<div class="grid grid-cols-3 gap-4 mb-6">
+  <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-4">
+    <div class="text-xs uppercase tracking-wide text-zinc-400">{{ T.total_tickets }}</div>
+    <div class="mt-1 text-2xl font-semibold tabular-nums">{{ u.total }}</div>
+  </div>
+  <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-4">
+    <div class="text-xs uppercase tracking-wide text-zinc-400">{{ T.th_active }}</div>
+    <div class="mt-1 text-2xl font-semibold tabular-nums {% if u.active_count %}text-emerald-400{% endif %}">
+      {{ u.active_count }}
+    </div>
+  </div>
+  <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-4">
+    <div class="text-xs uppercase tracking-wide text-zinc-400">{{ T.closed_tickets }}</div>
+    <div class="mt-1 text-2xl font-semibold tabular-nums">{{ u.closed_count }}</div>
+  </div>
+</div>
+
+<!-- Categories breakdown -->
+{% if u.categories %}
+<div class="bg-zinc-950 border border-zinc-900 rounded-xl p-5 mb-6">
+  <h2 class="font-medium mb-3">{{ T.problem_categories }}</h2>
+  <div class="space-y-2">
+    {% set max_cnt = u.categories[0][1] if u.categories else 1 %}
+    {% for cat, cnt in u.categories %}
+      <div>
+        <div class="flex justify-between text-sm mb-1">
+          <span class="text-zinc-200">{{ cat }}</span>
+          <span class="text-zinc-400 tabular-nums">{{ cnt }}</span>
+        </div>
+        <div class="h-2 bg-zinc-900 rounded overflow-hidden">
+          <div class="h-full bg-brand-500" style="width: {{ (cnt / max_cnt * 100)|round(0) }}%"></div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Ticket history -->
+<div class="bg-zinc-950 border border-zinc-900 rounded-xl overflow-hidden">
+  <div class="px-5 py-3 border-b border-zinc-900 font-medium">{{ T.user_tickets }}</div>
+  <div class="overflow-x-auto scroll-pretty">
+    <table class="w-full text-sm">
+      <thead class="bg-zinc-950/80 border-b border-zinc-900">
+        <tr class="text-left text-xs uppercase tracking-wide text-zinc-400">
+          <th class="px-4 py-3">ID</th>
+          <th class="px-4 py-3">{{ T.th_status }}</th>
+          <th class="px-4 py-3">{{ T.th_category }}</th>
+          <th class="px-4 py-3">{{ T.th_created }}</th>
+          <th class="px-4 py-3">{{ T.th_closed }}</th>
+          <th class="px-4 py-3 text-right">{{ T.th_resolution_time }}</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-zinc-900">
+        {% for t in u.tickets %}
+          <tr class="hover:bg-zinc-900/50 transition cursor-pointer"
+              onclick="window.location='/tickets/{{ t.id }}'">
+            <td class="px-4 py-2.5 font-mono tabular-nums">
+              <a href="/tickets/{{ t.id }}" class="text-brand-500 hover:text-brand-600">#{{ t.id }}</a>
+              {% if t.is_sensitive %}<i class="ti ti-lock text-amber-400/80 ml-0.5" style="font-size:11px" title="{{ T.sensitive_hint }}" aria-hidden="true"></i>{% endif %}
+            </td>
+            <td class="px-4 py-2.5">
+              {% if t.status == 'active' %}
+                <span class="px-2 py-0.5 rounded text-xs bg-emerald-500/15 text-emerald-400">active</span>
+              {% else %}
+                <span class="px-2 py-0.5 rounded text-xs bg-slate-500/15 text-zinc-300">closed</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-2.5 text-zinc-300">{{ t.category or '—' }}</td>
+            <td class="px-4 py-2.5 text-xs text-zinc-400 tabular-nums">
+              {{ t.created_at.strftime('%Y-%m-%d %H:%M') if t.created_at else '—' }}
+            </td>
+            <td class="px-4 py-2.5 text-xs text-zinc-400 tabular-nums">
+              {{ t.closed_at.strftime('%Y-%m-%d %H:%M') if t.closed_at else '—' }}
+            </td>
+            <td class="px-4 py-2.5 text-right text-zinc-400 tabular-nums">
+              {{ fmt_seconds(t.processing_time_seconds) }}
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="6" class="px-4 py-10 text-center text-zinc-500">{{ T.no_tickets }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+</div>
+{% endblock %}

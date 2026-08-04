@@ -1,0 +1,200 @@
+{% extends "app_base.html" %}
+{% block title %}{{ T.reports_title }}{% endblock %}
+
+{% block content %}
+<div>
+
+  <div class="mb-6 flex items-end justify-between gap-4 flex-wrap">
+    <div>
+      <h1 class="text-2xl font-semibold">{{ T.reports_title }}</h1>
+      <p class="text-sm text-zinc-400 mt-1">
+        {{ T.reports_subtitle.format(**{'from': date_from, 'to': date_to}) }}
+      </p>
+    </div>
+    <a href="{{ export_url }}"
+       class="inline-flex items-center gap-2 px-3 py-2 rounded-lg
+              bg-emerald-600/20 border border-emerald-500/40 text-emerald-300
+              hover:bg-emerald-600/30 text-sm font-medium"
+       title="{{ T.reports_download_hint }}">
+      <i class="ti ti-table-export" style="font-size:15px" aria-hidden="true"></i>
+      {{ T.reports_download }}
+    </a>
+  </div>
+
+  <!-- Period picker -->
+  <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-4 mb-6
+              flex flex-wrap items-end gap-3">
+    <div class="flex flex-wrap gap-1.5">
+      {% for key, label in presets %}
+        <a href="/reports?preset={{ key }}"
+           class="px-3 py-1.5 rounded-lg text-sm border transition-colors
+                  {% if preset == key %}
+                    bg-brand-600/20 border-brand-500/50 text-brand-400 font-medium
+                  {% else %}
+                    border-zinc-800 text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200
+                  {% endif %}">
+          {{ label }}
+        </a>
+      {% endfor %}
+    </div>
+    <form method="get" action="/reports" class="flex items-end gap-2 ml-auto">
+      <div>
+        <label class="block text-xs uppercase tracking-wide text-zinc-500 mb-1">{{ T.f_date_from }}</label>
+        <input type="date" name="date_from" value="{{ date_from }}"
+               class="px-2 py-1.5 rounded-lg bg-black border border-zinc-800 text-sm text-zinc-100">
+      </div>
+      <div>
+        <label class="block text-xs uppercase tracking-wide text-zinc-500 mb-1">{{ T.f_date_to }}</label>
+        <input type="date" name="date_to" value="{{ date_to }}"
+               class="px-2 py-1.5 rounded-lg bg-black border border-zinc-800 text-sm text-zinc-100">
+      </div>
+      <button class="px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium">
+        {{ T.show }}
+      </button>
+    </form>
+  </div>
+
+  <!-- Summary cards with deltas -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+    {% for c in cards %}
+      <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-5">
+        <div class="text-xs uppercase tracking-wide text-zinc-400">{{ c.label }}</div>
+        <div class="mt-2 flex items-baseline gap-2">
+          <span class="text-3xl font-semibold tabular-nums">{{ c.value }}</span>
+          {% if c.delta is not none %}
+            {% set up = c.delta > 0 %}
+            {% set good = (up and not c.invert) or (not up and c.invert) %}
+            <span class="inline-flex items-center gap-0.5 text-xs font-medium tabular-nums
+                         {% if c.delta == 0 %}text-zinc-500
+                         {% elif good %}text-emerald-400{% else %}text-red-400{% endif %}">
+              <i class="ti {{ 'ti-trending-up' if up else 'ti-trending-down' }}"
+                 style="font-size:13px" aria-hidden="true"></i>
+              {{ '%+.0f'|format(c.delta) }}%
+            </span>
+          {% else %}
+            <span class="text-xs text-zinc-600">{{ T.r_no_base }}</span>
+          {% endif %}
+        </div>
+        {% if c.hint %}
+          <div class="mt-1 text-xs text-zinc-500">{{ c.hint }}</div>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+
+  <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+
+    <!-- Operators -->
+    <div class="bg-zinc-950 border border-zinc-900 rounded-xl overflow-hidden">
+      <div class="px-5 pt-4 pb-2">
+        <h2 class="font-medium">{{ T.r_operators }}</h2>
+        <p class="text-xs text-zinc-500 mt-0.5">{{ T.r_operators_hint }}</p>
+      </div>
+      <table class="w-full text-sm">
+        <thead class="bg-zinc-950/80 border-b border-zinc-900">
+          <tr class="text-left text-xs uppercase tracking-wide text-zinc-500">
+            <th class="px-5 py-2.5">{{ T.th_operator }}</th>
+            <th class="px-3 py-2.5 text-right">{{ T.th_closed_cnt }}</th>
+            <th class="px-3 py-2.5 text-right">CSAT</th>
+            <th class="px-3 py-2.5 text-right">{{ T.th_avg_close }}</th>
+            <th class="px-5 py-2.5 text-right">{{ T.th_in_progress }}</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-zinc-900">
+          {% for op in operators %}
+            <tr class="hover:bg-zinc-900/50 transition">
+              <td class="px-5 py-2.5">
+                <span class="inline-flex items-center gap-2 text-zinc-200">
+                  <span class="w-5 h-5 rounded-full bg-violet-900/40 flex items-center justify-center shrink-0">
+                    <span class="text-[9px] font-bold text-violet-400 uppercase">{{ op.label[0] }}</span>
+                  </span>
+                  {{ op.label }}
+                  {% if not op.account_active %}
+                    <span class="text-[10px] text-zinc-600">{{ T.r_disabled }}</span>
+                  {% endif %}
+                </span>
+              </td>
+              <td class="px-3 py-2.5 text-right tabular-nums">{{ op.closed }}</td>
+              <td class="px-3 py-2.5 text-right tabular-nums">
+                {% if op.csat_avg is not none %}
+                  <span class="{% if op.csat_avg >= 4 %}text-emerald-400{% elif op.csat_avg >= 3 %}text-amber-400{% else %}text-red-400{% endif %}">
+                    {{ '%.2f'|format(op.csat_avg) }}
+                  </span>
+                  <span class="text-zinc-600 text-xs">({{ op.csat_count }})</span>
+                {% else %}
+                  <span class="text-zinc-600">—</span>
+                {% endif %}
+              </td>
+              <td class="px-3 py-2.5 text-right tabular-nums text-zinc-400">
+                {{ fmt_hours(op.avg_close_hours) }}
+              </td>
+              <td class="px-5 py-2.5 text-right tabular-nums">
+                {% if op.active_now %}
+                  <span class="text-amber-400">{{ op.active_now }}</span>
+                {% else %}
+                  <span class="text-zinc-600">0</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="5" class="px-5 py-8 text-center text-zinc-500">
+              {{ T.r_no_activity }}
+            </td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Teams -->
+    <div class="bg-zinc-950 border border-zinc-900 rounded-xl overflow-hidden">
+      <div class="px-5 pt-4 pb-2">
+        <h2 class="font-medium">{{ T.r_teams }}</h2>
+        <p class="text-xs text-zinc-500 mt-0.5">{{ T.r_teams_hint }}</p>
+      </div>
+      <table class="w-full text-sm">
+        <thead class="bg-zinc-950/80 border-b border-zinc-900">
+          <tr class="text-left text-xs uppercase tracking-wide text-zinc-500">
+            <th class="px-5 py-2.5">{{ T.f_team }}</th>
+            <th class="px-3 py-2.5 text-right">{{ T.th_created_cnt }}</th>
+            <th class="px-3 py-2.5 text-right">{{ T.th_closed_cnt }}</th>
+            <th class="px-5 py-2.5 text-right">CSAT</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-zinc-900">
+          {% for t in teams %}
+            <tr class="hover:bg-zinc-900/50 transition">
+              <td class="px-5 py-2.5 text-zinc-200">{{ t.name }}</td>
+              <td class="px-3 py-2.5 text-right tabular-nums">{{ t.created }}</td>
+              <td class="px-3 py-2.5 text-right tabular-nums">{{ t.closed }}</td>
+              <td class="px-5 py-2.5 text-right tabular-nums">
+                {% if t.csat_avg is not none %}
+                  <span class="{% if t.csat_avg >= 4 %}text-emerald-400{% elif t.csat_avg >= 3 %}text-amber-400{% else %}text-red-400{% endif %}">
+                    {{ '%.2f'|format(t.csat_avg) }}
+                  </span>
+                {% else %}
+                  <span class="text-zinc-600">—</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="4" class="px-5 py-8 text-center text-zinc-500">
+              {{ T.r_no_tickets }}
+            </td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- AI deflection footnote -->
+  <div class="mt-6 flex items-start gap-1.5 text-xs text-zinc-600">
+    <i class="ti ti-robot shrink-0 mt-0.5" style="font-size:13px" aria-hidden="true"></i>
+    <span>
+      {{ T.r_ai_footer.format(offered=summary.deflect_offered, accepted=summary.deflect_accepted) }}{% if summary.deflect_offered %}
+      {{ T.r_ai_footer_rate.format(rate='%.0f'|format(summary.deflect_accepted / summary.deflect_offered * 100)) }}{% endif %}.
+      {{ T.r_ai_footer_link }} <a href="/ai" class="text-brand-400 hover:text-brand-300">{{ T.r_ai_footer_link_label }}</a>.
+    </span>
+  </div>
+
+</div>
+{% endblock %}

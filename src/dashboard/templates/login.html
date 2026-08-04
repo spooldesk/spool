@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="{{ T.html_lang }}" class="h-full dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · {{ g_brand_name or 'Support' }}</title>
+
+  <script>
+    (function(){
+      var t = localStorage.getItem('dash-theme');
+      if (t === 'light') document.documentElement.classList.remove('dark');
+      else              document.documentElement.classList.add('dark');
+    })();
+  </script>
+
+  <!-- Compiled Tailwind (see tailwind.config.js) — no CDN, no runtime JIT -->
+  <link rel="stylesheet" href="/static/tw.css?v={{ g_asset_v }}">
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+  <link rel="stylesheet" href="/static/app.css?v={{ g_asset_v }}">
+</head>
+<body class="h-full antialiased bg-gray-50 dark:bg-zinc-950 flex items-center justify-center p-4">
+
+  <!-- Card -->
+  <div class="w-full max-w-sm">
+
+    <!-- Logo + title -->
+    <div class="text-center mb-8">
+      <div class="inline-flex w-12 h-12 rounded-xl bg-violet-600 items-center justify-center mb-4">
+        <i class="ti ti-headset text-white" style="font-size:24px" aria-hidden="true"></i>
+      </div>
+      <h1 class="text-xl font-semibold text-gray-900 dark:text-zinc-100">
+        {{ g_brand_name or 'Support' }}
+      </h1>
+      <p class="text-sm text-gray-400 dark:text-zinc-500 mt-1">
+        Sign in to the dashboard
+      </p>
+    </div>
+
+    <!-- Form card -->
+    <div class="bg-white dark:bg-zinc-900
+                border border-gray-200 dark:border-zinc-800
+                rounded-2xl p-6 shadow-sm">
+
+      {% if error %}
+        <div class="mb-4 flex items-center gap-2.5 px-3 py-2.5 rounded-lg
+                    bg-red-50 dark:bg-red-500/10
+                    border border-red-200 dark:border-red-500/30
+                    text-red-600 dark:text-red-400 text-sm">
+          <i class="ti ti-alert-circle shrink-0" style="font-size:16px" aria-hidden="true"></i>
+          <span>{{ error }}</span>
+        </div>
+      {% endif %}
+
+      <form method="post" action="/login" class="space-y-4">
+        <input type="hidden" name="next" value="{{ next or '/' }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+        <div>
+          <label for="email"
+                 class="block text-xs font-medium uppercase tracking-wide
+                        text-gray-400 dark:text-zinc-500 mb-1.5">
+            Email
+          </label>
+          <input id="email" type="email" name="email"
+                 value="{{ email or '' }}" autofocus autocomplete="username"
+                 class="w-full px-3 py-2.5 rounded-xl text-sm
+                        bg-gray-50 dark:bg-zinc-950
+                        border border-gray-200 dark:border-zinc-700
+                        text-gray-900 dark:text-zinc-100
+                        placeholder:text-gray-300 dark:placeholder:text-zinc-600
+                        focus:outline-none focus:ring-2
+                        focus:ring-violet-500/40 dark:focus:ring-brand-500/40
+                        focus:border-violet-400 dark:focus:border-brand-500
+                        transition-colors"
+                 placeholder="you@example.com">
+        </div>
+
+        <div>
+          <label for="password"
+                 class="block text-xs font-medium uppercase tracking-wide
+                        text-gray-400 dark:text-zinc-500 mb-1.5">
+            Password
+          </label>
+          <div class="relative">
+            <input id="password" type="password" name="password"
+                   required autocomplete="current-password"
+                   class="w-full pl-3 pr-10 py-2.5 rounded-xl text-sm
+                          bg-gray-50 dark:bg-zinc-950
+                          border border-gray-200 dark:border-zinc-700
+                          text-gray-900 dark:text-zinc-100
+                          placeholder:text-gray-300 dark:placeholder:text-zinc-600
+                          focus:outline-none focus:ring-2
+                          focus:ring-violet-500/40 dark:focus:ring-brand-500/40
+                          focus:border-violet-400 dark:focus:border-brand-500
+                          transition-colors"
+                   placeholder="••••••••">
+            <button type="button" id="pw-toggle"
+                    aria-label="Show/hide password"
+                    class="absolute right-3 top-1/2 -translate-y-1/2
+                           text-gray-300 dark:text-zinc-600
+                           hover:text-gray-500 dark:hover:text-zinc-400 transition-colors">
+              <i id="pw-eye" class="ti ti-eye" style="font-size:16px" aria-hidden="true"></i>
+            </button>
+          </div>
+        </div>
+
+        <button type="submit"
+                class="w-full py-2.5 rounded-xl text-sm font-medium text-white
+                       bg-violet-600 hover:bg-violet-500 dark:bg-brand-600 dark:hover:bg-brand-500
+                       transition-colors focus:outline-none focus:ring-2
+                       focus:ring-violet-500/40 dark:focus:ring-brand-500/40">
+          Sign in
+        </button>
+      </form>
+    </div>
+
+    <!-- Footer hint -->
+    <p class="mt-4 text-xs text-center text-gray-300 dark:text-zinc-600">
+      Per-operator access. First login: admin@local
+    </p>
+
+  </div>
+
+  <script>
+    // Show/hide password
+    var pwInput  = document.getElementById('password');
+    var pwToggle = document.getElementById('pw-toggle');
+    var pwEye    = document.getElementById('pw-eye');
+    if (pwToggle && pwInput) {
+      pwToggle.addEventListener('click', function () {
+        var isText = pwInput.type === 'text';
+        pwInput.type = isText ? 'password' : 'text';
+        pwEye.className = isText ? 'ti ti-eye' : 'ti ti-eye-off';
+      });
+    }
+  </script>
+
+</body>
+</html>

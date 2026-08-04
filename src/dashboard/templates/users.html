@@ -1,0 +1,161 @@
+{% extends "app_base.html" %}
+{% block title %}{{ T.users_title }}{% endblock %}
+
+{% block content %}
+<div>
+<div class="mb-6 flex items-end justify-between gap-4 flex-wrap">
+  <div>
+    <h1 class="text-2xl font-semibold">{{ T.users_title }}</h1>
+    <p class="text-sm text-zinc-400 mt-1">
+      {{ T.users_subtitle.format(count=rows|length) }}
+    </p>
+  </div>
+  <!-- Search -->
+  <div class="relative w-72">
+    <i class="ti ti-search absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none"
+       style="font-size:14px" aria-hidden="true"></i>
+    <input type="text" id="user-search" autocomplete="off"
+           placeholder="{{ T.users_search_placeholder }}"
+           class="w-full pl-9 pr-3 py-2 rounded-lg bg-black border border-zinc-800 text-sm
+                  focus:border-brand-500 focus:outline-none text-zinc-100 placeholder:text-zinc-600">
+    <div id="user-results"
+         class="hidden absolute z-30 w-full mt-1 max-h-72 overflow-y-auto
+                bg-zinc-950 border border-zinc-800 rounded-lg shadow-2xl scroll-pretty"></div>
+  </div>
+</div>
+
+<!-- Team filter. "No team" is the queue of people waiting to be assigned one,
+     so it gets a count badge rather than hiding among the other options. -->
+<form method="get" action="/users" class="mb-4 flex items-center gap-2 flex-wrap"
+      onchange="this.requestSubmit()">
+  <span class="text-xs uppercase tracking-wide text-zinc-400 mr-1">{{ T.f_team }}</span>
+  <select name="team_id"
+          class="px-2 py-1.5 rounded-md bg-black border border-zinc-800 text-sm">
+    <option value="">{{ T.all }}</option>
+    <option value="none" {% if filters.team_id == 'none' %}selected{% endif %}>
+      {{ T.u_no_team }}{% if unassigned_count %} ({{ unassigned_count }}){% endif %}
+    </option>
+    {% for tid, name in teams %}
+      <option value="{{ tid }}" {% if filters.team_id|string == tid|string %}selected{% endif %}>{{ name }}</option>
+    {% endfor %}
+  </select>
+  {% if filters.team_id %}
+    <a href="/users" class="text-xs text-zinc-500 hover:text-zinc-200">{{ T.reset }}</a>
+  {% endif %}
+</form>
+
+<div class="bg-zinc-950 border border-zinc-900 rounded-xl overflow-hidden">
+  <div class="overflow-x-auto scroll-pretty">
+    <table class="w-full text-sm">
+      {# Clicking a header sorts by it; clicking the active one flips direction.
+         The state rides in the query string, so a sorted view can be shared. #}
+      {% macro sortable(key, label, align='left') %}
+        {% set is_active = sort == key %}
+        {% set next_dir = 'asc' if (is_active and dir == 'desc') else 'desc' %}
+        <th class="px-4 py-3 text-{{ align }}">
+          {# &amp; rather than a bare & — the latter is invalid in an attribute
+             and a parameter named like an entity (&copy=) would be mangled. #}
+          <a href="/users?sort={{ key }}&amp;dir={{ next_dir }}{% if filters.team_id %}&amp;team_id={{ filters.team_id }}{% endif %}"
+             class="inline-flex items-center gap-1 hover:text-zinc-200
+                    {% if is_active %}text-zinc-100{% endif %}">
+            {{ label }}
+            {% if is_active %}
+              <i class="ti ti-chevron-{{ 'up' if dir == 'asc' else 'down' }}"
+                 style="font-size:12px" aria-hidden="true"></i>
+            {% endif %}
+          </a>
+        </th>
+      {% endmacro %}
+
+      <thead class="bg-zinc-950/80 border-b border-zinc-900">
+        <tr class="text-left text-xs uppercase tracking-wide text-zinc-400">
+          {{ sortable('user',   T.th_user) }}
+          {{ sortable('team',   T.th_team) }}
+          {{ sortable('total',  T.th_total, 'right') }}
+          {{ sortable('active', T.th_active, 'right') }}
+          {{ sortable('closed', T.th_closed_cnt, 'right') }}
+          <th class="px-4 py-3">{{ T.th_top_categories }}</th>
+          {{ sortable('last',   T.th_last_ticket) }}
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-zinc-900">
+        {% for r in rows %}
+          <tr class="hover:bg-zinc-900/50 transition cursor-pointer"
+              onclick="window.location='/users/{{ r.user_db_id }}'">
+            <td class="px-4 py-2.5">
+              <a href="/users/{{ r.user_db_id }}" class="text-brand-500 hover:text-brand-600 font-medium">
+                {{ r.label }}
+              </a>
+              <span class="text-zinc-500 text-xs ml-2">tg:{{ r.tg_id }}</span>
+            </td>
+            <td class="px-4 py-2.5 text-zinc-300">
+              {{ r.team }}
+              {% if r.local_user_id %}
+                <span class="text-zinc-500 text-xs">:{{ r.local_user_id }}</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-2.5 text-right tabular-nums font-medium">{{ r.total }}</td>
+            <td class="px-4 py-2.5 text-right tabular-nums">
+              {% if r.active > 0 %}
+                <span class="text-emerald-400">{{ r.active }}</span>
+              {% else %}
+                <span class="text-zinc-500">0</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-2.5 text-right tabular-nums text-zinc-300">{{ r.closed }}</td>
+            <td class="px-4 py-2.5">
+              {% if r.top_categories %}
+                <div class="flex flex-wrap gap-1">
+                  {% for cat, cnt in r.top_categories %}
+                    <span class="px-1.5 py-0.5 rounded text-[11px] bg-zinc-900 text-zinc-300">
+                      {{ cat }} <span class="text-zinc-500">×{{ cnt }}</span>
+                    </span>
+                  {% endfor %}
+                </div>
+              {% else %}—{% endif %}
+            </td>
+            <td class="px-4 py-2.5 text-xs text-zinc-400 tabular-nums">
+              {{ r.last_ticket_at.strftime('%Y-%m-%d %H:%M') if r.last_ticket_at else '—' }}
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="7" class="px-4 py-10 text-center text-zinc-500">{{ T.no_users }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const USERS = {{ search_users_json|safe }};
+  const search = document.getElementById('user-search');
+  const results = document.getElementById('user-results');
+  function esc(s){ return (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+  function render(list) {
+    if (!list.length) { results.innerHTML = '<div class="px-3 py-2 text-zinc-500 text-sm">{{ T.js_nothing_found }}</div>'; results.classList.remove('hidden'); return; }
+    results.innerHTML = '';
+    list.slice(0, 40).forEach(u => {
+      const a = document.createElement('a');
+      a.href = '/users/' + u.id;
+      a.className = 'block px-3 py-2 hover:bg-zinc-900 text-sm border-b border-zinc-900/60';
+      a.innerHTML = esc(u.label);
+      results.appendChild(a);
+    });
+    results.classList.remove('hidden');
+  }
+  search.addEventListener('input', () => {
+    const q = search.value.trim().toLowerCase().replace(/^@/, '');
+    if (!q) { results.classList.add('hidden'); return; }
+    render(USERS.filter(u => u.label.toLowerCase().replace(/^@/, '').startsWith(q)));
+  });
+  document.addEventListener('click', (e) => {
+    if (!results.contains(e.target) && e.target !== search) results.classList.add('hidden');
+  });
+})();
+</script>
+{% endblock %}

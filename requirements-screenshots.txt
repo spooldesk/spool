@@ -1,0 +1,10 @@
+# Only for regenerating the README images:
+#   scripts/capture_screenshots.py, scripts/capture_board_gif.py
+#
+# Deliberately not in requirements-dev.txt: CI installs that on every run
+# and would be paying for a browser automation stack it never uses.
+#
+#   pip install -r requirements-screenshots.txt
+#   playwright install chromium
+playwright>=1.40
+Pillow>=10.0

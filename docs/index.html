@@ -1,0 +1,540 @@
+<!doctype html>
+<!--
+  Spool landing page — served by GitHub Pages from /docs on the main branch.
+
+  Waitlist form: set FORM_ENDPOINT below to your Formspree/Tally/Buttondown
+  endpoint. Until then the form falls back to a mailto: link, so the page is
+  useful from the first minute.
+
+  Styles: docs/style.css is compiled Tailwind. Rebuild after editing classes:
+    tailwindcss -c tailwind.config.js -i src/dashboard/static/tw.input.css \
+                -o docs/style.css --content "./docs/**/*.html" --minify
+-->
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Spool — the open helpdesk your team never leaves Telegram to use</title>
+  <meta name="description" content="Open-source Telegram-native helpdesk. Tickets live as Telegram threads, AI answers what it can before a human is needed, full web dashboard included. Self-host in 5 minutes.">
+
+  <meta property="og:title" content="Spool — the helpdesk your team never leaves Telegram to use">
+  <meta property="og:description" content="Tickets as Telegram threads. AI deflection out of the box. Self-host in one container.">
+  <meta property="og:type" content="website">
+
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧵</text></svg>">
+</head>
+<body class="bg-black text-zinc-100 antialiased">
+
+<!-- ============ NAV ============ -->
+<header class="sticky top-0 z-40 backdrop-blur bg-black/80 border-b border-zinc-900">
+  <div class="max-w-6xl mx-auto px-5 h-14 flex items-center gap-3">
+    <div class="flex items-center gap-2.5">
+      <div class="w-7 h-7 rounded-md bg-violet-600 flex items-center justify-center">
+        <i class="ti ti-headset text-white" style="font-size:15px"></i>
+      </div>
+      <span class="font-semibold">Spool</span>
+    </div>
+    <nav class="hidden sm:flex items-center gap-5 ml-6 text-sm text-zinc-400">
+      <a href="#features" class="hover:text-zinc-100 transition-colors">Features</a>
+      <a href="#compare" class="hover:text-zinc-100 transition-colors">Compare</a>
+      <a href="#pricing" class="hover:text-zinc-100 transition-colors">Pricing</a>
+      <a href="#faq" class="hover:text-zinc-100 transition-colors">FAQ</a>
+    </nav>
+    <div class="ml-auto flex items-center gap-2">
+      <a href="https://support-bot-demo-he1w.onrender.com" target="_blank" rel="noopener"
+         class="hidden sm:inline-flex px-3 py-1.5 rounded-lg text-sm text-zinc-300 hover:bg-zinc-900 transition-colors">
+        Live demo
+      </a>
+      <a href="https://github.com/vassab/support-automation-bot" target="_blank" rel="noopener"
+         class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium
+                bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 transition-colors">
+        <i class="ti ti-brand-github" style="font-size:15px"></i> GitHub
+      </a>
+    </div>
+  </div>
+</header>
+
+<!-- ============ HERO ============ -->
+<section class="max-w-6xl mx-auto px-5 pt-16 pb-12 sm:pt-24 sm:pb-16 text-center">
+  <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs
+              bg-violet-600/10 border border-violet-500/30 text-violet-300 mb-6">
+    <i class="ti ti-sparkles" style="font-size:13px"></i> AI deflection built in — and measured
+  </div>
+
+  <h1 class="text-4xl sm:text-6xl font-semibold tracking-tight leading-[1.1]">
+    The helpdesk your team<br class="hidden sm:block">
+    never leaves <span class="text-violet-400">Telegram</span> to use
+  </h1>
+
+  <p class="mt-6 text-lg text-zinc-400 max-w-2xl mx-auto leading-relaxed">
+    Every ticket is a thread in your Telegram admin group, so agents answer where they
+    already work. AI resolves what it can before a human is needed. A full web dashboard
+    is there when you want metrics — not because the tool forces you into it.
+  </p>
+
+  <div class="mt-9 flex flex-wrap items-center justify-center gap-3">
+    <a href="https://support-bot-demo-he1w.onrender.com" target="_blank" rel="noopener"
+       class="inline-flex items-center gap-2 px-5 py-3 rounded-xl font-medium
+              bg-violet-600 hover:bg-violet-500 transition-colors">
+      <i class="ti ti-player-play" style="font-size:16px"></i> Try the live demo
+    </a>
+    <a href="#deploy"
+       class="inline-flex items-center gap-2 px-5 py-3 rounded-xl font-medium
+              bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 transition-colors">
+      <i class="ti ti-brand-docker" style="font-size:16px"></i> Self-host in 5 minutes
+    </a>
+  </div>
+
+  <p class="mt-4 text-xs text-zinc-600">
+    No signup for the demo · <code class="text-zinc-500">admin@local</code> / <code class="text-zinc-500">admin</code>
+  </p>
+
+  <!-- Stats strip -->
+  <div class="mt-14 grid grid-cols-2 sm:grid-cols-4 gap-px bg-zinc-900 rounded-xl overflow-hidden border border-zinc-900">
+    <div class="bg-black px-4 py-5">
+      <div class="text-2xl font-semibold tabular-nums">1</div>
+      <div class="text-xs text-zinc-500 mt-1">container to deploy</div>
+    </div>
+    <div class="bg-black px-4 py-5">
+      <div class="text-2xl font-semibold tabular-nums">5 min</div>
+      <div class="text-xs text-zinc-500 mt-1">from clone to running</div>
+    </div>
+    <div class="bg-black px-4 py-5">
+      <div class="text-2xl font-semibold tabular-nums">283</div>
+      <div class="text-xs text-zinc-500 mt-1">automated tests</div>
+    </div>
+    <div class="bg-black px-4 py-5">
+      <div class="text-2xl font-semibold tabular-nums">0</div>
+      <div class="text-xs text-zinc-500 mt-1">telemetry calls home</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SCREENSHOT ============ -->
+<section class="max-w-6xl mx-auto px-5 pb-20">
+  <div class="rounded-2xl border border-zinc-900 overflow-hidden bg-zinc-950">
+    <img src="img/01_board.png" alt="Spool board — tickets as a Kanban board"
+         class="w-full" loading="lazy">
+  </div>
+  <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <div class="rounded-xl border border-zinc-900 overflow-hidden bg-zinc-950">
+      <img src="img/03_ticket_detail.png" alt="Ticket conversation with templates and AI draft"
+           class="w-full" loading="lazy">
+    </div>
+    <div class="rounded-xl border border-zinc-900 overflow-hidden bg-zinc-950">
+      <img src="img/07_ai_analytics.png" alt="AI analytics — deflection and accept rate"
+           class="w-full" loading="lazy">
+    </div>
+  </div>
+  <p class="mt-3 text-center text-xs text-zinc-600">
+    Dashboard, a ticket thread and AI analytics. All names and numbers are synthetic demo data.
+  </p>
+</section>
+
+<!-- ============ THE WEDGE ============ -->
+<section class="border-y border-zinc-900 bg-zinc-950/50">
+  <div class="max-w-6xl mx-auto px-5 py-16">
+    <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight text-center">
+      Your team already lives in Telegram
+    </h2>
+    <p class="mt-3 text-zinc-400 text-center max-w-2xl mx-auto">
+      Every other helpdesk asks them to move into a second inbox. That's where adoption dies.
+    </p>
+
+    <div class="mt-10 grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="rounded-xl border border-zinc-900 bg-black p-6">
+        <div class="w-9 h-9 rounded-lg bg-violet-600/15 flex items-center justify-center mb-4">
+          <i class="ti ti-messages text-violet-400" style="font-size:18px"></i>
+        </div>
+        <h3 class="font-medium">Agents stay in the thread</h3>
+        <p class="mt-2 text-sm text-zinc-400 leading-relaxed">
+          A ticket opens as a forum thread in your admin group. Reply there and the user
+          gets it. Attachments, templates and AI drafts are one tap away — no context switch.
+        </p>
+      </div>
+      <div class="rounded-xl border border-zinc-900 bg-black p-6">
+        <div class="w-9 h-9 rounded-lg bg-violet-600/15 flex items-center justify-center mb-4">
+          <i class="ti ti-robot text-violet-400" style="font-size:18px"></i>
+        </div>
+        <h3 class="font-medium">AI answers first, honestly</h3>
+        <p class="mt-2 text-sm text-zinc-400 leading-relaxed">
+          Right after a ticket is created, Spool tries to solve it from your templates and
+          resolved tickets. Confident answers only — and the deflection rate is a metric
+          on your dashboard, not a marketing claim.
+        </p>
+      </div>
+      <div class="rounded-xl border border-zinc-900 bg-black p-6">
+        <div class="w-9 h-9 rounded-lg bg-violet-600/15 flex items-center justify-center mb-4">
+          <i class="ti ti-chart-bar text-violet-400" style="font-size:18px"></i>
+        </div>
+        <h3 class="font-medium">Metrics when you need them</h3>
+        <p class="mt-2 text-sm text-zinc-400 leading-relaxed">
+          First-response and resolution times, CSAT, per-operator load, period reports
+          with deltas and Excel export — for the manager who has to report upward.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FEATURES ============ -->
+<section id="features" class="max-w-6xl mx-auto px-5 py-16">
+  <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight text-center">Everything a support team needs</h2>
+  <p class="mt-3 text-zinc-400 text-center">No feature gates. No per-seat maths. It's all in the box.</p>
+
+  <div class="mt-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+    <div class="rounded-xl border border-zinc-900 p-5">
+      <i class="ti ti-ticket text-violet-400" style="font-size:18px"></i>
+      <h3 class="mt-3 font-medium">Ticketing in Telegram</h3>
+      <p class="mt-1.5 text-sm text-zinc-400">Categories, attachments, two-way relay, full history per ticket, user verification and blocking.</p>
+    </div>
+    <div class="rounded-xl border border-zinc-900 p-5">
+      <i class="ti ti-sparkles text-violet-400" style="font-size:18px"></i>
+      <h3 class="mt-3 font-medium">AI assist &amp; deflection</h3>
+      <p class="mt-1.5 text-sm text-zinc-400">Reply drafts from your knowledge base for agents, plus opt-in self-service answers for users. Accept rate tracked per use case.</p>
+    </div>
+    <div class="rounded-xl border border-zinc-900 p-5">
+      <i class="ti ti-star text-violet-400" style="font-size:18px"></i>
+      <h3 class="mt-3 font-medium">CSAT</h3>
+      <p class="mt-1.5 text-sm text-zinc-400">Users rate support 1–5 right in Telegram after a ticket closes. Immutable score, surfaced as a dashboard KPI.</p>
+    </div>
+    <div class="rounded-xl border border-zinc-900 p-5">
+      <i class="ti ti-user-check text-violet-400" style="font-size:18px"></i>
+      <h3 class="mt-3 font-medium">Assignment &amp; roles</h3>
+      <p class="mt-1.5 text-sm text-zinc-400">First responder auto-claims a ticket. Per-operator accounts with argon2 passwords, three roles, CSRF and login rate limiting.</p>
+    </div>
+    <div class="rounded-xl border border-zinc-900 p-5">
+      <i class="ti ti-search text-violet-400" style="font-size:18px"></i>
+      <h3 class="mt-3 font-medium">Search &amp; export</h3>
+      <p class="mt-1.5 text-sm text-zinc-400">Full-text search across messages, users and categories — Unicode-correct, not ASCII-only. Excel export respects your filters.</p>
+    </div>
+    <div class="rounded-xl border border-zinc-900 p-5">
+      <i class="ti ti-clock-hour-4 text-violet-400" style="font-size:18px"></i>
+      <h3 class="mt-3 font-medium">Working hours</h3>
+      <p class="mt-1.5 text-sm text-zinc-400">Schedule with timezone and overnight shifts. Outside hours the bot sets expectations automatically.</p>
+    </div>
+    <div class="rounded-xl border border-zinc-900 p-5">
+      <i class="ti ti-bell text-violet-400" style="font-size:18px"></i>
+      <h3 class="mt-3 font-medium">Queue awareness</h3>
+      <p class="mt-1.5 text-sm text-zinc-400">"Awaiting reply" counter in the sidebar and opt-in browser notifications when a new ticket lands.</p>
+    </div>
+    <div class="rounded-xl border border-zinc-900 p-5">
+      <i class="ti ti-language text-violet-400" style="font-size:18px"></i>
+      <h3 class="mt-3 font-medium">Multilingual</h3>
+      <p class="mt-1.5 text-sm text-zinc-400">Users get the bot in English, Russian or Ukrainian. The dashboard ships in English and Russian.</p>
+    </div>
+    <div class="rounded-xl border border-zinc-900 p-5">
+      <i class="ti ti-shield-lock text-violet-400" style="font-size:18px"></i>
+      <h3 class="mt-3 font-medium">Your data, your server</h3>
+      <p class="mt-1.5 text-sm text-zinc-400">A single SQLite file you can back up with <code class="text-zinc-500">cp</code>. Secrets scrubbed before anything reaches an LLM.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ COMPARE ============ -->
+<section id="compare" class="border-y border-zinc-900 bg-zinc-950/50">
+  <div class="max-w-4xl mx-auto px-5 py-16">
+    <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight text-center">How Spool is different</h2>
+    <div class="mt-8 overflow-x-auto">
+      <table class="w-full text-sm border-separate" style="border-spacing:0">
+        <thead>
+          <tr class="text-left text-xs uppercase tracking-wide text-zinc-500">
+            <th class="py-3 pr-4"></th>
+            <th class="py-3 px-4 text-violet-400">Spool</th>
+            <th class="py-3 px-4">Chatwoot / Zendesk / Freshdesk</th>
+          </tr>
+        </thead>
+        <tbody class="align-top">
+          <tr class="border-t border-zinc-900">
+            <td class="py-4 pr-4 text-zinc-400">Where agents work</td>
+            <td class="py-4 px-4 font-medium">Telegram threads — web optional</td>
+            <td class="py-4 px-4 text-zinc-400">A separate inbox app they must adopt</td>
+          </tr>
+          <tr class="border-t border-zinc-900">
+            <td class="py-4 pr-4 text-zinc-400">AI deflection</td>
+            <td class="py-4 px-4 font-medium">Built in, opt-in, rate measured</td>
+            <td class="py-4 px-4 text-zinc-400">Paid add-on or absent</td>
+          </tr>
+          <tr class="border-t border-zinc-900">
+            <td class="py-4 pr-4 text-zinc-400">Deployment</td>
+            <td class="py-4 px-4 font-medium">One container, SQLite, 5 minutes</td>
+            <td class="py-4 px-4 text-zinc-400">Rails/Postgres/Redis stack — or SaaS only</td>
+          </tr>
+          <tr class="border-t border-zinc-900">
+            <td class="py-4 pr-4 text-zinc-400">Cost of a 5-person team</td>
+            <td class="py-4 px-4 font-medium">$0 self-hosted, unlimited operators</td>
+            <td class="py-4 px-4 text-zinc-400">Typically $75–250 / month</td>
+          </tr>
+          <tr class="border-t border-zinc-900">
+            <td class="py-4 pr-4 text-zinc-400">Where your data lives</td>
+            <td class="py-4 px-4 font-medium">Your server, one file</td>
+            <td class="py-4 px-4 text-zinc-400">Their cloud (or your own ops burden)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="mt-5 text-xs text-zinc-600 text-center max-w-2xl mx-auto">
+      Fair warning: those tools are broader products. If you need email, live chat widgets,
+      Instagram and a public knowledge base in one place, they will serve you better.
+      Spool is deliberately narrow — Telegram, done properly.
+    </p>
+  </div>
+</section>
+
+<!-- ============ DEPLOY ============ -->
+<section id="deploy" class="max-w-4xl mx-auto px-5 py-16">
+  <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight text-center">Running in three commands</h2>
+  <p class="mt-3 text-zinc-400 text-center">You need a Telegram bot token and a group chat. That's it.</p>
+
+  <div class="mt-8 rounded-xl border border-zinc-900 bg-zinc-950 overflow-hidden">
+    <div class="px-4 py-2 border-b border-zinc-900 text-xs text-zinc-500 font-mono">bash</div>
+    <pre class="p-5 text-sm overflow-x-auto"><code><span class="text-zinc-600"># 1 — get the code</span>
+git clone https://github.com/vassab/support-automation-bot.git &amp;&amp; cd support-automation-bot
+
+<span class="text-zinc-600"># 2 — interactive setup (asks for the bot token, generates all keys)</span>
+python scripts/setup.py
+
+<span class="text-zinc-600"># 3 — run bot + dashboard</span>
+docker compose up -d --build</code></pre>
+  </div>
+  <p class="mt-4 text-sm text-zinc-500 text-center">
+    Dashboard on <code class="text-zinc-400">:8000</code>. Full guide in
+    <a href="https://github.com/vassab/support-automation-bot/blob/main/DEPLOY.md" target="_blank" rel="noopener"
+       class="text-violet-400 hover:text-violet-300">DEPLOY.md</a>.
+  </p>
+</section>
+
+<!-- ============ PRICING ============ -->
+<section id="pricing" class="border-y border-zinc-900 bg-zinc-950/50">
+  <div class="max-w-4xl mx-auto px-5 py-16">
+    <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight text-center">Pricing</h2>
+    <p class="mt-3 text-zinc-400 text-center">Self-hosting is free and always will be.</p>
+
+    <div class="mt-10 grid grid-cols-1 md:grid-cols-2 gap-5">
+
+      <!-- Self-hosted -->
+      <div class="rounded-2xl border border-violet-500/40 bg-black p-7 relative">
+        <div class="absolute -top-3 left-7 px-2.5 py-0.5 rounded-full text-[11px] font-medium
+                    bg-violet-600 text-white">Available now</div>
+        <h3 class="text-lg font-medium">Self-hosted</h3>
+        <div class="mt-3 flex items-baseline gap-1.5">
+          <span class="text-4xl font-semibold">$0</span>
+          <span class="text-zinc-500 text-sm">forever</span>
+        </div>
+        <p class="mt-2 text-sm text-zinc-400">Your server, your data, no limits.</p>
+        <ul class="mt-6 space-y-2.5 text-sm">
+          <li class="flex gap-2.5"><i class="ti ti-check text-violet-400 mt-0.5" style="font-size:15px"></i> Unlimited operators and tickets</li>
+          <li class="flex gap-2.5"><i class="ti ti-check text-violet-400 mt-0.5" style="font-size:15px"></i> Every feature — nothing held back</li>
+          <li class="flex gap-2.5"><i class="ti ti-check text-violet-400 mt-0.5" style="font-size:15px"></i> AI assist with your own API key</li>
+          <li class="flex gap-2.5"><i class="ti ti-check text-violet-400 mt-0.5" style="font-size:15px"></i> Full source, no telemetry</li>
+          <li class="flex gap-2.5"><i class="ti ti-check text-violet-400 mt-0.5" style="font-size:15px"></i> Community support via GitHub issues</li>
+        </ul>
+        <a href="https://github.com/vassab/support-automation-bot" target="_blank" rel="noopener"
+           class="mt-7 flex items-center justify-center gap-2 w-full py-2.5 rounded-xl font-medium
+                  bg-violet-600 hover:bg-violet-500 transition-colors">
+          <i class="ti ti-brand-github" style="font-size:16px"></i> Get started
+        </a>
+      </div>
+
+      <!-- Cloud -->
+      <div class="rounded-2xl border border-zinc-800 bg-black p-7 relative">
+        <div class="absolute -top-3 left-7 px-2.5 py-0.5 rounded-full text-[11px] font-medium
+                    bg-zinc-800 border border-zinc-700 text-zinc-300">Coming soon</div>
+        <h3 class="text-lg font-medium">Cloud</h3>
+        <div class="mt-3 flex items-baseline gap-1.5">
+          <span class="text-4xl font-semibold text-zinc-500">$29</span>
+          <span class="text-zinc-600 text-sm">/ month, indicative</span>
+        </div>
+        <p class="mt-2 text-sm text-zinc-400">We host it. You just add your bot token.</p>
+        <ul class="mt-6 space-y-2.5 text-sm text-zinc-400">
+          <li class="flex gap-2.5"><i class="ti ti-check text-zinc-600 mt-0.5" style="font-size:15px"></i> Everything in Self-hosted</li>
+          <li class="flex gap-2.5"><i class="ti ti-check text-zinc-600 mt-0.5" style="font-size:15px"></i> Your own isolated instance and database</li>
+          <li class="flex gap-2.5"><i class="ti ti-check text-zinc-600 mt-0.5" style="font-size:15px"></i> Automatic updates and backups</li>
+          <li class="flex gap-2.5"><i class="ti ti-check text-zinc-600 mt-0.5" style="font-size:15px"></i> AI included — no API key needed</li>
+          <li class="flex gap-2.5"><i class="ti ti-check text-zinc-600 mt-0.5" style="font-size:15px"></i> Email support</li>
+        </ul>
+
+        <!-- Waitlist -->
+        <form id="waitlist" class="mt-7 space-y-2">
+          <div class="flex gap-2">
+            <input type="email" name="email" required placeholder="you@company.com"
+                   class="flex-1 min-w-0 px-3 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800
+                          text-sm placeholder:text-zinc-600 focus:outline-none
+                          focus:border-violet-500 transition-colors">
+            <button type="submit"
+                    class="px-4 py-2.5 rounded-xl text-sm font-medium shrink-0
+                           bg-zinc-800 border border-zinc-700 hover:bg-zinc-700 transition-colors">
+              Join waitlist
+            </button>
+          </div>
+          <p id="waitlist-msg" class="text-xs text-zinc-600">
+            Get an email when Cloud opens. Pricing isn't final — waitlist members help set it.
+          </p>
+        </form>
+      </div>
+    </div>
+
+    <p class="mt-8 text-center text-sm text-zinc-500">
+      Running Spool for your own clients as part of IT services is fine and free.
+      Reselling it as a hosted service needs a commercial licence —
+      <a href="mailto:boykokuza12@gmail.com" class="text-violet-400 hover:text-violet-300">just ask</a>.
+    </p>
+  </div>
+</section>
+
+<!-- ============ FAQ ============ -->
+<section id="faq" class="max-w-3xl mx-auto px-5 py-16">
+  <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight text-center">FAQ</h2>
+
+  <div class="mt-8 space-y-3">
+    <details class="group rounded-xl border border-zinc-900 bg-zinc-950/50 p-5">
+      <summary class="flex items-center justify-between cursor-pointer font-medium list-none">
+        Is Spool open source?
+        <i class="ti ti-chevron-down text-zinc-500 group-open:rotate-180 transition-transform"></i>
+      </summary>
+      <p class="mt-3 text-sm text-zinc-400 leading-relaxed">
+        Not by the OSI definition, and I won't pretend otherwise. Spool uses the Business
+        Source License 1.1 — the same model as Sentry. You get the full source, can run it
+        in production for free, modify and fork it. The one restriction: you can't resell
+        Spool as a hosted service. Every release turns into Apache 2.0 four years after
+        publication, so nothing can be taken away from you later.
+      </p>
+    </details>
+
+    <details class="group rounded-xl border border-zinc-900 bg-zinc-950/50 p-5">
+      <summary class="flex items-center justify-between cursor-pointer font-medium list-none">
+        Do I need to pay for AI?
+        <i class="ti ti-chevron-down text-zinc-500 group-open:rotate-180 transition-transform"></i>
+      </summary>
+      <p class="mt-3 text-sm text-zinc-400 leading-relaxed">
+        Only what your provider charges. Spool talks to Google Gemini with your own API key,
+        and the AI layer sits behind a provider-agnostic interface, so swapping in another
+        model is a small change. Without a key Spool simply runs as a plain ticket system —
+        nothing breaks.
+      </p>
+    </details>
+
+    <details class="group rounded-xl border border-zinc-900 bg-zinc-950/50 p-5">
+      <summary class="flex items-center justify-between cursor-pointer font-medium list-none">
+        Does my data go anywhere?
+        <i class="ti ti-chevron-down text-zinc-500 group-open:rotate-180 transition-transform"></i>
+      </summary>
+      <p class="mt-3 text-sm text-zinc-400 leading-relaxed">
+        Self-hosted Spool sends nothing home — there is no telemetry, no licence check, no
+        analytics. The only outbound traffic is Telegram, and your LLM provider if you enable
+        AI. Ticket text is run through a secret scrubber first, and you can exclude whole
+        categories from AI entirely.
+      </p>
+    </details>
+
+    <details class="group rounded-xl border border-zinc-900 bg-zinc-950/50 p-5">
+      <summary class="flex items-center justify-between cursor-pointer font-medium list-none">
+        What do my users need to install?
+        <i class="ti ti-chevron-down text-zinc-500 group-open:rotate-180 transition-transform"></i>
+      </summary>
+      <p class="mt-3 text-sm text-zinc-400 leading-relaxed">
+        Telegram, which they already have. They message your bot — no portal, no account,
+        no password to forget. Agents need Telegram too; the web dashboard is for whoever
+        wants filters, search and reports.
+      </p>
+    </details>
+
+    <details class="group rounded-xl border border-zinc-900 bg-zinc-950/50 p-5">
+      <summary class="flex items-center justify-between cursor-pointer font-medium list-none">
+        Is it production-ready?
+        <i class="ti ti-chevron-down text-zinc-500 group-open:rotate-180 transition-transform"></i>
+      </summary>
+      <p class="mt-3 text-sm text-zinc-400 leading-relaxed">
+        It ships with 283 automated tests covering auth, access control, migrations
+        and the AI safety gates. It is also a young project
+        maintained by one person — so evaluate it on the live demo, and open an issue when
+        something is off. SQLite fits small and mid-sized teams comfortably; PostgreSQL
+        support is on the roadmap for larger installs.
+      </p>
+    </details>
+  </div>
+</section>
+
+<!-- ============ CTA ============ -->
+<section class="border-t border-zinc-900">
+  <div class="max-w-3xl mx-auto px-5 py-16 text-center">
+    <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight">See it before you install it</h2>
+    <p class="mt-3 text-zinc-400">The demo is a full dashboard on synthetic data. Click anything.</p>
+    <div class="mt-7 flex flex-wrap justify-center gap-3">
+      <a href="https://support-bot-demo-he1w.onrender.com" target="_blank" rel="noopener"
+         class="inline-flex items-center gap-2 px-5 py-3 rounded-xl font-medium
+                bg-violet-600 hover:bg-violet-500 transition-colors">
+        <i class="ti ti-player-play" style="font-size:16px"></i> Open the demo
+      </a>
+      <a href="https://github.com/vassab/support-automation-bot" target="_blank" rel="noopener"
+         class="inline-flex items-center gap-2 px-5 py-3 rounded-xl font-medium
+                bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 transition-colors">
+        <i class="ti ti-star" style="font-size:16px"></i> Star on GitHub
+      </a>
+    </div>
+  </div>
+</section>
+
+<footer class="border-t border-zinc-900">
+  <div class="max-w-6xl mx-auto px-5 py-8 flex flex-wrap items-center gap-4 text-sm text-zinc-500">
+    <div class="flex items-center gap-2">
+      <div class="w-5 h-5 rounded bg-violet-600 flex items-center justify-center">
+        <i class="ti ti-headset text-white" style="font-size:11px"></i>
+      </div>
+      <span>Spool</span>
+    </div>
+    <span class="text-zinc-700">·</span>
+    <a href="https://github.com/vassab/support-automation-bot/blob/main/LICENSE" target="_blank" rel="noopener"
+       class="hover:text-zinc-300 transition-colors">BSL 1.1</a>
+    <a href="https://github.com/vassab/support-automation-bot" target="_blank" rel="noopener"
+       class="hover:text-zinc-300 transition-colors">GitHub</a>
+    <a href="mailto:boykokuza12@gmail.com" class="hover:text-zinc-300 transition-colors">Contact</a>
+    <span class="ml-auto text-zinc-700">© 2026 Kostiantyn Boiko</span>
+  </div>
+</footer>
+
+<script>
+  // Waitlist. Set FORM_ENDPOINT to a Formspree/Tally/Buttondown URL that accepts
+  // a POST with an "email" field. Until then we fall back to a prefilled mailto,
+  // so the button always does something useful.
+  const FORM_ENDPOINT = ""; // e.g. "https://formspree.io/f/xxxxxxx"
+
+  const form = document.getElementById('waitlist');
+  const msg = document.getElementById('waitlist-msg');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = form.email.value.trim();
+    if (!email) return;
+
+    if (!FORM_ENDPOINT) {
+      window.location.href =
+        'mailto:boykokuza12@gmail.com?subject=' + encodeURIComponent('Spool Cloud waitlist') +
+        '&body=' + encodeURIComponent('Please add me to the Spool Cloud waitlist: ' + email);
+      msg.textContent = 'Opening your email client…';
+      msg.className = 'text-xs text-zinc-400';
+      return;
+    }
+
+    try {
+      const res = await fetch(FORM_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      if (!res.ok) throw new Error(res.status);
+      form.reset();
+      msg.textContent = "You're on the list. I'll email you when Cloud opens.";
+      msg.className = 'text-xs text-emerald-400';
+    } catch {
+      msg.innerHTML =
+        'Could not submit — email <a class="text-violet-400" href="mailto:boykokuza12@gmail.com">boykokuza12@gmail.com</a> instead.';
+      msg.className = 'text-xs text-amber-400';
+    }
+  });
+</script>
+
+</body>
+</html>

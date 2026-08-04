@@ -1,0 +1,378 @@
+{% extends "app_base.html" %}
+{% block title %}{{ T.board }}{% endblock %}
+{% block main_overflow %}overflow-hidden{% endblock %}
+
+{% block content %}
+{% set col_style = {
+  'new':         {'dot': 'bg-sky-400',    'chip': 'bg-sky-500/15 text-sky-300'},
+  'in_progress': {'dot': 'bg-brand-500',  'chip': 'bg-brand-500/15 text-brand-300'},
+  'waiting':     {'dot': 'bg-amber-400',  'chip': 'bg-amber-500/15 text-amber-300'},
+  'closed':      {'dot': 'bg-zinc-600',   'chip': 'bg-slate-500/15 text-zinc-300'},
+} %}
+
+<div class="flex flex-col h-full min-h-0">
+
+  <!-- Header + filters -->
+  <div class="shrink-0 pb-4">
+    <div class="flex items-baseline justify-between gap-4 flex-wrap">
+      <div>
+        <h1 class="text-2xl font-semibold tracking-tight">{{ T.board }}</h1>
+        <p class="text-sm text-zinc-500 mt-0.5">{{ T.board_hint }}</p>
+      </div>
+      <a href="/tickets" class="text-sm text-brand-400 hover:text-brand-300 inline-flex items-center gap-1.5">
+        <i class="ti ti-list" style="font-size:14px" aria-hidden="true"></i> {{ T.nav_tickets }}
+      </a>
+    </div>
+
+    <form method="get" action="/board"
+          class="mt-4 flex flex-wrap items-end gap-3 bg-zinc-950 border border-zinc-900 rounded-xl p-3">
+      <div class="flex-1 min-w-[200px]">
+        <label class="block text-xs uppercase tracking-wide text-zinc-400 mb-1">{{ T.f_search }}</label>
+        <input name="q" value="{{ filters.q }}" placeholder="{{ T.search_placeholder }}"
+               class="w-full px-2 py-1.5 rounded-md bg-black border border-zinc-800 text-sm
+                      text-zinc-100 placeholder:text-zinc-600">
+      </div>
+      <div>
+        <label class="block text-xs uppercase tracking-wide text-zinc-400 mb-1">{{ T.f_team }}</label>
+        <select name="team_id" class="px-2 py-1.5 rounded-md bg-black border border-zinc-800 text-sm">
+          <option value="">{{ T.all }}</option>
+          {% for tid, name in teams %}
+            <option value="{{ tid }}" {% if filters.team_id|string == tid|string %}selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs uppercase tracking-wide text-zinc-400 mb-1">{{ T.th_operator }}</label>
+        <select name="assigned" class="px-2 py-1.5 rounded-md bg-black border border-zinc-800 text-sm">
+          <option value="">{{ T.all }}</option>
+          <option value="me"   {% if filters.assigned == 'me' %}selected{% endif %}>{{ T.mine }}</option>
+          <option value="none" {% if filters.assigned == 'none' %}selected{% endif %}>{{ T.not_assigned }}</option>
+          {% for op in operators %}
+            <option value="{{ op.id }}" {% if filters.assigned == op.id|string %}selected{% endif %}>{{ op.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button class="px-3 py-1.5 rounded-md bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium">
+        {{ T.apply }}
+      </button>
+      <a href="/board" class="px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-sm border border-zinc-800">
+        {{ T.reset }}
+      </a>
+    </form>
+  </div>
+
+  <!-- Columns -->
+  <div class="flex-1 min-h-0 overflow-x-auto scroll-pretty">
+    <div class="flex gap-4 h-full min-w-max pb-2">
+      {% for key in column_keys %}
+        {% set col = columns[key] %}
+        {% set style = col_style[key] %}
+        <section class="w-[300px] shrink-0 flex flex-col min-h-0
+                        bg-zinc-950 border border-zinc-900 rounded-xl"
+                 data-column="{{ key }}">
+
+          <header class="shrink-0 flex items-center gap-2 px-3 py-2.5 border-b border-zinc-900">
+            <span class="w-2 h-2 rounded-full {{ style.dot }}" aria-hidden="true"></span>
+            <h2 class="text-sm font-medium">{{ T['stage_' ~ key] }}</h2>
+            <span class="ml-auto px-1.5 py-0.5 rounded text-[11px] tabular-nums {{ style.chip }}">
+              {{ col.total }}
+            </span>
+          </header>
+
+          <div class="drop-zone flex-1 min-h-0 overflow-y-auto scroll-pretty p-2 space-y-2"
+               data-column="{{ key }}">
+            {% for c in col.cards %}
+              {# The border is the only thing that carries across a whole column
+                 at a glance, so the SLA state gets it rather than a badge. #}
+              <article class="card group relative block rounded-lg bg-zinc-900/70 border p-2.5
+                              cursor-grab active:cursor-grabbing
+                              {% if c.sla_state == 'breach' %}border-red-500/40
+                              {% elif c.sla_state == 'warn' %}border-amber-500/40
+                              {% else %}border-zinc-800 hover:border-zinc-700{% endif %}"
+                       draggable="{{ 'false' if key == 'closed' else 'true' }}"
+                       data-ticket-id="{{ c.id }}" data-stage="{{ key }}">
+                <div class="flex items-center gap-2 text-xs">
+                  <a href="/tickets/{{ c.id }}"
+                     class="font-mono tabular-nums text-brand-400 hover:text-brand-300">#{{ c.id }}</a>
+                  {% if c.is_sensitive %}
+                    <i class="ti ti-lock text-amber-400/80" style="font-size:11px" aria-hidden="true"></i>
+                  {% endif %}
+                  <span class="ml-auto text-zinc-500 tabular-nums" title="{{ T.time_in_progress }}">
+                    {{ fmt_seconds(c.age_seconds) }}
+                  </span>
+                  {% if key != 'closed' %}
+                    <button type="button"
+                            class="move-btn shrink-0 -mr-1 px-1 rounded text-zinc-500
+                                   hover:text-zinc-200 hover:bg-zinc-800"
+                            data-ticket-id="{{ c.id }}"
+                            aria-haspopup="menu" aria-label="{{ T.board_move }}"
+                            title="{{ T.board_move }}">
+                      <i class="ti ti-dots-vertical" style="font-size:13px" aria-hidden="true"></i>
+                    </button>
+                  {% endif %}
+                </div>
+
+                <div class="mt-1.5 text-sm text-zinc-100 truncate">{{ c.user_label }}</div>
+
+                {% if c.waiting_seconds is not none %}
+                  {# Whose move it is. Without this a card waiting on us looks
+                     exactly like one waiting on the customer. #}
+                  <div class="mt-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px]
+                              {% if c.sla_state == 'breach' %}bg-red-500/15 text-red-300
+                              {% elif c.sla_state == 'warn' %}bg-amber-500/15 text-amber-300
+                              {% else %}bg-zinc-800 text-zinc-400{% endif %}">
+                    <i class="ti ti-arrow-back-up" style="font-size:10px" aria-hidden="true"></i>
+                    {{ T.awaiting_reply.format(age=fmt_seconds(c.waiting_seconds)) }}
+                  </div>
+                {% endif %}
+
+                <div class="mt-1.5 flex items-center gap-1.5 flex-wrap text-[11px]">
+                  {% if c.category %}
+                    <span class="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300">{{ c.category }}</span>
+                  {% endif %}
+                  {% if c.csat_rating %}
+                    <span class="px-1.5 py-0.5 rounded bg-zinc-800
+                                 {% if c.csat_rating >= 4 %}text-emerald-400
+                                 {% elif c.csat_rating == 3 %}text-amber-400
+                                 {% else %}text-red-400{% endif %}">
+                      <i class="ti ti-star-filled" style="font-size:9px" aria-hidden="true"></i> {{ c.csat_rating }}
+                    </span>
+                  {% endif %}
+                  {# Initials, not the name: a card is 300px wide and the name
+                     was eating a third of the row it shared with the category. #}
+                  {% if c.operator %}
+                    <span class="ml-auto shrink-0 w-5 h-5 rounded-full bg-zinc-800 text-zinc-300
+                                 inline-flex items-center justify-center text-[9px] font-medium uppercase"
+                          title="{{ c.operator }}">{{ c.initials }}</span>
+                  {% else %}
+                    <span class="ml-auto shrink-0 w-5 h-5 rounded-full border border-zinc-800 text-zinc-600
+                                 inline-flex items-center justify-center text-[10px]"
+                          title="{{ T.not_assigned }}" aria-label="{{ T.not_assigned }}">–</span>
+                  {% endif %}
+                </div>
+              </article>
+            {% else %}
+              <p class="text-xs text-zinc-600 text-center py-6">{{ T.board_empty_col }}</p>
+            {% endfor %}
+
+            {% if col.hidden %}
+              <a href="/tickets?{% if key == 'closed' %}status=closed{% else %}stage={{ key }}{% endif %}{% if filters.team_id %}&team_id={{ filters.team_id }}{% endif %}{% if filters.assigned %}&assigned={{ filters.assigned }}{% endif %}{% if filters.q %}&q={{ filters.q }}{% endif %}"
+                 class="block text-center text-xs text-zinc-500 hover:text-brand-400 py-2">
+                {{ T.board_more.format(count=col.hidden) }}
+              </a>
+            {% endif %}
+          </div>
+        </section>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<div id="board-toast"
+     class="hidden fixed bottom-5 left-1/2 -translate-x-1/2 z-50 px-3 py-2 rounded-lg text-sm
+            bg-red-500/15 border border-red-500/40 text-red-300"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const CSRF = "{{ csrf_token }}";
+  const toast = document.getElementById('board-toast');
+  let dragged = null;
+
+  function flash(msg) {
+    toast.textContent = msg;
+    toast.classList.remove('hidden');
+    setTimeout(() => toast.classList.add('hidden'), 3500);
+  }
+
+  function counterOf(section) {
+    return section.querySelector('header span:last-child');
+  }
+
+  function bump(columnKey, delta) {
+    const section = document.querySelector(`section[data-column="${columnKey}"]`);
+    if (!section) return;
+    const el = counterOf(section);
+    el.textContent = Math.max(0, parseInt(el.textContent, 10) + delta);
+  }
+
+  // The whole card opens the ticket. The #id link stays a real anchor so
+  // ctrl-click and middle-click still open a tab; this only covers the rest
+  // of the card, and only when the pointer did not travel — otherwise
+  // finishing a drag on the same card would navigate away from the board.
+  let pressAt = null;
+  document.addEventListener('mousedown', e => {
+    pressAt = e.target.closest && e.target.closest('.card') ? [e.clientX, e.clientY] : null;
+  });
+  document.addEventListener('click', e => {
+    const card = e.target.closest && e.target.closest('.card');
+    if (!card || !pressAt) return;
+    if (e.target.closest('a, button')) return;      // let real controls work
+    if (Math.abs(e.clientX - pressAt[0]) > 4 ||
+        Math.abs(e.clientY - pressAt[1]) > 4) return;  // that was a drag
+    pressAt = null;
+    window.location.href = `/tickets/${card.dataset.ticketId}`;
+  });
+
+  // Delegated, not bound per card: a live refresh replaces the cards, and
+  // listeners attached to the old ones would go with them.
+  document.addEventListener('dragstart', e => {
+    const card = e.target.closest && e.target.closest('.card[draggable="true"]');
+    if (!card) return;
+    dragged = card;
+    card.classList.add('opacity-40');
+    e.dataTransfer.effectAllowed = 'move';
+    // Firefox refuses to start a drag without payload
+    e.dataTransfer.setData('text/plain', card.dataset.ticketId);
+  });
+
+  document.addEventListener('dragend', e => {
+    const card = e.target.closest && e.target.closest('.card');
+    if (card) card.classList.remove('opacity-40');
+    dragged = null;
+    document.querySelectorAll('.drop-zone').forEach(z =>
+      z.classList.remove('bg-zinc-900/40'));
+  });
+
+  // Shared by the drag and by the card menu, so a move behaves the same
+  // however it was started.
+  async function moveCard(card, to) {
+    const from = card.dataset.stage;
+    if (!to || from === to) return;
+    const zone = document.querySelector(`.drop-zone[data-column="${to}"]`);
+    if (!zone) return;
+
+    // Move optimistically, then reconcile — the operator sees no lag, and a
+    // refused move puts the card back exactly where it came from.
+    const origin = card.parentElement;
+    const nextSibling = card.nextElementSibling;
+    zone.prepend(card);
+    card.dataset.stage = to;
+    bump(from, -1);
+    bump(to, +1);
+
+    try {
+      const body = new FormData();
+      body.append('stage', to);
+      body.append('csrf_token', CSRF);
+      const r = await fetch(`/api/tickets/${card.dataset.ticketId}/stage`,
+                            { method: 'POST', body });
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        throw new Error(data.error || '{{ T.js_error }}');
+      }
+    } catch (err) {
+      origin.insertBefore(card, nextSibling);
+      card.dataset.stage = from;
+      bump(to, -1);
+      bump(from, +1);
+      flash(err.message);
+    }
+  }
+
+  // Dragging is mouse-only: a touch screen fires no drag events at all, and on
+  // a narrow one the target column is off-side anyway. Every open card gets a
+  // menu that reaches the same moveCard.
+  const STAGE_LABELS = {{ stage_labels | tojson }};
+  let openMenu = null;
+
+  function closeMenu() {
+    if (openMenu) { openMenu.remove(); openMenu = null; }
+  }
+  document.addEventListener('click', closeMenu);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMenu(); });
+
+  document.addEventListener('click', e => {
+    const trigger = e.target.closest && e.target.closest('.move-btn');
+    if (!trigger) return;
+    e.preventDefault();
+    e.stopPropagation();          // not a card click — do not open the ticket
+    const wasOpen = openMenu && openMenu.dataset.owner === trigger.dataset.ticketId;
+    closeMenu();
+    if (wasOpen) return;
+
+    const card = trigger.closest('.card');
+    const menu = document.createElement('div');
+    menu.dataset.owner = trigger.dataset.ticketId;
+    menu.className = 'absolute right-2 top-8 z-30 min-w-[9rem] py-1 rounded-lg ' +
+                     'bg-zinc-950 border border-zinc-800 shadow-2xl text-sm';
+    menu.setAttribute('role', 'menu');
+    Object.keys(STAGE_LABELS).forEach(key => {
+      if (key === card.dataset.stage) return;
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.setAttribute('role', 'menuitem');
+      item.className = 'w-full text-left px-3 py-1.5 text-zinc-300 hover:bg-zinc-900';
+      item.textContent = STAGE_LABELS[key];
+      item.addEventListener('click', ev => {
+        ev.stopPropagation();
+        closeMenu();
+        moveCard(card, key);
+      });
+      menu.appendChild(item);
+    });
+    card.appendChild(menu);
+    openMenu = menu;
+    const first = menu.querySelector('button');
+    if (first) first.focus();
+  });
+
+  document.querySelectorAll('.drop-zone').forEach(zone => {
+    // Closed is derived from status, not stage — you reopen a ticket from its
+    // card, you don't drag it back onto the board.
+    if (zone.dataset.column === 'closed') return;
+
+    zone.addEventListener('dragover', e => {
+      if (!dragged) return;
+      e.preventDefault();
+      zone.classList.add('bg-zinc-900/40');
+    });
+    zone.addEventListener('dragleave', () => zone.classList.remove('bg-zinc-900/40'));
+
+    zone.addEventListener('drop', e => {
+      e.preventDefault();
+      zone.classList.remove('bg-zinc-900/40');
+      if (!dragged) return;
+
+      // Claim the drag immediately. dragend is not guaranteed to arrive (an
+      // interrupted drag, a stray drop), and a stale `dragged` would let the
+      // next drop move a card the operator never picked up.
+      const card = dragged;
+      dragged = null;
+      card.classList.remove('opacity-40');
+      moveCard(card, zone.dataset.column);
+    });
+  });
+
+  // A colleague moving a card is the whole point of a shared board, so the
+  // board has to show it. Columns are swapped one by one to keep each one's
+  // scroll position; the sections themselves stay put, so the drop-zone
+  // listeners above survive.
+  // ui.js is deferred, so it has not run yet when this inline block executes.
+  document.addEventListener('DOMContentLoaded', () => window.liveRefresh({
+    checkMs: 5000,  // the board is the screen people sit on — check it often
+    // A refresh rebuilds the columns, so it must not run while the operator is
+    // mid-gesture: a drag would lose its card, and an open menu lives inside
+    // one and would vanish as they were reading it.
+    isBusy: () => dragged !== null || openMenu !== null,
+    apply(doc) {
+      doc.querySelectorAll('section[data-column]').forEach(fresh => {
+        const key = fresh.dataset.column;
+        const cur = document.querySelector(`section[data-column="${key}"]`);
+        if (!cur) return;
+
+        const curZone = cur.querySelector('.drop-zone');
+        const freshZone = fresh.querySelector('.drop-zone');
+        if (curZone && freshZone && curZone.innerHTML !== freshZone.innerHTML) {
+          const top = curZone.scrollTop;
+          curZone.innerHTML = freshZone.innerHTML;
+          curZone.scrollTop = top;
+        }
+        counterOf(cur).textContent = counterOf(fresh).textContent;
+      });
+    },
+  }));
+})();
+</script>
+{% endblock %}

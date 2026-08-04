@@ -1,0 +1,312 @@
+"""Runtime-editable settings stored in the DB (AppSetting key-value table).
+
+Difference from src.config.Settings:
+    - config.Settings = read-only, from .env, needs a restart to change
+      (tokens, chat IDs, passwords — infra-level).
+    - this module = editable from the dashboard at runtime, no restart
+      (brand name, admin tags per category, AI toggles — content-level).
+
+Each setting has a canonical key constant + a default. Defaults live here so a
+fresh DB behaves sensibly before anyone touches the settings screen.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from typing import Any, Optional
+
+from sqlalchemy import select
+
+from src.database.db import db_session
+from src.database.models import AppSetting
+
+logger = logging.getLogger(__name__)
+
+
+# ==================== Keys ====================
+
+KEY_CATEGORY_ADMIN_TAGS = "category_admin_tags"  # JSON: {category_name: "@a @b"}
+KEY_AI_ENABLED = "ai_enabled"                    # "1" / "0"
+KEY_AI_DEFLECTION = "ai_deflection_enabled"      # "1" = AI answers the user before an operator
+KEY_AI_BLACKLIST = "ai_blacklist_categories"     # JSON list of category fragments
+KEY_ASK_CATEGORY = "ask_category"                # "1" = ask user to pick a category
+KEY_BRAND_NAME = "brand_name"                    # white-label: support team/service name
+KEY_REDIRECT_ENABLED = "redirect_enabled"        # "1" = redirect a matched team elsewhere
+KEY_REDIRECT_TEAM_MATCH = "redirect_team_match"  # case-insensitive substring of team name
+KEY_REDIRECT_TARGET = "redirect_target"          # text/link shown to the redirected user
+KEY_ENABLED_LANGUAGES = "enabled_languages"      # JSON list of offered language codes
+KEY_DEFAULT_LANGUAGE = "default_language"        # fallback / pre-pick language code
+KEY_ADMIN_NO_TAG = "admin_no_tag_usernames"      # JSON list: usernames never @-tagged in lists
+KEY_DASH_SECRET = "dash_secret_key"              # stable secret for signing dashboard session cookies
+KEY_DASH_LANGUAGE = "dash_language"              # operator dashboard UI language (en/ru)
+
+
+# ==================== Defaults ====================
+
+_DEFAULTS: dict[str, str] = {
+    KEY_CATEGORY_ADMIN_TAGS: json.dumps({}),  # no per-category tag rules out of the box
+    KEY_AI_ENABLED: "1",                  # AI suggestions on by default (if key present)
+    KEY_AI_DEFLECTION: "0",               # deflection is opt-in — enable from AI config
+    KEY_AI_BLACKLIST: json.dumps([]),     # empty: 1Pass opened up; nothing blocked
+    KEY_ASK_CATEGORY: "1",                # ask the user to pick a category by default
+    KEY_BRAND_NAME: "Support",            # neutral default; rebrandable from Settings
+    KEY_REDIRECT_ENABLED: "0",            # off by default → clean white-label start
+    KEY_REDIRECT_TEAM_MATCH: "",
+    KEY_REDIRECT_TARGET: "",
+    KEY_ENABLED_LANGUAGES: json.dumps(["ru", "uk", "en"]),  # all three by default
+    KEY_DEFAULT_LANGUAGE: "uk",           # matches i18n.DEFAULT_LANGUAGE
+    KEY_ADMIN_NO_TAG: json.dumps([]),     # nobody excluded from @-tagging by default
+}
+
+
+# ==================== Core get/set ====================
+
+
+async def get_value(key: str, default: Optional[str] = None) -> str:
+    """Read a setting. Falls back to the module default, then to `default` arg."""
+    async with db_session() as session:
+        row = (await session.execute(
+            select(AppSetting).where(AppSetting.key == key)
+        )).scalar_one_or_none()
+    if row is not None:
+        return row.value
+    if key in _DEFAULTS:
+        return _DEFAULTS[key]
+    return default if default is not None else ""
+
+
+async def set_value(key: str, value: str, *, updated_by: Optional[int] = None) -> None:
+    """Upsert a setting."""
+    async with db_session() as session:
+        row = (await session.execute(
+            select(AppSetting).where(AppSetting.key == key)
+        )).scalar_one_or_none()
+        if row is None:
+            row = AppSetting(key=key, value=value, updated_by=updated_by)
+            session.add(row)
+        else:
+            row.value = value
+            row.updated_by = updated_by
+        await session.commit()
+    logger.info(f"Setting {key!r} updated by {updated_by}")
+
+
+# ==================== Typed accessors ====================
+
+
+async def get_category_admin_tags() -> dict[str, str]:
+    """Return {category_name: 'space-separated @tags'}. Empty dict on parse error."""
+    raw = await get_value(KEY_CATEGORY_ADMIN_TAGS)
+    try:
+        data = json.loads(raw) if raw else {}
+        if isinstance(data, dict):
+            return {str(k): str(v) for k, v in data.items()}
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.warning(f"Bad category_admin_tags JSON, returning empty: {e}")
+    return {}
+
+
+async def set_category_admin_tags(mapping: dict[str, str], *, updated_by: int) -> None:
+    await set_value(
+        KEY_CATEGORY_ADMIN_TAGS,
+        json.dumps(mapping, ensure_ascii=False),
+        updated_by=updated_by,
+    )
+
+
+async def get_tags_for_category(category: str) -> str:
+    """Tags string for one category, or '' if none configured. Case-insensitive."""
+    if not category:
+        return ""
+    tags = await get_category_admin_tags()
+    # exact first, then case-insensitive
+    if category in tags:
+        return tags[category]
+    low = category.lower()
+    for k, v in tags.items():
+        if k.lower() == low:
+            return v
+    return ""
+
+
+# ---- AI toggles ----
+
+async def get_ai_enabled() -> bool:
+    return (await get_value(KEY_AI_ENABLED)) == "1"
+
+
+async def set_ai_enabled(enabled: bool, *, updated_by: int) -> None:
+    await set_value(KEY_AI_ENABLED, "1" if enabled else "0", updated_by=updated_by)
+
+
+async def get_ai_deflection_enabled() -> bool:
+    """AI answers the user right after ticket creation (opt-in)."""
+    return (await get_value(KEY_AI_DEFLECTION)) == "1"
+
+
+async def set_ai_deflection_enabled(enabled: bool, *, updated_by: int) -> None:
+    await set_value(KEY_AI_DEFLECTION, "1" if enabled else "0", updated_by=updated_by)
+
+
+async def get_ai_blacklist() -> list[str]:
+    """Category fragments that must never be sent to the LLM. Lowercased."""
+    raw = await get_value(KEY_AI_BLACKLIST)
+    try:
+        data = json.loads(raw) if raw else []
+        if isinstance(data, list):
+            return [str(x).strip().lower() for x in data if str(x).strip()]
+    except (json.JSONDecodeError, ValueError):
+        pass
+    return []
+
+
+async def set_ai_blacklist(fragments: list[str], *, updated_by: int) -> None:
+    cleaned = [f.strip().lower() for f in fragments if f and f.strip()]
+    await set_value(KEY_AI_BLACKLIST, json.dumps(cleaned, ensure_ascii=False), updated_by=updated_by)
+
+
+async def is_category_ai_blacklisted(category: str | None) -> bool:
+    """True if the category matches any blacklist fragment (substring, ci)."""
+    if not category:
+        return False
+    low = category.lower()
+    return any(frag in low for frag in await get_ai_blacklist())
+
+
+# ---- Ask-category toggle ----
+
+async def get_ask_category() -> bool:
+    """Whether the bot asks the user to pick a category before describing the issue."""
+    return (await get_value(KEY_ASK_CATEGORY)) == "1"
+
+
+async def set_ask_category(enabled: bool, *, updated_by: int) -> None:
+    await set_value(KEY_ASK_CATEGORY, "1" if enabled else "0", updated_by=updated_by)
+
+
+# ---- Branding (white-label) ----
+
+async def get_brand_name() -> str:
+    """Support team/service name shown in user-facing texts. Never empty."""
+    name = (await get_value(KEY_BRAND_NAME)).strip()
+    return name or _DEFAULTS[KEY_BRAND_NAME]
+
+
+async def set_brand_name(name: str, *, updated_by: int) -> None:
+    await set_value(KEY_BRAND_NAME, (name or "").strip(), updated_by=updated_by)
+
+
+# ---- Team redirect (configurable per-team routing to another bot) ----
+
+async def get_redirect_config() -> tuple[bool, str, str]:
+    """(enabled, team_match, target). Redirect fires only when fully configured."""
+    enabled = (await get_value(KEY_REDIRECT_ENABLED)) == "1"
+    team_match = (await get_value(KEY_REDIRECT_TEAM_MATCH)).strip()
+    target = (await get_value(KEY_REDIRECT_TARGET)).strip()
+    return enabled, team_match, target
+
+
+async def set_redirect_config(*, enabled: bool, team_match: str, target: str,
+                              updated_by: int) -> None:
+    await set_value(KEY_REDIRECT_ENABLED, "1" if enabled else "0", updated_by=updated_by)
+    await set_value(KEY_REDIRECT_TEAM_MATCH, (team_match or "").strip(), updated_by=updated_by)
+    await set_value(KEY_REDIRECT_TARGET, (target or "").strip(), updated_by=updated_by)
+
+
+# ---- Languages (configurable multilingual) ----
+
+def _valid_lang_codes() -> list[str]:
+    from src.utils.i18n import SUPPORTED_LANGUAGES
+    return list(SUPPORTED_LANGUAGES.keys())
+
+
+async def get_enabled_languages() -> list[str]:
+    """Offered language codes, in display order. Never empty; valid codes only."""
+    valid = _valid_lang_codes()
+    raw = await get_value(KEY_ENABLED_LANGUAGES)
+    try:
+        data = json.loads(raw) if raw else []
+    except (json.JSONDecodeError, ValueError):
+        data = []
+    codes = [c for c in data if c in valid]
+    return codes or valid  # fall back to all if misconfigured/empty
+
+
+async def set_enabled_languages(codes: list[str], *, updated_by: int) -> None:
+    valid = _valid_lang_codes()
+    cleaned = [c for c in codes if c in valid]
+    if not cleaned:
+        cleaned = valid  # never persist an empty set (would lock out the picker)
+    await set_value(KEY_ENABLED_LANGUAGES, json.dumps(cleaned), updated_by=updated_by)
+
+
+async def get_default_language() -> str:
+    """Fallback/pre-pick language. Guaranteed to be an enabled language."""
+    enabled = await get_enabled_languages()
+    code = (await get_value(KEY_DEFAULT_LANGUAGE)).strip()
+    if code in enabled:
+        return code
+    return enabled[0]
+
+
+async def set_default_language(code: str, *, updated_by: int) -> None:
+    if code in _valid_lang_codes():
+        await set_value(KEY_DEFAULT_LANGUAGE, code, updated_by=updated_by)
+
+
+# ---- Admin usernames that must never be @-tagged in lists ----
+
+async def get_admin_no_tag_usernames() -> set[str]:
+    """Lowercased usernames (no @) that should be shown without a mention link."""
+    raw = await get_value(KEY_ADMIN_NO_TAG)
+    try:
+        data = json.loads(raw) if raw else []
+        if isinstance(data, list):
+            return {str(x).strip().lstrip("@").lower() for x in data if str(x).strip()}
+    except (json.JSONDecodeError, ValueError):
+        pass
+    return set()
+
+
+async def set_admin_no_tag_usernames(usernames: list[str], *, updated_by: int) -> None:
+    cleaned = sorted({u.strip().lstrip("@") for u in usernames if u and u.strip()})
+    await set_value(KEY_ADMIN_NO_TAG, json.dumps(cleaned, ensure_ascii=False), updated_by=updated_by)
+
+
+# ---- Dashboard UI language (instance-level; en is the product default) ----
+
+async def get_dash_language() -> str:
+    from src.dashboard.i18n import DEFAULT_DASH_LANGUAGE, SUPPORTED_DASH_LANGUAGES
+    code = (await get_value(KEY_DASH_LANGUAGE, DEFAULT_DASH_LANGUAGE)).strip()
+    return code if code in SUPPORTED_DASH_LANGUAGES else DEFAULT_DASH_LANGUAGE
+
+
+async def set_dash_language(code: str, *, updated_by: int = 0) -> None:
+    from src.dashboard.i18n import SUPPORTED_DASH_LANGUAGES
+    if code in SUPPORTED_DASH_LANGUAGES:
+        await set_value(KEY_DASH_LANGUAGE, code, updated_by=updated_by)
+
+
+# ---- Dashboard session secret (signs login cookies) ----
+
+async def get_or_create_secret_key() -> str:
+    """Return a stable secret for signing dashboard session cookies.
+
+    Precedence: DASH_SECRET_KEY env var > persisted app_setting > freshly
+    generated (and persisted). Persisting means sessions survive restarts;
+    using a dedicated key (not the user's password) means rotating an admin
+    password no longer logs everyone out.
+    """
+    import os
+    import secrets
+
+    env = os.getenv("DASH_SECRET_KEY")
+    if env:
+        return env
+    val = (await get_value(KEY_DASH_SECRET, "")).strip()
+    if not val:
+        val = secrets.token_urlsafe(48)
+        await set_value(KEY_DASH_SECRET, val)
+        logger.info("Generated and stored a new dashboard secret key")
+    return val

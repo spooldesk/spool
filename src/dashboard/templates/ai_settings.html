@@ -1,0 +1,88 @@
+{% extends "app_base.html" %}
+{% block title %}{{ T.ai_title }}{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl">
+  <h1 class="text-2xl font-semibold tracking-tight mb-1">{{ T.ai_title }}</h1>
+  <p class="text-sm text-zinc-500 mb-6">{{ T.ai_subtitle }}</p>
+
+  {% if flash_sent %}
+    <div class="mb-4 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm">{{ T.saved }}</div>
+  {% endif %}
+
+  <!-- Connection status -->
+  <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-5 mb-4">
+    <div class="text-xs uppercase tracking-wide text-zinc-500 mb-3">{{ T.ai_connection }}</div>
+    <div class="flex items-center justify-between text-sm mb-1.5">
+      <span class="text-zinc-400">{{ T.ai_api_key }}</span>
+      {% if has_key %}
+        <span class="px-2 py-0.5 rounded-full text-xs bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">{{ T.ai_connected }}</span>
+      {% else %}
+        <span class="px-2 py-0.5 rounded-full text-xs bg-red-500/15 text-red-300 border border-red-500/30">{{ T.ai_no_key }}</span>
+      {% endif %}
+    </div>
+    <div class="flex items-center justify-between text-sm">
+      <span class="text-zinc-400">{{ T.ai_model }}</span>
+      <span class="text-zinc-200 font-mono text-xs">{{ model }}</span>
+    </div>
+    {% if not has_key %}
+      <p class="mt-3 text-xs text-zinc-600">{{ T.ai_key_hint }}</p>
+    {% endif %}
+  </div>
+
+  <form method="post" action="/manage/ai" class="space-y-4">
+    <!-- Master toggle -->
+    <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-5">
+      <label class="flex items-center gap-3 cursor-pointer">
+        <input type="checkbox" name="enabled" {% if enabled %}checked{% endif %}
+               class="rounded bg-black border-zinc-700 text-brand-600 focus:ring-brand-500 w-4 h-4">
+        <div>
+          <div class="text-sm font-medium">{{ T.ai_enable }}</div>
+          <div class="text-xs text-zinc-500">{{ T.ai_enable_hint }}</div>
+        </div>
+      </label>
+    </div>
+
+    <!-- Deflection -->
+    <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-5">
+      <label class="flex items-center gap-3 cursor-pointer">
+        <input type="checkbox" name="deflection" {% if deflection %}checked{% endif %}
+               class="rounded bg-black border-zinc-700 text-brand-600 focus:ring-brand-500 w-4 h-4">
+        <div>
+          <div class="text-sm font-medium">
+            {{ T.ai_deflection }}
+            <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] bg-brand-600/20 text-brand-400 border border-brand-500/30 align-middle">beta</span>
+          </div>
+          <div class="text-xs text-zinc-500">
+            {{ T.ai_deflection_hint }}
+          </div>
+        </div>
+      </label>
+    </div>
+
+    <!-- Blacklist -->
+    <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-5">
+      <div class="text-sm font-medium mb-1">{{ T.ai_blacklist }}</div>
+      <p class="text-xs text-zinc-500 mb-3">{{ T.ai_blacklist_hint }}</p>
+      <div class="space-y-1.5">
+        {% for c in categories %}
+          <label class="flex items-center gap-2 text-sm cursor-pointer hover:text-white">
+            <input type="checkbox" name="blacklist" value="{{ c }}"
+                   {% if c|lower in blacklist %}checked{% endif %}
+                   class="rounded bg-black border-zinc-700 text-brand-600 focus:ring-brand-500">
+            <span>{{ c }}</span>
+          </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <button class="px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium">{{ T.save }}</button>
+  </form>
+
+  <div class="mt-6 flex items-start gap-1.5 text-xs text-zinc-600">
+    <i class="ti ti-info-circle shrink-0 mt-0.5" style="font-size:13px" aria-hidden="true"></i>
+    <span>{{ T.ai_analytics_hint }}
+    <a href="/ai" class="text-brand-400 hover:text-brand-300">{{ T.r_ai_footer_link_label }}</a>.</span>
+  </div>
+</div>
+{% endblock %}

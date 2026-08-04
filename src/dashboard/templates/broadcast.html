@@ -1,0 +1,192 @@
+{% extends "app_base.html" %}
+{% block title %}{{ T.bc_title }}{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl">
+  <h1 class="text-2xl font-semibold tracking-tight">{{ T.bc_title }}</h1>
+  <p class="text-sm text-zinc-500 mt-1">{{ T.bc_subtitle }}</p>
+
+  {% if flash_sent %}
+    <div class="mt-4 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm">
+      {{ T.bc_started }}
+    </div>
+  {% endif %}
+  {% if flash_err %}
+    <div class="mt-4 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+      {{ flash_err }}
+    </div>
+  {% endif %}
+
+  <form method="post" action="/broadcast" id="bc-form"
+        class="mt-5 bg-zinc-950 border border-zinc-900 rounded-xl p-5 space-y-4">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <div class="flex flex-wrap items-end gap-4">
+      <div>
+        <label class="block text-xs uppercase tracking-wide text-zinc-400 mb-1">{{ T.bc_audience }}</label>
+        <select name="audience" id="bc-audience"
+                class="px-2 py-1.5 rounded-md bg-black border border-zinc-800 text-sm">
+          <option value="all">{{ T.bc_all_users }}</option>
+          <option value="team">{{ T.bc_one_team }}</option>
+        </select>
+      </div>
+
+      <div id="bc-team-wrap" class="hidden">
+        <label class="block text-xs uppercase tracking-wide text-zinc-400 mb-1">{{ T.f_team }}</label>
+        <select name="team_id" id="bc-team"
+                class="px-2 py-1.5 rounded-md bg-black border border-zinc-800 text-sm">
+          {% for tid, name in teams %}
+            <option value="{{ tid }}">{{ name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="ml-auto text-right">
+        <div class="text-xs uppercase tracking-wide text-zinc-400">{{ T.bc_recipients }}</div>
+        <div id="bc-count" class="text-2xl font-semibold tabular-nums">{{ count_all }}</div>
+      </div>
+    </div>
+    <p class="text-xs text-zinc-600">{{ T.bc_recipients_hint }}</p>
+
+    <div>
+      <label class="block text-xs uppercase tracking-wide text-zinc-400 mb-1">{{ T.bc_message }}</label>
+      <textarea name="text" id="bc-text" rows="5" maxlength="4096" required
+                placeholder="{{ T.bc_placeholder }}"
+                class="w-full px-3 py-2 rounded-lg bg-black border border-zinc-800 text-sm resize-y
+                       text-zinc-100 placeholder:text-zinc-600 focus:border-brand-500 focus:outline-none"></textarea>
+      <div class="text-xs text-zinc-600 mt-1 tabular-nums"><span id="bc-len">0</span> / 4096</div>
+    </div>
+
+    <label class="flex items-start gap-2 text-sm cursor-pointer">
+      <input type="checkbox" name="confirm" value="yes" required
+             class="mt-0.5 rounded bg-zinc-950 border-zinc-700 text-brand-600 focus:ring-brand-500">
+      <span id="bc-confirm-label" class="text-zinc-300">
+        {{ T.bc_confirm_label.format(count=count_all) }}
+      </span>
+    </label>
+
+    <button type="submit"
+            class="px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium">
+      {{ T.bc_send }}
+    </button>
+  </form>
+
+  <!-- Last / running broadcast -->
+  <section class="mt-6 bg-zinc-950 border border-zinc-900 rounded-xl p-5">
+    <div class="flex items-center gap-2">
+      <h2 class="text-sm font-medium">{{ T.bc_last_run }}</h2>
+      <span id="bc-running" class="hidden text-xs text-amber-400">{{ T.bc_running }}</span>
+      <span id="bc-progress" class="ml-auto text-xs text-zinc-500 tabular-nums"></span>
+    </div>
+
+    <div id="bc-empty" class="text-sm text-zinc-600 mt-3 {% if last %}hidden{% endif %}">
+      {{ T.bc_no_runs }}
+    </div>
+
+    <div id="bc-stats" class="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3 {% if not last %}hidden{% endif %}">
+      {% set cells = [('sent', T.bc_sent, 'text-emerald-400'),
+                      ('blocked', T.bc_blocked, 'text-amber-400'),
+                      ('not_found', T.bc_not_found, 'text-zinc-400'),
+                      ('failed', T.bc_failed, 'text-red-400')] %}
+      {% for key, label, colour in cells %}
+        <div class="bg-zinc-900/60 border border-zinc-800 rounded-lg px-3 py-2">
+          <div class="text-[10px] uppercase tracking-wide text-zinc-500">{{ label }}</div>
+          <div class="text-xl font-semibold tabular-nums {{ colour }}"
+               data-stat="{{ key }}">{{ last[key] if last else 0 }}</div>
+        </div>
+      {% endfor %}
+    </div>
+
+    <div id="bc-failures-wrap" class="mt-3 hidden">
+      <div class="text-[10px] uppercase tracking-wide text-zinc-500 mb-1">{{ T.bc_didnt_reach }}</div>
+      <ul id="bc-failures" class="text-xs text-zinc-400 space-y-0.5"></ul>
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const audience = document.getElementById('bc-audience');
+  const teamWrap = document.getElementById('bc-team-wrap');
+  const team = document.getElementById('bc-team');
+  const count = document.getElementById('bc-count');
+  const confirmLabel = document.getElementById('bc-confirm-label');
+  const text = document.getElementById('bc-text');
+  const len = document.getElementById('bc-len');
+  const CONFIRM_TMPL = {{ T.bc_confirm_label|tojson }};
+
+  const confirmBox = document.querySelector('input[name="confirm"]');
+
+  function setCount(n) {
+    count.textContent = n;
+    confirmLabel.textContent = CONFIRM_TMPL.replace('{count}', n);
+  }
+
+  async function refreshCount() {
+    // The tick confirms one specific audience. Changing the audience makes it
+    // stale even when the headcount happens to match — a different team of
+    // five is still five people who did not agree to hear from you.
+    confirmBox.checked = false;
+
+    const isTeam = audience.value === 'team';
+    teamWrap.classList.toggle('hidden', !isTeam);
+    const qs = new URLSearchParams({ audience: audience.value });
+    if (isTeam) qs.set('team_id', team.value);
+    try {
+      const r = await fetch(`/broadcast/recipients.json?${qs}`);
+      const d = await r.json();
+      if (d.ok) setCount(d.count);
+    } catch (e) { /* leave the last known number */ }
+  }
+
+  audience.addEventListener('change', refreshCount);
+  team.addEventListener('change', refreshCount);
+  text.addEventListener('input', () => { len.textContent = text.value.length; });
+
+  // ---- progress of a running broadcast ----
+  const running = document.getElementById('bc-running');
+  const progress = document.getElementById('bc-progress');
+  const stats = document.getElementById('bc-stats');
+  const empty = document.getElementById('bc-empty');
+  const failWrap = document.getElementById('bc-failures-wrap');
+  const failList = document.getElementById('bc-failures');
+  const PROGRESS_TMPL = {{ T.bc_progress|tojson }};
+  let timer = null;
+
+  async function poll() {
+    try {
+      const r = await fetch('/broadcast/status.json');
+      const d = await r.json();
+      if (!d.ok || !d.result) return;
+      const res = d.result;
+
+      empty.classList.add('hidden');
+      stats.classList.remove('hidden');
+      for (const [k, v] of Object.entries(res)) {
+        const el = stats.querySelector(`[data-stat="${k}"]`);
+        if (el) el.textContent = v;
+      }
+      progress.textContent = PROGRESS_TMPL
+        .replace('{processed}', res.processed).replace('{total}', res.total);
+      running.classList.toggle('hidden', !d.running);
+
+      if (res.failures && res.failures.length) {
+        failWrap.classList.remove('hidden');
+        failList.innerHTML = '';
+        res.failures.forEach(f => {
+          const li = document.createElement('li');
+          li.textContent = f;
+          failList.appendChild(li);
+        });
+      }
+      if (!d.running && timer) { clearInterval(timer); timer = null; }
+    } catch (e) { /* transient */ }
+  }
+
+  poll();
+  timer = setInterval(poll, 1500);
+})();
+</script>
+{% endblock %}

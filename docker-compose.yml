@@ -1,0 +1,50 @@
+# Telegram support bot + dashboard — one image, two services.
+#
+# Quick start:
+#   1. python scripts/setup.py      # generates .env (or copy .env.example → .env)
+#   2. docker compose up -d --build
+#   3. open http://localhost:8000   # dashboard
+#
+# Both services share one SQLite database on the `data` volume. DATABASE_URL is
+# overridden here to an absolute path inside that volume so data persists across
+# rebuilds (the .env value is for local non-Docker runs).
+
+services:
+  bot:
+    build: .
+    image: spool:latest
+    command: python -m src.main
+    env_file: .env
+    environment:
+      DATABASE_URL: sqlite+aiosqlite:////app/data/support.db
+    volumes:
+      - data:/app/data
+      - logs:/app/logs
+    restart: unless-stopped
+
+  dashboard:
+    # Reuses the image built by the `bot` service (same build context).
+    image: spool:latest
+    command: python -m uvicorn src.dashboard.app:app --host 0.0.0.0 --port 8000
+    env_file: .env
+    environment:
+      DATABASE_URL: sqlite+aiosqlite:////app/data/support.db
+      # Set DASH_COOKIE_SECURE=true in .env when serving over HTTPS.
+    ports:
+      - "8000:8000"
+    volumes:
+      - data:/app/data
+      - logs:/app/logs
+    depends_on:
+      - bot
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthz').status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  data:
+  logs:

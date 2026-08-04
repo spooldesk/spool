@@ -1,0 +1,69 @@
+{% extends "app_base.html" %}
+{% block title %}{{ T.m_tags_title }}{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl">
+  <h1 class="text-2xl font-semibold tracking-tight mb-1">{{ T.m_tags_title }}</h1>
+  <p class="text-sm text-zinc-500 mb-6">
+    {{ T.m_tags_hint }}
+  </p>
+
+  {% if flash_sent %}
+    <div class="mb-4 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm">
+      {% if flash_sent == 'saved' %}{{ T.saved }}{% elif flash_sent == 'deleted' %}{{ T.deleted_ok }}{% endif %}
+    </div>
+  {% endif %}
+
+  <!-- Add / edit -->
+  <form method="post" action="/manage/tags" class="bg-zinc-950 border border-zinc-900 rounded-xl p-4 mb-6 space-y-3">
+    <div class="text-xs uppercase tracking-wide text-zinc-500">{{ T.m_tags_add_edit }}</div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div>
+        <label class="block text-xs text-zinc-500 mb-1">{{ T.th_category }}</label>
+        <select name="category" required
+                class="w-full px-3 py-2 rounded-lg bg-black border border-zinc-800 text-sm
+                       focus:border-brand-500 focus:outline-none text-zinc-100">
+          {% for c in categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs text-zinc-500 mb-1">{{ T.m_tags_add }}</label>
+        <input name="tags" required placeholder="@alice_admin @bob_admin"
+               class="w-full px-3 py-2 rounded-lg bg-black border border-zinc-800 text-sm
+                      focus:border-brand-500 focus:outline-none text-zinc-100 placeholder:text-zinc-600">
+      </div>
+    </div>
+    <p class="text-xs text-zinc-600">{{ T.m_tags_note }}</p>
+    <button class="px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium">{{ T.add }}</button>
+  </form>
+
+  <div class="bg-zinc-950 border border-zinc-900 rounded-xl overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-zinc-950/80 border-b border-zinc-900">
+        <tr class="text-left text-xs uppercase tracking-wide text-zinc-500">
+          <th class="px-4 py-3">{{ T.th_category }}</th>
+          <th class="px-4 py-3">{{ T.m_tags_title }}</th>
+          <th class="px-4 py-3"></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-zinc-900">
+        {% for it in items %}
+          <tr class="hover:bg-zinc-900/50">
+            <td class="px-4 py-3 text-zinc-100">{{ it.category }}</td>
+            <td class="px-4 py-3 text-zinc-300">{{ it.tags }}</td>
+            <td class="px-4 py-3 text-right">
+              <form method="post" action="/manage/tags/delete" class="inline"
+                    onsubmit="return confirm('{{ T.m_tags_delete_confirm.format(name=it.category) }}')">
+                <input type="hidden" name="category" value="{{ it.category }}">
+                <button class="text-zinc-400 hover:text-red-400" title="{{ T.delete }}"><i class="ti ti-trash" style="font-size:15px" aria-hidden="true"></i></button>
+              </form>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="3" class="px-4 py-10 text-center text-zinc-500">{{ T.m_no_tag_rules }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,14 @@
+# Render.com blueprint: hosted DEMO of the dashboard (synthetic data only).
+# The demo DB is reseeded on every instance start, so the sandbox self-resets.
+services:
+  - type: web
+    name: support-bot-demo
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python scripts/seed_demo_data.py && python scripts/run_demo_dashboard.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.4
+      - key: DASH_COOKIE_SECURE
+        value: "true"

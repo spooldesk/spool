@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security issue
+    url: https://github.com/vassab/support-automation-bot/security/advisories/new
+    about: Report privately, not as a public issue.
+  - name: Question about running it
+    url: https://github.com/vassab/support-automation-bot/discussions
+    about: Setup and deployment questions belong in Discussions.

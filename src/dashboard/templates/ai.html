@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block title %}{{ T.nav_ai_analytics }}{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+  <h1 class="text-2xl font-semibold">AI Analytics</h1>
+  <p class="text-sm text-zinc-400 mt-1">
+    {{ T.aa_subtitle }}
+  </p>
+</div>
+
+<!-- KPI cards -->
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+  <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-5">
+    <div class="text-xs uppercase tracking-wide text-zinc-400">{{ T.aa_total_calls }}</div>
+    <div class="mt-2 text-3xl font-semibold tabular-nums">{{ stats.total }}</div>
+    <div class="mt-1 text-xs text-zinc-500">{{ T.aa_success_rate.format(pct=fmt_pct(stats.success_rate)) }}</div>
+  </div>
+  <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-5">
+    <div class="text-xs uppercase tracking-wide text-zinc-400">Accept rate</div>
+    <div class="mt-2 text-3xl font-semibold tabular-nums">{{ fmt_pct(stats.accept_rate) }}</div>
+    <div class="mt-1 text-xs text-zinc-500">{{ T.aa_decisions.format(accepted=stats.accepted, decided=stats.decided) }}</div>
+  </div>
+  <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-5">
+    <div class="text-xs uppercase tracking-wide text-zinc-400">Latency p50 / p95</div>
+    <div class="mt-2 text-3xl font-semibold tabular-nums">
+      {{ fmt_ms(stats.latency_p50) }} <span class="text-zinc-500 text-lg">/</span> {{ fmt_ms(stats.latency_p95) }}
+    </div>
+  </div>
+  <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-5">
+    <div class="text-xs uppercase tracking-wide text-zinc-400">{{ T.aa_tokens }}</div>
+    <div class="mt-2 text-3xl font-semibold tabular-nums">
+      {{ fmt_tokens(stats.tokens_in) }} <span class="text-zinc-500 text-lg">/</span> {{ fmt_tokens(stats.tokens_out) }}
+    </div>
+  </div>
+</div>
+
+<!-- By use case + chart -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+  <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-5">
+    <h2 class="font-medium mb-3">{{ T.aa_by_use_case }}</h2>
+    {% if stats.by_use_case %}
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-xs uppercase tracking-wide text-zinc-400 border-b border-zinc-900">
+            <th class="py-2">Use case</th>
+            <th class="py-2 text-right">{{ T.aa_calls }}</th>
+            <th class="py-2 text-right">Accept rate</th>
+            <th class="py-2 text-right">Avg latency</th>
+            <th class="py-2 text-right">Tokens out</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-zinc-900">
+          {% for u in stats.by_use_case %}
+            <tr>
+              <td class="py-2 font-mono text-xs text-zinc-300">{{ u.use_case }}</td>
+              <td class="py-2 text-right tabular-nums">{{ u.total }}</td>
+              <td class="py-2 text-right tabular-nums">
+                {{ fmt_pct(u.accept_rate) }}
+                <span class="text-zinc-500 text-xs">({{ u.accepted }}/{{ u.accepted + u.rejected }})</span>
+              </td>
+              <td class="py-2 text-right tabular-nums text-zinc-300">{{ fmt_ms(u.avg_latency_ms) }}</td>
+              <td class="py-2 text-right tabular-nums text-zinc-300">{{ fmt_tokens(u.tokens_out) }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="text-zinc-500 text-sm py-6 text-center">{{ T.aa_no_data }}</div>
+    {% endif %}
+  </div>
+
+  <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-5">
+    <h2 class="font-medium mb-3">{{ T.aa_calls_30d }}</h2>
+    <div class="h-64"><canvas id="chart-ai-per-day"></canvas></div>
+  </div>
+</div>
+
+<!-- Recent rejected -->
+<div class="bg-zinc-950 border border-zinc-900 rounded-xl p-5">
+  <h2 class="font-medium mb-3">{{ T.aa_recent_rejected }}</h2>
+  {% if rejected %}
+    <div class="space-y-3">
+      {% for r in rejected %}
+        <div class="border border-zinc-900 rounded-lg p-3">
+          <div class="flex items-center gap-2 text-xs text-zinc-400 mb-1">
+            <span class="font-mono">{{ r.use_case }}</span>
+            <span class="text-zinc-600">·</span>
+            <a href="/tickets/{{ r.ticket_id }}"
+               class="text-brand-500 hover:text-brand-600">#{{ r.ticket_id }}</a>
+            {% if r.category %}<span class="text-zinc-600">·</span><span>{{ r.category }}</span>{% endif %}
+            <span class="text-zinc-600">·</span>
+            <span class="tabular-nums">{{ r.created_at.strftime('%Y-%m-%d %H:%M') if r.created_at else '' }}</span>
+          </div>
+          {% if r.template_id %}
+            <div class="text-sm text-zinc-300">
+              {{ T.aa_suggested_template }} <span class="font-mono text-zinc-400">#{{ r.template_id }}</span>
+            </div>
+          {% elif r.preview %}
+            <div class="text-sm text-zinc-200 whitespace-pre-wrap break-words">{{ r.preview[:400] }}{% if r.preview|length > 400 %}…{% endif %}</div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="text-zinc-500 text-sm py-6 text-center">{{ T.aa_no_rejected }}</div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const isDark = document.documentElement.classList.contains('dark');
+  Chart.defaults.color       = isDark ? '#94a3b8' : '#6b7280';
+  Chart.defaults.borderColor = isDark ? 'rgba(148,163,184,0.15)' : 'rgba(107,114,128,0.12)';
+  Chart.defaults.font.family = "ui-sans-serif, system-ui, -apple-system, sans-serif";
+
+  new Chart(document.getElementById('chart-ai-per-day'), {
+    type: 'bar',
+    data: {
+      labels: {{ per_day_labels_json|safe }},
+      datasets: [{
+        data: {{ per_day_values_json|safe }},
+        backgroundColor: '#7c3aed',
+        borderRadius: 4,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 10 } },
+        y: { beginAtZero: true, ticks: { precision: 0 } },
+      },
+    },
+  });
+</script>
+{% endblock %}
