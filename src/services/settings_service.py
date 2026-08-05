@@ -30,6 +30,10 @@ KEY_CATEGORY_ADMIN_TAGS = "category_admin_tags"  # JSON: {category_name: "@a @b"
 KEY_AI_ENABLED = "ai_enabled"                    # "1" / "0"
 KEY_AI_DEFLECTION = "ai_deflection_enabled"      # "1" = AI answers the user before an operator
 KEY_AI_BLACKLIST = "ai_blacklist_categories"     # JSON list of category fragments
+# Shadow mode. The AI runs, is measured and is logged, but nothing it
+# produces reaches a customer or an operator. The point is to be able to
+# answer "is it any good on OUR tickets" before trusting it with one.
+KEY_AI_SHADOW = "ai_shadow_mode"                 # "1" / "0"
 # What the savings report assumes. Every one of them is a guess about YOUR
 # team, so every one of them is editable and printed on the report itself.
 KEY_AI_PRICE_IN = "ai_price_per_1m_in"           # your provider's input price, USD
@@ -299,6 +303,15 @@ async def set_dash_language(code: str, *, updated_by: int = 0) -> None:
     if code in SUPPORTED_DASH_LANGUAGES:
         await set_value(KEY_DASH_LANGUAGE, code, updated_by=updated_by)
 
+
+
+async def get_ai_shadow_mode() -> bool:
+    """True while the AI is being evaluated rather than used."""
+    return (await get_value(KEY_AI_SHADOW, "0")) == "1"
+
+
+async def set_ai_shadow_mode(enabled: bool, *, updated_by: int) -> None:
+    await set_value(KEY_AI_SHADOW, "1" if enabled else "0", updated_by=updated_by)
 
 
 # ---- Savings-report assumptions ----

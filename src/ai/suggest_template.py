@@ -155,6 +155,8 @@ async def suggest_template_for_ticket(
     ai_call_id: Optional[int] = None
     try:
         async with db_session() as session:
+            from src.services import settings_service as _ss
+            _shadow = await _ss.get_ai_shadow_mode()
             row = AICall(
                 use_case="suggest_template",
                 ticket_id=ticket_id,
@@ -165,7 +167,9 @@ async def suggest_template_for_ticket(
                 latency_ms=response.latency_ms if response else 0,
                 success=response is not None,
                 error=error_msg,
-                accepted=None,  # filled when admin clicks Apply/Dismiss
+                accepted=None,  # filled when admin clicks Apply/Dismiss,
+                # Shadow calls are measured, never delivered.
+                shadow=_shadow
             )
             session.add(row)
             await session.flush()

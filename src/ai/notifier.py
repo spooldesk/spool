@@ -23,6 +23,9 @@ from sqlalchemy import func, select
 from src.ai.suggest_from_history import suggest_from_history_for_ticket
 from src.ai.suggest_template import suggest_template_for_ticket
 from src.config import load_settings
+# Module level: the shadow gate runs in helpers that had no local import,
+# and a guard that raises NameError is a guard that is not there.
+from src.services import settings_service
 # Posted into the operators' chat, so it follows the instance UI language.
 from src.dashboard.i18n import t as _op
 from src.database.db import db_session
@@ -84,6 +87,11 @@ def _thread_kwargs(ticket: Ticket) -> dict:
 async def _post_template_suggestion(
     bot: Bot, ticket: Ticket, template: ReplyTemplate, ai_call_id: int | None,
 ) -> None:
+    # In shadow mode the call is still made, measured and logged — only
+    # the posting stops. That is the whole trick: the evidence needs the
+    # suggestion to exist, and the operator needs never to see it.
+    if await settings_service.get_ai_shadow_mode():
+        return
     settings = load_settings()
     text = (
         f"🤖 {_op('ai_looks_like_template', title=template.title)}\n\n"
@@ -114,6 +122,11 @@ async def _post_template_suggestion(
 async def _post_history_suggestion(
     bot: Bot, ticket: Ticket, draft_text: str, ai_call_id: int | None,
 ) -> None:
+    # In shadow mode the call is still made, measured and logged — only
+    # the posting stops. That is the whole trick: the evidence needs the
+    # suggestion to exist, and the operator needs never to see it.
+    if await settings_service.get_ai_shadow_mode():
+        return
     settings = load_settings()
     text = (
         f"🤖 {_op('ai_draft_from_history')}\n\n"
@@ -186,7 +199,6 @@ async def suggest_and_post(
     """
     try:
         # Global AI on/off switch (editable from the web dashboard).
-        from src.services import settings_service
         if not await settings_service.get_ai_enabled():
             logger.info(f"AI suggest for ticket #{ticket_id} skipped — AI disabled in settings")
             return

@@ -37,6 +37,7 @@ async def ai_settings_page(request: Request, sent: str | None = None):
         "categories": await _blacklist_categories(),
         "blacklist": blacklist,
         "flash_sent": sent,
+        "shadow_on": await settings_service.get_ai_shadow_mode(),
         # The savings report is a document someone takes to their
         # manager; its assumptions have to be theirs to correct.
         "price_in": price_in,
@@ -72,3 +73,12 @@ async def savings_assumptions_save(
         assist_minutes=assist_minutes, updated_by=0,
     )
     return RedirectResponse("/manage/ai?sent=saved#savings", status_code=303)
+
+
+@router.post("/manage/ai/shadow")
+async def ai_shadow_save(shadow: str = Form("")):
+    """Turning shadow ON is the safe direction, so it needs no ceremony.
+    Turning it OFF means the AI starts reaching customers — which is a
+    decision made on the evidence page, not here."""
+    await settings_service.set_ai_shadow_mode(bool(shadow), updated_by=0)
+    return RedirectResponse("/manage/ai?sent=saved#shadow", status_code=303)

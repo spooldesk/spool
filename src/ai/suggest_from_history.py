@@ -308,6 +308,8 @@ async def suggest_from_history_for_ticket(
     ai_call_id: Optional[int] = None
     try:
         async with db_session() as session:
+            from src.services import settings_service as _ss
+            _shadow = await _ss.get_ai_shadow_mode()
             row = AICall(
                 use_case="suggest_from_history",
                 ticket_id=ticket_id,
@@ -320,6 +322,8 @@ async def suggest_from_history_for_ticket(
                 error=error_msg,
                 accepted=None,
                 suggested_text=draft,
+                # Shadow calls are measured, never delivered.
+                shadow=_shadow
             )
             session.add(row)
             await session.flush()

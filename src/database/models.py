@@ -280,6 +280,10 @@ class AICall(Base):
     # For free-form suggestions (suggest_from_history): store the generated text
     # so admin can accept/edit by ai_call_id without smuggling text via callback_data.
     suggested_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Produced while the AI was being evaluated, so it never reached
+    # anyone. Kept apart from live calls: mixing them would make the
+    # accept rate meaningless, since a shadow call cannot be accepted.
+    shadow: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=False
     )

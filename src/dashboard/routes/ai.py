@@ -56,3 +56,17 @@ async def ai_page(request: Request):
             "fmt_ms": _fmt_ms,
         },
     )
+
+
+@router.get("/ai/shadow", response_class=HTMLResponse)
+async def ai_shadow_page(request: Request):
+    """What the AI would have said, against what the operator did say."""
+    from src.services import settings_service
+
+    templates = request.app.state.templates
+    return templates.TemplateResponse(request, "ai_shadow.html", {
+        "active_page": "ai_shadow",
+        "shadow_on": await settings_service.get_ai_shadow_mode(),
+        "summary": await queries.shadow_summary(),
+        "comparisons": await queries.shadow_comparisons(limit=40),
+    })

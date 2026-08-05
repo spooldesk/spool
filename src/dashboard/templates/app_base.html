@@ -158,6 +158,7 @@
         <p class="px-3 mb-1 text-[10px] font-semibold uppercase tracking-wider
                   text-gray-300 dark:text-zinc-600">{{ T.nav_ai }}</p>
         {{ navitem('ai_settings', '/manage/ai', 'ti-cpu', T.nav_ai_config) }}
+        {{ navitem('ai_shadow', '/ai/shadow', 'ti-eye-off', T.nav_ai_shadow) }}
       </div>
       {% endif %}
 
@@ -236,6 +237,7 @@
         'settings':            T.nav_settings,
         'admins':              T.nav_operators,
         'ai_settings':         T.nav_ai_config,
+        'ai_shadow':           T.nav_ai_shadow,
         'overview':            T.nav_analytics,
         'ai':                  T.nav_ai_analytics,
         'templates_analytics': T.nav_template_analytics,

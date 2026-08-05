@@ -522,6 +522,13 @@ def _migrate_to_new_schema(sync_connection) -> None:
                 )
             except Exception:
                 pass
+        if "shadow" not in ai_call_columns:
+            try:
+                sync_connection.execute(
+                    text("ALTER TABLE ai_calls ADD COLUMN shadow BOOLEAN DEFAULT 0 NOT NULL")
+                )
+            except Exception:
+                pass
 
     # The onboarding tables are deliberately NOT dropped here. They only exist
     # in databases that ran the feature, dropping them would destroy that data,

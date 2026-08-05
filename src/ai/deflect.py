@@ -137,6 +137,8 @@ async def try_deflect_for_ticket(ticket_id: int, user_text: str) -> DeflectResul
 
         ai_call_id: Optional[int] = None
         async with db_session() as session:
+            from src.services import settings_service as _ss
+            _shadow = await _ss.get_ai_shadow_mode()
             row = AICall(
                 use_case="deflect",
                 ticket_id=ticket_id,
@@ -148,6 +150,8 @@ async def try_deflect_for_ticket(ticket_id: int, user_text: str) -> DeflectResul
                 error=error_msg,
                 accepted=None,  # set by the user's button
                 suggested_text=answer,
+                # Shadow calls are measured, never delivered.
+                shadow=_shadow
             )
             session.add(row)
             await session.flush()
@@ -178,6 +182,13 @@ async def deflect_and_offer(bot: Bot, ticket_id: int, user_text: str,
     """Background entry-point: try to answer; if confident, message the user."""
     result = await try_deflect_for_ticket(ticket_id, user_text)
     if not result.answer:
+        return
+    # Shadow mode reaches furthest here: this is the path that writes straight
+    # to a customer, so it is the one people are right to be afraid of. The
+    # answer is generated and recorded; it simply never leaves.
+    from src.services import settings_service
+    if await settings_service.get_ai_shadow_mode():
+        logger.info(f"deflect: answer withheld (shadow mode) for ticket #{ticket_id}")
         return
     try:
         await bot.send_message(

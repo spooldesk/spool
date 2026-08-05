@@ -79,6 +79,25 @@
     <button class="px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium">{{ T.save }}</button>
   </form>
 
+  <div id="shadow" class="mt-6 bg-zinc-950 border border-zinc-900 rounded-xl p-5">
+    <div class="text-sm font-medium mb-1">{{ T.sh_setting_title }}</div>
+    <p class="text-xs text-zinc-500 mb-4">{{ T.sh_setting_hint }}</p>
+
+    <form method="post" action="/manage/ai/shadow" class="space-y-3">
+      <label class="flex items-start gap-2 text-sm cursor-pointer">
+        <input type="checkbox" name="shadow" value="1" {% if shadow_on %}checked{% endif %}
+               class="mt-0.5 rounded bg-black border-zinc-700 text-brand-600 focus:ring-brand-500">
+        <span>{{ T.sh_setting_toggle }}
+          <span class="block text-xs text-zinc-500">{{ T.sh_setting_toggle_hint }}</span>
+        </span>
+      </label>
+      <div class="flex items-center gap-3">
+        <button class="px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium">{{ T.save }}</button>
+        <a href="/ai/shadow" class="text-sm text-brand-400 hover:text-brand-300">{{ T.sh_view_results }}</a>
+      </div>
+    </form>
+  </div>
+
   <div id="savings" class="mt-6 bg-zinc-950 border border-zinc-900 rounded-xl p-5">
     <div class="text-sm font-medium mb-1">{{ T.sv_title }}</div>
     <p class="text-xs text-zinc-500 mb-4">{{ T.sv_hint }}</p>

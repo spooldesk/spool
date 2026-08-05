@@ -1,0 +1,96 @@
+{% extends "app_base.html" %}
+{% block title %}{{ T.sh_title }}{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+  <h1 class="text-2xl font-semibold tracking-tight">{{ T.sh_title }}</h1>
+  <p class="text-sm text-zinc-500 mt-1 max-w-3xl">{{ T.sh_subtitle }}</p>
+</div>
+
+{% if not shadow_on and not summary.calls %}
+  <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-8 text-center">
+    <i class="ti ti-eye-off text-zinc-700 mb-3" style="font-size:32px" aria-hidden="true"></i>
+    <p class="text-sm text-zinc-400 max-w-md mx-auto">{{ T.sh_not_running }}</p>
+    <a href="/manage/ai#shadow"
+       class="inline-block mt-4 px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium">
+      {{ T.sh_turn_on }}
+    </a>
+  </div>
+{% else %}
+
+  <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-5 mb-4">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div>
+        <div class="text-xs uppercase tracking-wide text-zinc-400">{{ T.sh_drafted }}</div>
+        <div class="text-2xl font-semibold tabular-nums">{{ summary.calls }}</div>
+        {% if summary.since %}
+          <div class="text-xs text-zinc-500">{{ T.sh_since.format(date=summary.since.strftime('%Y-%m-%d') if summary.since is not string else summary.since[:10]) }}</div>
+        {% endif %}
+      </div>
+      <div>
+        <div class="text-xs uppercase tracking-wide text-zinc-400">{{ T.sh_cost }}</div>
+        <div class="text-2xl font-semibold tabular-nums">${{ '%.2f'|format(summary.cost_usd) }}</div>
+        <div class="text-xs text-zinc-500">{{ T.sh_cost_note }}</div>
+      </div>
+      <div>
+        <div class="text-xs uppercase tracking-wide text-zinc-400">{{ T.sh_reached }}</div>
+        <div class="text-2xl font-semibold tabular-nums text-emerald-400">0</div>
+        <div class="text-xs text-zinc-500">{{ T.sh_reached_note }}</div>
+      </div>
+      <div>
+        <div class="text-xs uppercase tracking-wide text-zinc-400">{{ T.sh_status }}</div>
+        <div class="text-2xl font-semibold {% if shadow_on %}text-brand-400{% else %}text-zinc-500{% endif %}">
+          {{ T.sh_running if shadow_on else T.sh_stopped }}
+        </div>
+        <a href="/manage/ai#shadow" class="text-xs text-brand-400 hover:text-brand-300">{{ T.sh_change }}</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="bg-zinc-950 border border-zinc-900 rounded-xl overflow-hidden">
+    <div class="px-5 py-4 border-b border-zinc-900">
+      <h2 class="font-medium">{{ T.sh_pairs }}</h2>
+      {# No accuracy score on purpose: two support answers can mean the same
+         thing in no shared words, and share most words while meaning the
+         opposite. Reading twenty pairs beats trusting one number. #}
+      <p class="text-xs text-zinc-500 mt-0.5">{{ T.sh_pairs_hint }}</p>
+    </div>
+
+    {% for c in comparisons %}
+      <div class="px-5 py-4 border-b border-zinc-900 last:border-0">
+        <div class="flex items-center gap-2 text-xs text-zinc-500 mb-2">
+          {% if c.ticket_id %}
+            <a href="/tickets/{{ c.ticket_id }}"
+               class="font-mono tabular-nums text-brand-400 hover:text-brand-300">#{{ c.ticket_id }}</a>
+          {% endif %}
+          <span class="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 font-mono text-[10px]">{{ c.use_case }}</span>
+          <span>{{ c.created_at.strftime('%m-%d %H:%M') if c.created_at is not string else c.created_at[:16] }}</span>
+          <span class="ml-auto tabular-nums">{{ c.tokens }} {{ T.sh_tokens }}</span>
+          {% if c.overlap is not none %}
+            <span class="tabular-nums text-zinc-600" title="{{ T.sh_overlap_hint }}">
+              {{ (c.overlap * 100)|round|int }}% {{ T.sh_overlap }}
+            </span>
+          {% endif %}
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div class="rounded-lg bg-brand-600/10 border border-brand-500/20 p-3">
+            <div class="text-[10px] uppercase tracking-wide text-brand-400 mb-1">{{ T.sh_ai_would }}</div>
+            <div class="text-sm text-zinc-200 whitespace-pre-wrap">{{ c.suggested }}</div>
+          </div>
+          <div class="rounded-lg bg-zinc-900 border border-zinc-800 p-3">
+            <div class="text-[10px] uppercase tracking-wide text-zinc-400 mb-1">{{ T.sh_human_did }}</div>
+            {% if c.answered %}
+              <div class="text-sm text-zinc-200 whitespace-pre-wrap">{{ c.human }}</div>
+            {% else %}
+              <div class="text-sm text-zinc-600 italic">{{ T.sh_no_human_yet }}</div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    {% else %}
+      <p class="px-5 py-10 text-center text-sm text-zinc-500">{{ T.sh_nothing_yet }}</p>
+    {% endfor %}
+  </div>
+{% endif %}
+{% endblock %}

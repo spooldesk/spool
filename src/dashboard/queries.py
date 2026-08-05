@@ -1709,3 +1709,97 @@ async def queue_next(operator_id: int | None = None, source: str = "open",
         if ticket_id != exclude:
             return ticket_id
     return None
+
+
+# ==================== Shadow mode: was it any good? ====================
+#
+# The barrier to switching AI on is not price, it is the fear of it writing
+# something wrong to a customer. Every vendor answers "trust us"; this answers
+# with the operator's own tickets.
+#
+# Deliberately NOT an accuracy score. A number would be believed, and there is
+# no honest way to compute one: two support answers can say the same thing in
+# no shared words, and share most words while meaning the opposite. What is
+# offered instead is the pairs, side by side, for someone to read — plus a
+# crude word overlap purely as something to sort by, labelled as such.
+
+async def shadow_comparisons(limit: int = 40) -> list[dict]:
+    """What the AI would have said, next to what the operator did say."""
+    async with db_session() as session:
+        rows = (await session.execute(text("""
+            SELECT a.id, a.ticket_id, a.use_case, a.suggested_text, a.created_at,
+                   a.tokens_in, a.tokens_out, a.latency_ms,
+                   (SELECT m.text FROM messages m
+                     WHERE m.ticket_id = a.ticket_id
+                       AND m.sender_type = 'admin'
+                       AND m.is_internal = 0
+                       AND m.created_at >= a.created_at
+                     ORDER BY m.created_at ASC LIMIT 1) AS human_reply
+              FROM ai_calls a
+             WHERE a.shadow = 1
+               AND a.success = 1
+               AND a.suggested_text IS NOT NULL
+             ORDER BY a.created_at DESC
+             LIMIT :lim
+        """), {"lim": limit})).all()
+
+    out = []
+    for (call_id, ticket_id, use_case, suggested, created_at,
+         tok_in, tok_out, latency, human) in rows:
+        out.append({
+            "id": int(call_id),
+            "ticket_id": int(ticket_id) if ticket_id else None,
+            "use_case": use_case,
+            "suggested": suggested or "",
+            "human": human or "",
+            "created_at": created_at,
+            "tokens": int(tok_in or 0) + int(tok_out or 0),
+            "latency_ms": int(latency or 0),
+            "overlap": _word_overlap(suggested or "", human or ""),
+            # No human answer yet means there is nothing to compare against —
+            # not that the AI was wrong.
+            "answered": bool(human),
+        })
+    return out
+
+
+def _word_overlap(a: str, b: str) -> float | None:
+    """Share of the operator's words the AI also used, 0..1.
+
+    A blunt instrument on purpose. It is offered as a sort order, never as a
+    verdict: the same answer written two ways scores low, and two opposite
+    answers about the same VPN score high.
+    """
+    if not a or not b:
+        return None
+    import re
+    words_a = set(re.findall(r"\w+", a.lower()))
+    words_b = set(re.findall(r"\w+", b.lower()))
+    if not words_b:
+        return None
+    return round(len(words_a & words_b) / len(words_b), 2)
+
+
+async def shadow_summary() -> dict:
+    """Volume and cost of the trial, so the decision has a price on it."""
+    async with db_session() as session:
+        row = (await session.execute(text("""
+            SELECT COUNT(*),
+                   COALESCE(SUM(tokens_in), 0),
+                   COALESCE(SUM(tokens_out), 0),
+                   MIN(created_at)
+              FROM ai_calls
+             WHERE shadow = 1 AND success = 1
+        """))).one()
+
+    calls, tok_in, tok_out, since = row
+    from src.services import settings_service
+    price_in, price_out = await settings_service.get_ai_pricing()
+    return {
+        "calls": int(calls or 0),
+        "tokens_in": int(tok_in or 0),
+        "tokens_out": int(tok_out or 0),
+        "cost_usd": round(int(tok_in or 0) / 1_000_000 * price_in
+                          + int(tok_out or 0) / 1_000_000 * price_out, 2),
+        "since": since,
+    }
