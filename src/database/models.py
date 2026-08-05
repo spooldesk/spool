@@ -111,6 +111,10 @@ class Ticket(Base):
     # CSAT: 1–5 rating the user gives after the ticket is closed (None = not rated)
     csat_rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
     csat_rated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # When the SLA policy last acted on this ticket. Not a metric: it is
+    # the record that stops an alert firing again on every pass.
+    sla_breached_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     # Operator ownership: which dashboard operator is responsible for this ticket.
     # Auto-assigned to the first responder, reassignable from the ticket card.
     assigned_admin_id: Mapped[int | None] = mapped_column(

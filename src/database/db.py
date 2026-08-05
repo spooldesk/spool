@@ -305,6 +305,12 @@ def _migrate_to_new_schema(sync_connection) -> None:
             text("ALTER TABLE tickets ADD COLUMN csat_rated_at DATETIME")
         )
 
+    # SLA policy bookkeeping — see src/services/sla_service.py
+    if "sla_breached_at" not in ticket_columns:
+        sync_connection.execute(
+            text("ALTER TABLE tickets ADD COLUMN sla_breached_at DATETIME")
+        )
+
     # Workflow stage (board column within an active ticket)
     if "stage" not in ticket_columns:
         sync_connection.execute(

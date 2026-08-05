@@ -71,7 +71,11 @@ async def advance_on_admin_reply(ticket_id: int) -> None:
                 return
             if ticket.stage == "new":
                 ticket.stage = "in_progress"
-                await session.commit()
+            # The clock is settled, so the breach record goes with it: if the
+            # customer writes again and waits again, that is a new breach and
+            # deserves to be announced rather than swallowed as a duplicate.
+            ticket.sla_breached_at = None
+            await session.commit()
     except Exception as e:  # noqa: BLE001 — must never break a reply
         logger.warning(f"stage auto-advance failed for #{ticket_id}: {e}")
 

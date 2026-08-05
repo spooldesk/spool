@@ -277,7 +277,7 @@ async def settings_page(request: Request, sent: str | None = None):
         for code, label in SUPPORTED_LANGUAGES.items()
     ]
     no_tag = ", ".join(sorted(await settings_service.get_admin_no_tag_usernames()))
-    from src.services import work_hours_service
+    from src.services import sla_service, work_hours_service
     wh = await work_hours_service.get_config()
     from src.dashboard.i18n import SUPPORTED_DASH_LANGUAGES
     dash_lang = await settings_service.get_dash_language()
@@ -290,6 +290,10 @@ async def settings_page(request: Request, sent: str | None = None):
         "languages": languages,
         "no_tag_usernames": no_tag,
         "work_hours": wh,
+        # The target and the policy sit in one card: they are one
+        # decision, and split across two forms people set half of it.
+        "sla_minutes": await work_hours_service.get_sla_minutes(),
+        "sla_policy": await sla_service.get_policy(),
         "wh_day_labels": work_hours_service.day_labels(),
         "flash_sent": sent,
     })
@@ -305,6 +309,30 @@ async def settings_save_dash_language(request: Request, dash_language: str = For
         request.app.state.templates.env.globals["T"] = dash_i18n.strings()
     except Exception:
         pass
+    return RedirectResponse("/manage/settings?sent=saved", status_code=303)
+
+
+@router.post("/manage/settings/sla")
+async def settings_save_sla(
+    sla_minutes: str = Form(""),
+    notify: str = Form(""),
+    return_to_pool: str = Form(""),
+):
+    """The target and what to do when it is missed, saved together — they are
+    one decision and splitting them across two forms invites half of it."""
+    from src.services import sla_service, work_hours_service
+
+    try:
+        minutes = int(sla_minutes)
+    except (TypeError, ValueError):
+        minutes = work_hours_service.DEFAULT_SLA_MINUTES
+    await settings_service.set_value(
+        work_hours_service.KEY_SLA_MINUTES,
+        str(max(1, minutes)), updated_by=0,
+    )
+    await sla_service.set_policy(
+        notify=bool(notify), return_to_pool=bool(return_to_pool), updated_by=0,
+    )
     return RedirectResponse("/manage/settings?sent=saved", status_code=303)
 
 

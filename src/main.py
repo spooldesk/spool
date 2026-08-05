@@ -45,6 +45,34 @@ class LoggingMiddleware(BaseMiddleware):
         return await handler(event, data)
 
 
+
+# How often the SLA policy looks. A minute is pointless — the thresholds are
+# measured in hours — and an hour is late enough to miss the point of an alert.
+SLA_CHECK_SECONDS = 5 * 60
+_sla_task: "asyncio.Task | None" = None
+
+
+async def _sla_loop(bot: Bot) -> None:
+    """Check for newly breached tickets until cancelled.
+
+    Every failure is swallowed and retried on the next pass. A background loop
+    that dies quietly is worse than one that logs and keeps going: nobody
+    notices the alerts stopped until the day they were needed.
+    """
+    from src.services import sla_service
+
+    while True:
+        try:
+            await asyncio.sleep(SLA_CHECK_SECONDS)
+            result = await sla_service.run_once(bot)
+            if result["breached"]:
+                logger.info(f"SLA policy: {result}")
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"SLA policy pass failed, will retry: {e}")
+
+
 async def on_startup(bot: Bot) -> None:
     """Prepare application resources before polling starts."""
     
@@ -77,11 +105,16 @@ async def on_startup(bot: Bot) -> None:
     # everything is managed from the dashboard now — so registering the
     # command only offered the operator a button that does nothing.
 
+    global _sla_task
+    _sla_task = asyncio.create_task(_sla_loop(bot))
+
     logger.info("Bot started successfully.")
 
 
 async def on_shutdown() -> None:
     """Cleanup resources on shutdown."""
+    if _sla_task is not None:
+        _sla_task.cancel()
     logger.info("Bot is shutting down...")
 
 

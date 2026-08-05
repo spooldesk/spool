@@ -105,6 +105,40 @@
     </form>
   </div>
 
+  <!-- What happens when an answer is overdue -->
+  <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-5 mb-6">
+    <div class="text-sm font-medium mb-1">{{ T.sla_title }}</div>
+    <p class="text-xs text-zinc-500 mb-3">{{ T.sla_hint }}</p>
+
+    <form method="post" action="/manage/settings/sla" class="space-y-3">
+      <div>
+        <label class="block text-xs uppercase tracking-wide text-zinc-500 mb-1">{{ T.sla_target }}</label>
+        <input name="sla_minutes" type="number" min="1" step="1" value="{{ sla_minutes }}"
+               class="w-full max-w-sm px-3 py-2 rounded-lg bg-black border border-zinc-800 text-sm
+                      focus:border-brand-500 focus:outline-none text-zinc-100">
+        <p class="text-xs text-zinc-500 mt-1">{{ T.sla_target_hint }}</p>
+      </div>
+
+      <label class="flex items-start gap-2 text-sm cursor-pointer">
+        <input type="checkbox" name="notify" value="1" {% if sla_policy.notify %}checked{% endif %}
+               class="mt-0.5 rounded bg-black border-zinc-700 text-brand-600 focus:ring-brand-500">
+        <span>{{ T.sla_notify }}
+          <span class="block text-xs text-zinc-500">{{ T.sla_notify_hint }}</span>
+        </span>
+      </label>
+
+      <label class="flex items-start gap-2 text-sm cursor-pointer">
+        <input type="checkbox" name="return_to_pool" value="1" {% if sla_policy.return_to_pool %}checked{% endif %}
+               class="mt-0.5 rounded bg-black border-zinc-700 text-brand-600 focus:ring-brand-500">
+        <span>{{ T.sla_return }}
+          <span class="block text-xs text-zinc-500">{{ T.sla_return_hint }}</span>
+        </span>
+      </label>
+
+      <button class="px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium">{{ T.save }}</button>
+    </form>
+  </div>
+
   <!-- Admins not to tag -->
   <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-5 mb-6">
     <div class="text-sm font-medium mb-1">{{ T.s_no_tag }}</div>
