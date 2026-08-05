@@ -35,6 +35,78 @@
   </div>
 </div>
 
+<!-- Answer quality: is the AI actually as good as us? -->
+<div class="bg-zinc-950 border border-zinc-900 rounded-xl p-5 mb-4">
+  <h2 class="font-medium">{{ T.ai_quality_title }}</h2>
+  <p class="text-xs text-zinc-500 mt-0.5 mb-4">{{ T.ai_quality_hint }}</p>
+
+  {% if quality.delta is none %}
+    <p class="text-sm text-zinc-500">{{ T.ai_quality_too_few }}</p>
+  {% else %}
+    <div class="flex flex-wrap items-end gap-6">
+      <div>
+        <div class="text-xs uppercase tracking-wide text-zinc-400">{{ T.ai_quality_ai }}</div>
+        <div class="text-2xl font-semibold tabular-nums">{{ '%.2f'|format(quality.ai_avg) }}</div>
+        <div class="text-xs text-zinc-500">{{ T.ai_quality_ratings.format(n=quality.ai_rated) }}</div>
+      </div>
+      <div>
+        <div class="text-xs uppercase tracking-wide text-zinc-400">{{ T.ai_quality_human }}</div>
+        <div class="text-2xl font-semibold tabular-nums">{{ '%.2f'|format(quality.human_avg) }}</div>
+        <div class="text-xs text-zinc-500">{{ T.ai_quality_ratings.format(n=quality.human_rated) }}</div>
+      </div>
+      <div>
+        <div class="text-xs uppercase tracking-wide text-zinc-400">{{ T.ai_quality_delta }}</div>
+        {# Signed on purpose: the number is only useful if it can be bad. #}
+        <div class="text-2xl font-semibold tabular-nums
+                    {% if quality.delta <= -0.5 %}text-red-400
+                    {% elif quality.delta < 0 %}text-amber-400
+                    {% else %}text-emerald-400{% endif %}">
+          {{ '%+.2f'|format(quality.delta) }}
+        </div>
+      </div>
+    </div>
+
+    {% if by_category %}
+      {# An AI that is worse overall may be fine everywhere except one
+         category — which is something to fix, not a reason to switch it off. #}
+      <div class="mt-5 pt-4 border-t border-zinc-900">
+        <div class="text-xs uppercase tracking-wide text-zinc-400 mb-2">{{ T.ai_quality_by_category }}</div>
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-left text-xs uppercase tracking-wide text-zinc-500 border-b border-zinc-900">
+              <th class="py-2">{{ T.th_category }}</th>
+              <th class="py-2 text-right">{{ T.ai_quality_ai }}</th>
+              <th class="py-2 text-right">{{ T.ai_quality_human }}</th>
+              <th class="py-2 text-right">{{ T.ai_quality_delta }}</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-zinc-900">
+            {% for c in by_category %}
+              <tr>
+                <td class="py-2">{{ c.category }}</td>
+                <td class="py-2 text-right tabular-nums">
+                  {{ '%.2f'|format(c.ai_avg) }}
+                  <span class="text-zinc-600 text-xs">/{{ c.ai_rated }}</span>
+                </td>
+                <td class="py-2 text-right tabular-nums">
+                  {{ '%.2f'|format(c.human_avg) }}
+                  <span class="text-zinc-600 text-xs">/{{ c.human_rated }}</span>
+                </td>
+                <td class="py-2 text-right tabular-nums
+                           {% if c.delta <= -0.5 %}text-red-400
+                           {% elif c.delta < 0 %}text-amber-400
+                           {% else %}text-emerald-400{% endif %}">
+                  {{ '%+.2f'|format(c.delta) }}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  {% endif %}
+</div>
+
 <!-- By use case + chart -->
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
   <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-5">

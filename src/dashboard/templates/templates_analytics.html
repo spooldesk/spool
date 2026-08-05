@@ -21,6 +21,7 @@
           <th class="px-4 py-3">{{ T.th_team }}</th>
           <th class="px-4 py-3">{{ T.th_category }}</th>
           <th class="px-4 py-3 text-right">{{ T.ta_used }}</th>
+          <th class="px-4 py-3 text-right" title="{{ T.ta_csat_hint }}">CSAT</th>
           <th class="px-4 py-3">{{ T.th_created }}</th>
           <th class="px-4 py-3">{{ T.ta_last_used }}</th>
         </tr>
@@ -39,6 +40,23 @@
                 <span class="text-zinc-500">0</span>
               {% endif %}
             </td>
+            {# Correlation, not a verdict: a template used on the hardest
+               tickets scores lower for reasons that are not its fault. The
+               sample size travels with the number, and below three ratings no
+               number is shown at all. #}
+            <td class="px-4 py-2.5 text-right tabular-nums">
+              {% set q = csat.get(r.id) %}
+              {% if q and q.avg is not none %}
+                <span class="{% if q.avg < 3.5 %}text-red-400{% elif q.avg < 4.2 %}text-amber-400{% else %}text-emerald-400{% endif %}">
+                  {{ '%.1f'|format(q.avg) }}
+                </span>
+                <span class="text-zinc-600 text-xs">/{{ q.rated }}</span>
+              {% elif q %}
+                <span class="text-zinc-600 text-xs" title="{{ T.ta_csat_too_few }}">{{ q.rated }} ★</span>
+              {% else %}
+                <span class="text-zinc-600">—</span>
+              {% endif %}
+            </td>
             <td class="px-4 py-2.5 text-xs text-zinc-400 tabular-nums">
               {{ r.created_at.strftime('%Y-%m-%d') if r.created_at else '—' }}
             </td>
@@ -51,7 +69,7 @@
             </td>
           </tr>
         {% else %}
-          <tr><td colspan="7" class="px-4 py-10 text-center text-zinc-500">{{ T.ta_no_templates }}</td></tr>
+          <tr><td colspan="8" class="px-4 py-10 text-center text-zinc-500">{{ T.ta_no_templates }}</td></tr>
         {% endfor %}
       </tbody>
     </table>

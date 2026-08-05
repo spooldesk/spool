@@ -26,6 +26,7 @@ from src.database.models import (
     Ticket,
     User,
 )
+from src.dashboard.formatting import EMPTY
 from src.dashboard.i18n import t as _dash_t
 from src.services import close_reason_service, message_service, work_hours_service
 from src.services.workflow_service import board_column
@@ -1486,3 +1487,133 @@ async def template_admin_matrix() -> dict:
             for r in rows
         ],
     }
+
+
+# ==================== Answer quality: what the rating was for ====================
+#
+# The rating and the thing that earned it were never joined. A ticket carries a
+# CSAT score, a message carries the template it was sent from, an ai_call
+# carries whether its suggestion was accepted — and all three sat in separate
+# reports. Joined, they answer the question a support lead actually has: which
+# of our canned answers make people unhappy, and is the AI worse than us.
+#
+# Correlation, not proof: a template used on the hardest tickets will score
+# lower for reasons that are not the template's fault. That is why the sample
+# size travels with every number and why an average below MIN_RATINGS is not
+# shown at all — two ratings is a coin toss, not a signal.
+
+MIN_RATINGS_TO_JUDGE = 3
+
+
+async def template_csat() -> dict[int, dict]:
+    """Average CSAT per template, keyed by template id.
+
+    A template used twice in one ticket must not count that ticket's rating
+    twice, hence the distinct ticket.
+    """
+    async with db_session() as session:
+        # Dedupe to one row per (template, ticket) FIRST. Grouping the join
+        # directly makes COUNT(DISTINCT t.id) right and AVG wrong: the average
+        # runs over join rows, so a template sent twice in one ticket counts
+        # that ticket's rating twice while the count says otherwise.
+        rows = (await session.execute(text("""
+            SELECT template_id,
+                   COUNT(*)          AS rated,
+                   AVG(csat_rating)  AS avg_csat
+            FROM (
+              SELECT DISTINCT m.template_id, t.id AS ticket_id, t.csat_rating
+              FROM messages m
+              JOIN tickets t ON t.id = m.ticket_id
+              WHERE m.template_id IS NOT NULL
+                AND m.is_internal = 0
+                AND t.csat_rating IS NOT NULL
+            )
+            GROUP BY template_id
+        """))).all()
+
+    out: dict[int, dict] = {}
+    for template_id, rated, avg_csat in rows:
+        rated = int(rated or 0)
+        out[int(template_id)] = {
+            "rated": rated,
+            # Withheld rather than rounded down to a comforting number.
+            "avg": round(float(avg_csat), 2) if rated >= MIN_RATINGS_TO_JUDGE else None,
+        }
+    return out
+
+
+async def ai_vs_human_csat() -> dict:
+    """How tickets an AI suggestion touched are rated, against the rest.
+
+    "Touched" means an operator accepted a suggestion on that ticket — a
+    suggestion that was offered and dismissed says nothing about the answer
+    the customer actually received.
+    """
+    async with db_session() as session:
+        row = (await session.execute(text("""
+            SELECT
+              AVG(CASE WHEN touched THEN csat_rating END),
+              SUM(CASE WHEN touched THEN 1 ELSE 0 END),
+              AVG(CASE WHEN NOT touched THEN csat_rating END),
+              SUM(CASE WHEN NOT touched THEN 1 ELSE 0 END)
+            FROM (
+              SELECT t.csat_rating,
+                     EXISTS (SELECT 1 FROM ai_calls a
+                              WHERE a.ticket_id = t.id AND a.accepted = 1) AS touched
+              FROM tickets t
+              WHERE t.csat_rating IS NOT NULL
+            )
+        """))).one()
+
+    ai_avg, ai_n, human_avg, human_n = row
+    ai_n, human_n = int(ai_n or 0), int(human_n or 0)
+    comparable = ai_n >= MIN_RATINGS_TO_JUDGE and human_n >= MIN_RATINGS_TO_JUDGE
+    return {
+        "ai_avg": round(float(ai_avg), 2) if ai_avg is not None and ai_n >= MIN_RATINGS_TO_JUDGE else None,
+        "ai_rated": ai_n,
+        "human_avg": round(float(human_avg), 2) if human_avg is not None and human_n >= MIN_RATINGS_TO_JUDGE else None,
+        "human_rated": human_n,
+        # Signed: negative means the AI-touched tickets are rated worse.
+        "delta": round(float(ai_avg) - float(human_avg), 2) if comparable else None,
+    }
+
+
+async def ai_csat_by_category() -> list[dict]:
+    """The same comparison per ticket category — where the AI actually helps.
+
+    An AI that is a point worse overall may be fine everywhere except one
+    category, and that is an actionable finding rather than a reason to switch
+    the whole thing off.
+    """
+    async with db_session() as session:
+        rows = (await session.execute(text("""
+            SELECT category,
+                   AVG(CASE WHEN touched THEN csat_rating END),
+                   SUM(CASE WHEN touched THEN 1 ELSE 0 END),
+                   AVG(CASE WHEN NOT touched THEN csat_rating END),
+                   SUM(CASE WHEN NOT touched THEN 1 ELSE 0 END)
+            FROM (
+              SELECT t.category, t.csat_rating,
+                     EXISTS (SELECT 1 FROM ai_calls a
+                              WHERE a.ticket_id = t.id AND a.accepted = 1) AS touched
+              FROM tickets t
+              WHERE t.csat_rating IS NOT NULL
+            )
+            GROUP BY category
+            ORDER BY category
+        """))).all()
+
+    out = []
+    for category, ai_avg, ai_n, human_avg, human_n in rows:
+        ai_n, human_n = int(ai_n or 0), int(human_n or 0)
+        if ai_n < MIN_RATINGS_TO_JUDGE or human_n < MIN_RATINGS_TO_JUDGE:
+            continue  # nothing to compare against
+        out.append({
+            "category": category or EMPTY,
+            "ai_avg": round(float(ai_avg), 2),
+            "ai_rated": ai_n,
+            "human_avg": round(float(human_avg), 2),
+            "human_rated": human_n,
+            "delta": round(float(ai_avg) - float(human_avg), 2),
+        })
+    return out

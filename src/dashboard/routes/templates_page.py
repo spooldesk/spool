@@ -24,6 +24,9 @@ async def templates_page(request: Request):
 
     rows = await queries.templates_with_usage(include_archived=False)
     matrix = await queries.template_admin_matrix()
+    # What the rating was actually for: the score and the canned answer that
+    # earned it lived in separate reports until now.
+    csat = await queries.template_csat()
 
     # Candidates for removal: zero usage AND created more than 30d ago.
     # Created recently with zero usage is OK — give it time.
@@ -42,5 +45,6 @@ async def templates_page(request: Request):
             "candidates": candidates,
             "candidate_threshold_days": REMOVAL_CANDIDATE_DAYS,
             "matrix": matrix,
+            "csat": csat,
         },
     )

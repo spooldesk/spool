@@ -35,6 +35,10 @@ async def ai_page(request: Request):
     stats = await queries.ai_overview()
     per_day = await queries.ai_calls_per_day(days=30)
     rejected = await queries.ai_recent_rejected(limit=15)
+    # Accept rate says operators liked the suggestion. This says whether
+    # the customer did — which is a different and more honest question.
+    quality = await queries.ai_vs_human_csat()
+    by_category = await queries.ai_csat_by_category()
 
     return templates.TemplateResponse(
         request,
@@ -45,6 +49,8 @@ async def ai_page(request: Request):
             "per_day_labels_json": json.dumps([d for d, _ in per_day]),
             "per_day_values_json": json.dumps([n for _, n in per_day]),
             "rejected": rejected,
+            "quality": quality,
+            "by_category": by_category,
             "fmt_tokens": _fmt_tokens,
             "fmt_pct": _fmt_pct,
             "fmt_ms": _fmt_ms,
