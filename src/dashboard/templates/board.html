@@ -19,9 +19,24 @@
         <h1 class="text-2xl font-semibold tracking-tight">{{ T.board }}</h1>
         <p class="text-sm text-zinc-500 mt-0.5">{{ T.board_hint }}</p>
       </div>
-      <a href="/tickets" class="text-sm text-brand-400 hover:text-brand-300 inline-flex items-center gap-1.5">
-        <i class="ti ti-list" style="font-size:14px" aria-hidden="true"></i> {{ T.nav_tickets }}
-      </a>
+      <div class="flex items-center gap-3">
+        {# The board says what is going on; this says what to do next, which
+           after three replies in a row is the only question left. #}
+        <form method="post" action="/queue/next">
+          <input type="hidden" name="source" value="open">
+          <button class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg
+                         bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium
+                         disabled:opacity-40 disabled:cursor-not-allowed"
+                  {% if not queue_size %}disabled title="{{ T.q_empty }}"{% endif %}>
+            <i class="ti ti-player-play" style="font-size:14px" aria-hidden="true"></i>
+            {{ T.q_take_next }}
+            {% if queue_size %}<span class="tabular-nums opacity-80">{{ queue_size }}</span>{% endif %}
+          </button>
+        </form>
+        <a href="/tickets" class="text-sm text-brand-400 hover:text-brand-300 inline-flex items-center gap-1.5">
+          <i class="ti ti-list" style="font-size:14px" aria-hidden="true"></i> {{ T.nav_tickets }}
+        </a>
+      </div>
     </div>
 
     <form method="get" action="/board"

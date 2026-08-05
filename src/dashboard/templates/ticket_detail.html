@@ -29,6 +29,19 @@
              from; /tickets is the fallback for a direct link. #}
           <a href="/tickets" id="back-link"
              class="text-zinc-500 hover:text-zinc-200 text-sm">←</a>
+          {% if queue_source %}
+            <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs
+                         bg-brand-500/15 text-brand-300 border border-brand-500/20">
+              <i class="ti ti-player-play" style="font-size:11px" aria-hidden="true"></i>
+              {{ T.q_in_queue.format(n=queue_size) }}
+            </span>
+          {% elif queue_empty %}
+            <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs
+                         bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
+              <i class="ti ti-check" style="font-size:11px" aria-hidden="true"></i>
+              {{ T.q_all_done }}
+            </span>
+          {% endif %}
           <h1 class="text-lg font-semibold tracking-tight truncate">{{ T.ticket }} #{{ t.id }}</h1>
           <span id="status-badge">
             {% if t.status == 'active' %}
@@ -167,10 +180,14 @@
                     class="flex-1 px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800
                            focus:border-brand-500 focus:outline-none text-sm resize-y
                            text-zinc-100 placeholder:text-zinc-600"></textarea>
+          {# Working the queue means never returning to a list: the send button
+             hands over the next conversation instead. #}
+          {% if queue_source %}<input type="hidden" name="queue" value="{{ queue_source }}">{% endif %}
           <button type="submit" id="composer-submit"
-                  data-reply-label="{{ T.send }}" data-note-label="{{ T.note_add }}"
+                  data-reply-label="{{ T.q_send_and_next if queue_source else T.send }}"
+                  data-note-label="{{ T.note_add }}"
                   class="px-4 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium shrink-0">
-            {{ T.send }}
+            {{ T.q_send_and_next if queue_source else T.send }}
           </button>
         </div>
         <div id="reply-tools" class="flex items-center gap-3 text-xs relative">

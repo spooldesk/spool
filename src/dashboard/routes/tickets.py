@@ -231,6 +231,8 @@ async def board_page(
             # For the card's move menu. Only the stages a card can be moved TO:
             # closed follows from status, not from a stage change.
             "stage_labels": {s: tr(f"stage_{s}") for s in STAGES},
+            # Drives the take-next button and its counter.
+            "queue_size": await queries.queue_size(me.id if me else None, "open"),
             "teams": teams,
             "operators": operators,
             "filters": {
@@ -467,7 +469,9 @@ async def tickets_export_xlsx(
 
 
 @router.get("/tickets/{ticket_id}", response_class=HTMLResponse)
-async def ticket_detail_page(request: Request, ticket_id: int, sent: str | None = None, err: str | None = None):
+async def ticket_detail_page(request: Request, ticket_id: int,
+                             sent: str | None = None, err: str | None = None,
+                             queue: str | None = None):
     templates = request.app.state.templates
     detail = await queries.ticket_detail(ticket_id)
     if detail is None:
@@ -511,6 +515,12 @@ async def ticket_detail_page(request: Request, ticket_id: int, sent: str | None 
             "operators": operators,
             # The composer enforces the same limits the route does, so an
             # over-sized pick is refused before the upload, not after it.
+            # "queue=<source>" means keep going; "queue=empty" means the last
+            # one is answered and there is nothing left to hand over.
+            "queue_source": queue if queue in QUEUE_SOURCES else None,
+            "queue_empty": queue == "empty",
+            "queue_size": await queries.queue_size(
+                _current_operator_id(request), queue if queue in QUEUE_SOURCES else "open"),
             "max_upload_files": _MAX_UPLOAD_FILES,
             "max_upload_bytes": _MAX_UPLOAD_BYTES,
         },
@@ -617,6 +627,9 @@ async def ticket_reply(
     # with no filename arrives as a plain string, which that type rejects with
     # a 422 — breaking the ordinary text-only reply.
     attachments: list[UploadFile | str] = File(default=[]),
+    # Set when the operator arrived from the queue: sending should hand
+    # them the next one, not the conversation they just finished.
+    queue: str = Form(""),
 ):
     """Send an admin reply (text and/or a file) to the ticket's user from web.
 
@@ -740,6 +753,9 @@ async def ticket_reply(
         if sent_count:
             await _auto_assign_to_me(request, ticket_id)
             await workflow_service.advance_on_admin_reply(ticket_id)
+            nxt = await _queue_redirect(request, queue, ticket_id)
+            if nxt and not failure:
+                return nxt
         if failure:
             # Say how far it got: "nothing was sent" and "three of five went"
             # need very different things from the operator.
@@ -771,6 +787,12 @@ async def ticket_reply(
             f"/tickets/{ticket_id}?err={quote(result.error or tr("e_send_failed"))}", status_code=303)
     # (stage advance happens inside template_service.apply_text)
     await _auto_assign_to_me(request, ticket_id)
+    # The text-only reply is the common one, so the loop has to continue from
+    # here too — wiring only the attachment branch left the queue working for
+    # the rarer path and silently stopping on the usual one.
+    nxt = await _queue_redirect(request, queue, ticket_id)
+    if nxt:
+        return nxt
     return RedirectResponse(f"/tickets/{ticket_id}?sent=1", status_code=303)
 
 
@@ -785,6 +807,63 @@ async def _auto_assign_to_me(request: Request, ticket_id: int) -> None:
         except Exception:  # noqa: BLE001 — assignment must never break a reply
             pass
 
+
+
+async def _queue_redirect(request: Request, queue: str, just_finished: int):
+    """Where to go after a reply when the operator is working the queue."""
+    if queue not in QUEUE_SOURCES:
+        return None
+    ticket_id = await _claim_next(request, queue, after=just_finished)
+    if ticket_id is None:
+        return RedirectResponse(f"/tickets/{just_finished}?queue=empty", status_code=303)
+    return RedirectResponse(f"/tickets/{ticket_id}?queue={queue}", status_code=303)
+
+
+def _current_operator_id(request: Request) -> int | None:
+    from src.dashboard.auth import current_user
+    me = current_user(request)
+    return me.id if me is not None else None
+
+
+# ==================== The work queue ====================
+
+QUEUE_SOURCES = ("open", "mine", "unassigned", "all")
+
+
+async def _claim_next(request: Request, source: str,
+                      after: int | None = None) -> int | None:
+    """Pick the next ticket owed an answer and claim it for this operator.
+
+    Claiming is the point. A queue that only suggests hands the same ticket to
+    two people, which is the collision it was supposed to remove — so the pick
+    and the assignment happen together, before anyone is sent anywhere.
+    """
+    from src.dashboard.auth import current_user
+    from src.services import assignment_service
+
+    me = current_user(request)
+    operator_id = me.id if me is not None else None
+
+    ticket_id = await queries.queue_next(operator_id, source, exclude=after)
+    if ticket_id is None or operator_id is None:
+        return ticket_id
+    try:
+        await assignment_service.auto_assign(ticket_id, operator_id)
+    except Exception:  # noqa: BLE001 — never block the operator over bookkeeping
+        logger.warning(f"Could not claim #{ticket_id} for operator {operator_id}")
+    return ticket_id
+
+
+@router.post("/queue/next")
+async def queue_take_next(request: Request, source: str = Form("open")):
+    """POST, not GET: this assigns a ticket, and a link that mutates can be
+    fired by a browser prefetching it."""
+    if source not in QUEUE_SOURCES:
+        source = "open"
+    ticket_id = await _claim_next(request, source)
+    if ticket_id is None:
+        return RedirectResponse("/board?queue=empty", status_code=303)
+    return RedirectResponse(f"/tickets/{ticket_id}?queue={source}", status_code=303)
 
 @router.post("/tickets/{ticket_id}/close")
 async def ticket_close(

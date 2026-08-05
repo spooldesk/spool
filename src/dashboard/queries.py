@@ -1617,3 +1617,95 @@ async def ai_csat_by_category() -> list[dict]:
             "delta": round(float(ai_avg) - float(human_avg), 2),
         })
     return out
+
+
+# ==================== The work queue ====================
+#
+# The board answers "what is going on". It does not answer "what do I do next",
+# and after three replies in a row that is the only question an operator has.
+# Choosing by hand twenty times a shift is work the product should be doing.
+#
+# Membership is the same signal the board cards carry: the ball is in our
+# court. Order is the oldest wait first, in working time — which is the SLA
+# order, so the queue and the colours on the board never disagree.
+
+# Everything a customer is waiting on, oldest wait first. Callers narrow it.
+_QUEUE_SQL = """
+    SELECT t.id,
+           (SELECT MIN(m.created_at) FROM messages m
+             WHERE m.ticket_id = t.id
+               AND m.is_internal = 0
+               AND m.sender_type = 'user'
+               AND m.id > COALESCE((SELECT MAX(a.id) FROM messages a
+                                     WHERE a.ticket_id = t.id
+                                       AND a.is_internal = 0
+                                       AND a.sender_type = 'admin'), 0)
+           ) AS waiting_since
+      FROM tickets t
+     WHERE t.status = 'active'
+       AND {scope}
+"""
+
+
+def _queue_scope(operator_id: int | None, source: str) -> tuple[str, dict]:
+    """Which tickets this operator may take.
+
+    'open' is the default and means mine plus unclaimed: a ticket already
+    assigned to a colleague is not yours to pick up, and offering it is how a
+    queue starts producing collisions instead of preventing them.
+    """
+    if source == "all":
+        return "1 = 1", {}
+    if source == "unassigned":
+        return "t.assigned_admin_id IS NULL", {}
+    if source == "mine" and operator_id is not None:
+        return "t.assigned_admin_id = :op", {"op": operator_id}
+    if operator_id is None:
+        return "t.assigned_admin_id IS NULL", {}
+    return "(t.assigned_admin_id IS NULL OR t.assigned_admin_id = :op)", {"op": operator_id}
+
+
+async def _queue_rows(operator_id: int | None, source: str) -> list[tuple[int, int]]:
+    """(ticket_id, waiting_seconds) for everything owed, longest wait first."""
+    scope, params = _queue_scope(operator_id, source)
+    async with db_session() as session:
+        rows = (await session.execute(
+            text(_QUEUE_SQL.format(scope=scope)), params
+        )).all()
+
+    config = await work_hours_service.get_config()
+    now = datetime.utcnow().replace(tzinfo=timezone.utc)
+
+    out: list[tuple[int, int]] = []
+    for ticket_id, since in rows:
+        if since is None:
+            continue  # their move, not ours
+        if not isinstance(since, datetime):
+            since = datetime.fromisoformat(str(since))
+        waited = work_hours_service.working_seconds_between(
+            config, since.replace(tzinfo=timezone.utc), now,
+        )
+        out.append((int(ticket_id), waited))
+
+    out.sort(key=lambda pair: pair[1], reverse=True)
+    return out
+
+
+async def queue_size(operator_id: int | None = None, source: str = "open") -> int:
+    """How many people are waiting on an answer from this operator."""
+    return len(await _queue_rows(operator_id, source))
+
+
+async def queue_next(operator_id: int | None = None, source: str = "open",
+                     exclude: int | None = None) -> int | None:
+    """The ticket to open now, or None when the queue is empty.
+
+    `exclude` skips the one just finished: the reply is committed before the
+    redirect, so the ticket has already left the queue — but a customer who
+    answered instantly would otherwise hand the operator straight back the
+    conversation they just closed out of.
+    """
+    for ticket_id, _ in await _queue_rows(operator_id, source):
+        if ticket_id != exclude:
+            return ticket_id
+    return None
