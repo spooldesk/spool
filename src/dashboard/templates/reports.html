@@ -186,6 +186,63 @@
     </div>
   </div>
 
+  <!-- What the AI cost and what it saved -->
+  <div class="mt-6 bg-zinc-950 border border-zinc-900 rounded-xl p-5">
+    <h2 class="font-medium">{{ T.r_savings_title }}</h2>
+    <p class="text-xs text-zinc-500 mt-0.5 mb-4">{{ T.r_savings_hint }}</p>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div>
+        <div class="text-xs uppercase tracking-wide text-zinc-400">{{ T.r_savings_deflected }}</div>
+        <div class="text-2xl font-semibold tabular-nums">
+          {% if savings.deflected_hours is not none %}{{ '%.1f'|format(savings.deflected_hours) }} h{% else %}—{% endif %}
+        </div>
+        <div class="text-xs text-zinc-500">{{ T.r_savings_deflected_note.format(n=savings.deflected) }}</div>
+      </div>
+      <div>
+        <div class="text-xs uppercase tracking-wide text-zinc-400">{{ T.r_savings_assisted }}</div>
+        <div class="text-2xl font-semibold tabular-nums">{{ '%.1f'|format(savings.assisted_hours) }} h</div>
+        <div class="text-xs text-zinc-500">{{ T.r_savings_assisted_note.format(n=savings.assisted) }}</div>
+      </div>
+      <div>
+        <div class="text-xs uppercase tracking-wide text-zinc-400">{{ T.r_savings_cost }}</div>
+        <div class="text-2xl font-semibold tabular-nums">${{ '%.2f'|format(savings.cost_usd) }}</div>
+        <div class="text-xs text-zinc-500">
+          {{ '{:,}'.format(savings.tokens_in) }} / {{ '{:,}'.format(savings.tokens_out) }} {{ T.r_savings_tokens }}
+        </div>
+      </div>
+      <div>
+        <div class="text-xs uppercase tracking-wide text-zinc-400">{{ T.r_savings_quality }}</div>
+        {# The cost side of the trade, next to the benefit. A saving that
+           costs half a rating point is a decision for the reader to make,
+           and hiding it is how these reports lose their credibility. #}
+        {% if quality.delta is not none %}
+          <div class="text-2xl font-semibold tabular-nums
+                      {% if quality.delta <= -0.5 %}text-red-400
+                      {% elif quality.delta < 0 %}text-amber-400
+                      {% else %}text-emerald-400{% endif %}">
+            {{ '%+.2f'|format(quality.delta) }}
+          </div>
+          <div class="text-xs text-zinc-500">{{ T.r_savings_quality_note }}</div>
+        {% else %}
+          <div class="text-2xl font-semibold text-zinc-600">—</div>
+          <div class="text-xs text-zinc-500">{{ T.ai_quality_too_few }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# Printed, not buried: every number above rests on these, and a figure
+       whose inputs the reader cannot see is worth nothing in a meeting. #}
+    <p class="mt-4 pt-3 border-t border-zinc-900 text-xs text-zinc-500">
+      {{ T.r_savings_assumptions.format(
+           handle=('%.2f'|format(savings.avg_handle_hours)) if savings.avg_handle_hours is not none else '—',
+           minutes=('%.0f'|format(savings.assist_minutes)),
+           price_in=('%.2f'|format(savings.price_in)),
+           price_out=('%.2f'|format(savings.price_out))) }}
+      <a href="/manage/ai" class="text-brand-400 hover:text-brand-300">{{ T.r_savings_edit }}</a>
+    </p>
+  </div>
+
   <!-- AI deflection footnote -->
   <div class="mt-6 flex items-start gap-1.5 text-xs text-zinc-600">
     <i class="ti ti-robot shrink-0 mt-0.5" style="font-size:13px" aria-hidden="true"></i>

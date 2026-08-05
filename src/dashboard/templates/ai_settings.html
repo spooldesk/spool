@@ -79,6 +79,36 @@
     <button class="px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium">{{ T.save }}</button>
   </form>
 
+  <div id="savings" class="mt-6 bg-zinc-950 border border-zinc-900 rounded-xl p-5">
+    <div class="text-sm font-medium mb-1">{{ T.sv_title }}</div>
+    <p class="text-xs text-zinc-500 mb-4">{{ T.sv_hint }}</p>
+
+    <form method="post" action="/manage/ai/savings" class="space-y-3 max-w-md">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs uppercase tracking-wide text-zinc-400 mb-1">{{ T.sv_price_in }}</label>
+          <input name="price_in" type="number" step="0.01" min="0" value="{{ '%.2f'|format(price_in) }}"
+                 class="w-full px-3 py-2 rounded-lg bg-black border border-zinc-800 text-sm
+                        focus:border-brand-500 focus:outline-none text-zinc-100">
+        </div>
+        <div>
+          <label class="block text-xs uppercase tracking-wide text-zinc-400 mb-1">{{ T.sv_price_out }}</label>
+          <input name="price_out" type="number" step="0.01" min="0" value="{{ '%.2f'|format(price_out) }}"
+                 class="w-full px-3 py-2 rounded-lg bg-black border border-zinc-800 text-sm
+                        focus:border-brand-500 focus:outline-none text-zinc-100">
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs uppercase tracking-wide text-zinc-400 mb-1">{{ T.sv_assist_minutes }}</label>
+        <input name="assist_minutes" type="number" step="0.5" min="0" value="{{ '%.0f'|format(assist_minutes) }}"
+               class="w-full px-3 py-2 rounded-lg bg-black border border-zinc-800 text-sm
+                      focus:border-brand-500 focus:outline-none text-zinc-100">
+        <p class="text-xs text-zinc-500 mt-1">{{ T.sv_assist_hint }}</p>
+      </div>
+      <button class="px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium">{{ T.save }}</button>
+    </form>
+  </div>
+
   <div class="mt-6 flex items-start gap-1.5 text-xs text-zinc-600">
     <i class="ti ti-info-circle shrink-0 mt-0.5" style="font-size:13px" aria-hidden="true"></i>
     <span>{{ T.ai_analytics_hint }}

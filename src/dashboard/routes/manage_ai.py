@@ -26,6 +26,7 @@ async def ai_settings_page(request: Request, sent: str | None = None):
     enabled = await settings_service.get_ai_enabled()
     deflection = await settings_service.get_ai_deflection_enabled()
     blacklist = await settings_service.get_ai_blacklist()
+    price_in, price_out = await settings_service.get_ai_pricing()
 
     return templates.TemplateResponse(request, "ai_settings.html", {
         "active_page": "ai_settings",
@@ -36,6 +37,11 @@ async def ai_settings_page(request: Request, sent: str | None = None):
         "categories": await _blacklist_categories(),
         "blacklist": blacklist,
         "flash_sent": sent,
+        # The savings report is a document someone takes to their
+        # manager; its assumptions have to be theirs to correct.
+        "price_in": price_in,
+        "price_out": price_out,
+        "assist_minutes": await settings_service.get_ai_assist_minutes(),
     })
 
 
@@ -50,3 +56,19 @@ async def ai_settings_save(
     # Store the chosen categories (lowercased fragments) as the blacklist
     await settings_service.set_ai_blacklist([c for c in blacklist if c], updated_by=0)
     return RedirectResponse("/manage/ai?sent=saved", status_code=303)
+
+
+@router.post("/manage/ai/savings")
+async def savings_assumptions_save(
+    price_in: float = Form(0.0),
+    price_out: float = Form(0.0),
+    assist_minutes: float = Form(0.0),
+):
+    """Negatives are clamped in the service — a report cannot be worth less
+    than nothing, and a typed minus should not silently invert a number
+    somebody is about to present."""
+    await settings_service.set_savings_assumptions(
+        price_in=price_in, price_out=price_out,
+        assist_minutes=assist_minutes, updated_by=0,
+    )
+    return RedirectResponse("/manage/ai?sent=saved#savings", status_code=303)

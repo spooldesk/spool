@@ -30,6 +30,11 @@ KEY_CATEGORY_ADMIN_TAGS = "category_admin_tags"  # JSON: {category_name: "@a @b"
 KEY_AI_ENABLED = "ai_enabled"                    # "1" / "0"
 KEY_AI_DEFLECTION = "ai_deflection_enabled"      # "1" = AI answers the user before an operator
 KEY_AI_BLACKLIST = "ai_blacklist_categories"     # JSON list of category fragments
+# What the savings report assumes. Every one of them is a guess about YOUR
+# team, so every one of them is editable and printed on the report itself.
+KEY_AI_PRICE_IN = "ai_price_per_1m_in"           # your provider's input price, USD
+KEY_AI_PRICE_OUT = "ai_price_per_1m_out"         # ...and output
+KEY_AI_ASSIST_MINUTES = "ai_minutes_per_assist"  # minutes an accepted draft saves
 KEY_ASK_CATEGORY = "ask_category"                # "1" = ask user to pick a category
 KEY_BRAND_NAME = "brand_name"                    # white-label: support team/service name
 KEY_REDIRECT_ENABLED = "redirect_enabled"        # "1" = redirect a matched team elsewhere
@@ -49,6 +54,13 @@ _DEFAULTS: dict[str, str] = {
     KEY_AI_ENABLED: "1",                  # AI suggestions on by default (if key present)
     KEY_AI_DEFLECTION: "0",               # deflection is opt-in — enable from AI config
     KEY_AI_BLACKLIST: json.dumps([]),     # empty: 1Pass opened up; nothing blocked
+    # Gemini 2.5 Flash list price at the time of writing. Deliberately not
+    # hidden in code: prices move, and a stale one quietly inflates the result.
+    KEY_AI_PRICE_IN: "0.30",
+    KEY_AI_PRICE_OUT: "2.50",
+    # Conservative on purpose. An accepted suggestion saves the writing, not
+    # the reading, the diagnosis or the follow-up.
+    KEY_AI_ASSIST_MINUTES: "3",
     KEY_ASK_CATEGORY: "1",                # ask the user to pick a category by default
     KEY_BRAND_NAME: "Support",            # neutral default; rebrandable from Settings
     KEY_REDIRECT_ENABLED: "0",            # off by default → clean white-label start
@@ -287,6 +299,36 @@ async def set_dash_language(code: str, *, updated_by: int = 0) -> None:
     if code in SUPPORTED_DASH_LANGUAGES:
         await set_value(KEY_DASH_LANGUAGE, code, updated_by=updated_by)
 
+
+
+# ---- Savings-report assumptions ----
+
+async def _get_float(key: str, fallback: float) -> float:
+    raw = (await get_value(key, "")).strip()
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return fallback
+    return value if value >= 0 else fallback
+
+
+async def get_ai_pricing() -> tuple[float, float]:
+    """USD per million tokens, (input, output)."""
+    return (await _get_float(KEY_AI_PRICE_IN, 0.30),
+            await _get_float(KEY_AI_PRICE_OUT, 2.50))
+
+
+async def get_ai_assist_minutes() -> float:
+    """Minutes an accepted suggestion saves the operator who accepted it."""
+    return await _get_float(KEY_AI_ASSIST_MINUTES, 3.0)
+
+
+async def set_savings_assumptions(*, price_in: float, price_out: float,
+                                  assist_minutes: float, updated_by: int) -> None:
+    await set_value(KEY_AI_PRICE_IN, f"{max(0.0, price_in):.4f}", updated_by=updated_by)
+    await set_value(KEY_AI_PRICE_OUT, f"{max(0.0, price_out):.4f}", updated_by=updated_by)
+    await set_value(KEY_AI_ASSIST_MINUTES, f"{max(0.0, assist_minutes):.1f}",
+                    updated_by=updated_by)
 
 # ---- Dashboard session secret (signs login cookies) ----
 

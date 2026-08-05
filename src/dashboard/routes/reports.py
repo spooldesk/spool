@@ -13,7 +13,7 @@ from datetime import date, datetime, time, timedelta
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
 
-from src.dashboard import report_queries
+from src.dashboard import queries, report_queries
 from src.dashboard.i18n import t as tr
 
 logger = logging.getLogger(__name__)
@@ -68,6 +68,10 @@ async def _gather(date_from: datetime, date_to: datetime) -> dict:
     prev_from, prev_to = date_from - span, date_from
     return {
         "summary": await report_queries.report_summary(date_from, date_to),
+        # What the AI cost, what it saved, and what the saving cost in
+        # rating — the last one belongs here or the rest is a sales sheet.
+        "savings": await report_queries.ai_savings(date_from, date_to),
+        "quality": await queries.ai_vs_human_csat(),
         "prev": await report_queries.report_summary(prev_from, prev_to),
         "operators": await report_queries.report_by_operator(date_from, date_to),
         "teams": await report_queries.report_by_team(date_from, date_to),
@@ -151,6 +155,8 @@ async def reports_page(
         # Show the inclusive end date in the UI (exclusive bound minus a day)
         "date_to": (dt.date() - timedelta(days=1)).isoformat(),
         "cards": _build_cards(data["summary"], data["prev"]),
+        "savings": data["savings"],
+        "quality": data["quality"],
         "export_url": f"/reports/export.xlsx?{export_qs}",
         "fmt_hours": _fmt_hours,
         **data,

@@ -183,3 +183,77 @@ async def report_by_team(date_from: datetime, date_to: datetime) -> list[dict]:
         "closed": int(r[3] or 0),
         "csat_avg": float(r[4]) if r[4] is not None else None,
     } for r in rows]
+
+
+async def ai_savings(date_from: datetime, date_to: datetime) -> dict:
+    """What the AI cost and what it saved, in a form that survives a manager.
+
+    Two savings that must never be added into one number, because they are not
+    the same claim:
+
+    - **Deflected**: the AI answered and the ticket closed without an operator
+      opening it. The whole handling time is saved. Defensible.
+    - **Assisted**: an operator accepted a draft. Only the writing is saved —
+      not the reading, the diagnosis or the follow-up — so it is counted at a
+      configurable few minutes, not at a full ticket.
+
+    Reporting only the second as if it were the first is how these numbers get
+    a bad name. The report also carries the quality delta, because a saving
+    that costs half a CSAT point is a decision, not a win, and the person
+    reading it is entitled to make that decision themselves.
+    """
+    from src.services import settings_service
+
+    price_in, price_out = await settings_service.get_ai_pricing()
+    assist_minutes = await settings_service.get_ai_assist_minutes()
+
+    summary = await report_summary(date_from, date_to)
+    params = {"df": date_from, "dt": date_to}
+
+    async with db_session() as session:
+        tokens_in, tokens_out, calls = (await session.execute(text("""
+            SELECT COALESCE(SUM(tokens_in), 0), COALESCE(SUM(tokens_out), 0), COUNT(*)
+            FROM ai_calls
+            WHERE created_at >= :df AND created_at < :dt
+        """), params)).one()
+
+        # Accepted suggestions that were NOT the deflection path — deflection is
+        # already counted as a whole ticket, and counting it twice is the
+        # easiest way to produce a number nobody believes.
+        assisted = (await session.execute(text("""
+            SELECT COUNT(*) FROM ai_calls
+            WHERE accepted = 1 AND use_case != 'deflect'
+              AND created_at >= :df AND created_at < :dt
+        """), params)).scalar_one()
+
+    deflected = summary["ai_closed"]
+    assisted = int(assisted or 0)
+    handle_hours = summary["avg_close_hours"]
+
+    # No measured handling time means no honest hours figure. Say so rather
+    # than substituting an industry average nobody here has verified.
+    deflected_hours = deflected * handle_hours if handle_hours is not None else None
+    assisted_hours = assisted * assist_minutes / 60
+    total_hours = (deflected_hours + assisted_hours) if deflected_hours is not None else None
+
+    cost = (int(tokens_in) / 1_000_000 * price_in) + (int(tokens_out) / 1_000_000 * price_out)
+
+    return {
+        "calls": int(calls or 0),
+        "tokens_in": int(tokens_in or 0),
+        "tokens_out": int(tokens_out or 0),
+        "cost_usd": round(cost, 2),
+
+        "deflected": deflected,
+        "deflected_hours": round(deflected_hours, 1) if deflected_hours is not None else None,
+        "assisted": assisted,
+        "assisted_hours": round(assisted_hours, 1),
+        "total_hours": round(total_hours, 1) if total_hours is not None else None,
+
+        # The assumptions, returned so the page can print them next to the
+        # result instead of leaving the reader to trust it.
+        "price_in": price_in,
+        "price_out": price_out,
+        "assist_minutes": assist_minutes,
+        "avg_handle_hours": round(handle_hours, 2) if handle_hours is not None else None,
+    }
