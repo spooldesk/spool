@@ -1047,16 +1047,20 @@ async def ticket_ai_suggest(ticket_id: int):
 
 @router.get("/tickets/attachment/{msg_id}")
 async def ticket_attachment(msg_id: int):
-    """Stream a message's Telegram attachment through the web admin.
+    """Stream an attachment through the dashboard, from whichever channel it
+    arrived on.
 
-    Downloads via the Bot API on demand (we only store file_id, not bytes).
-    Refuses sensitive-category tickets entirely.
+    Only a reference is stored, never the bytes — a Telegram file_id, a Slack
+    private URL — so fetching means asking the channel. That used to be a
+    direct Bot API call here, which made every attachment a Telegram
+    attachment. Sensitive-category tickets are refused outright.
     """
     import io
     from sqlalchemy import select
     from sqlalchemy.orm import selectinload
+    from src.channels import get as get_channel
+    from src.channels.identity import channel_of
     from src.dashboard import queries as _q
-    from src.dashboard.bot_client import get_bot
     from src.database.db import db_session
     from src.database.models import Message as MessageRecord, Ticket
 
@@ -1064,13 +1068,15 @@ async def ticket_attachment(msg_id: int):
         m = (await session.execute(
             select(MessageRecord)
             .where(MessageRecord.id == msg_id)
-            .options(selectinload(MessageRecord.ticket))
+            .options(selectinload(MessageRecord.ticket).selectinload(Ticket.user))
         )).scalar_one_or_none()
         if m is None or not m.file_id:
             raise HTTPException(status_code=404, detail=tr("e_attachment_not_found"))
         category = m.ticket.category if m.ticket else None
         if _q.is_sensitive_category(category):
             raise HTTPException(status_code=403, detail=tr("e_hidden_sensitive"))
+        author = m.ticket.user if m.ticket else None
+        channel = channel_of(author) if author is not None else None
         file_id = m.file_id
         file_name = m.file_name or "attachment"
         ftype = (m.file_type or "").lower()
@@ -1083,14 +1089,15 @@ async def ticket_attachment(msg_id: int):
         else:
             mime = "application/octet-stream"
 
-    bot = get_bot()
     try:
-        tg_file = await bot.get_file(file_id)
-        buf = await bot.download_file(tg_file.file_path)  # BytesIO
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=tr("e_telegram_download", what=type(e).__name__))
+        data = await get_channel(channel).fetch_file(file_id)
+    except LookupError:
+        # The customer is on a channel this process cannot reach — a Slack
+        # ticket on an instance whose credentials were removed, say.
+        data = None
+    if not data:
+        raise HTTPException(status_code=502, detail=tr("e_attachment_unavailable"))
 
-    data = buf.read() if hasattr(buf, "read") else buf
     return StreamingResponse(
         io.BytesIO(data),
         media_type=mime,

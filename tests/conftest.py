@@ -79,6 +79,8 @@ class RecordingChannel:
         self.texts: list[tuple[str, str]] = []
         self.files: list[dict] = []
         self.offered: list[list] = []
+        # Bytes a test wants `fetch_file` to hand back, keyed by ref.
+        self.fetched: dict[str, bytes] = {}
         self.unsent: list[tuple[str, str]] = []
         self.typing_for: list[str] = []
         self._n = 0
@@ -114,6 +116,14 @@ class RecordingChannel:
         d = Delivery.sent(self._next_ref())
         from src.channels.base import Delivery as _D
         return _D(ok=True, ref=d.ref, error_detail=f"fid-{len(self.files)}")
+
+    async def fetch_file(self, ref):
+        # Whatever was handed over on the way in comes back out. Enough to
+        # prove the attachment route asks the channel instead of Telegram.
+        for f in self.files:
+            if f["filename"] == ref:
+                return f["content"]
+        return self.fetched.get(ref)
 
     async def unsend(self, address, ref):
         self.unsent.append((address, ref))

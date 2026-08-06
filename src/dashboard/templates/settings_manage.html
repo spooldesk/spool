@@ -316,8 +316,9 @@
       <div class="text-xs text-zinc-500 mt-3 mb-1">{{ T.sl_scopes }}</div>
       <code class="block px-3 py-2 rounded-lg bg-black border border-zinc-800 text-xs
                    text-zinc-300 font-mono overflow-x-auto whitespace-nowrap"
-            >chat:write · im:history · channels:history · groups:history</code>
+            >chat:write · im:history · channels:history · groups:history<br>files:write · files:read · users:read</code>
 
+      <p class="text-xs text-zinc-500 mt-1">{{ T.sl_optional }}</p>
       <p class="text-xs text-zinc-500 mt-3">{{ T.sl_shared }}</p>
     {% else %}
       <p class="text-xs text-zinc-500">{{ T.sl_off_hint }}</p>

@@ -85,6 +85,10 @@ class WidgetChannel:
         # Answering honestly anyway beats a traceback if something does.
         return Delivery.failed("e_no_files_on_channel")
 
+    async def fetch_file(self, ref: str) -> bytes | None:
+        # Nothing can arrive, so nothing can be fetched. See `caps.files`.
+        return None
+
     async def unsend(self, address: str, ref: str) -> bool:
         # `delete_for_user` marks the row, and the page stops rendering it on
         # its next poll. There is no third party to inform.

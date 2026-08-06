@@ -95,20 +95,55 @@ def _signature_ok(body: bytes, timestamp: str, signature: str) -> bool:
     return hmac.compare_digest(expected, signature)
 
 
-def _speaker(event: dict) -> str | None:
-    """A name for whoever wrote this, when there is one to be had.
+async def _speaker(event: dict) -> str | None:
+    """A name for whoever wrote this.
 
-    Slack sends a user id; turning it into a name needs `users.info` and a
-    scope many installs will not have. The id is not a name, but it is stable
-    and it tells two people in a shared channel apart, which is the whole job.
+    Three sources, cheapest first. Slack sometimes inlines the profile, in
+    which case nothing needs asking. Otherwise the adapter looks the id up
+    and remembers it. If the app was never granted `users:read` the answer is
+    the raw id — which is not a name, but it still tells two people in a
+    shared channel apart, and that is the label's actual job.
     """
     profile = (event.get("user_profile") or {})
     for key in ("display_name", "real_name"):
         value = (profile.get(key) or "").strip()
         if value:
             return value[:80]
+
     user = (event.get("user") or "").strip()
-    return user[:80] or None
+    if not user:
+        return None
+    try:
+        from src.channels import get as get_channel
+
+        resolved = await get_channel(SLACK).display_name(user)
+    except (LookupError, AttributeError):
+        resolved = None
+    return (resolved or user)[:80]
+
+
+def _attachments(event: dict) -> list[intake_service.Attachment]:
+    """Files that came with the message.
+
+    `url_private` is stored rather than the file id, because that is what the
+    fetch needs later and Slack will not turn one into the other without
+    another call. It is not public despite being a URL — it needs the bot
+    token — so keeping it is no more exposure than keeping the id.
+    """
+    out = []
+    for f in (event.get("files") or []):
+        url = (f.get("url_private") or "").strip()
+        if not url:
+            # An external or hidden file: Slack shows a card, we get no bytes.
+            continue
+        out.append(intake_service.Attachment(
+            ref=url,
+            name=(f.get("name") or "file")[:512],
+            mime_type=(f.get("mimetype") or None),
+            size=f.get("size"),
+            kind="document",
+        ))
+    return out
 
 
 def _is_ours(event: dict) -> bool:
@@ -170,26 +205,38 @@ async def events(request: Request) -> Response:
 
     conversation = (event.get("channel") or "").strip()
     text = (event.get("text") or "").strip()
-    if not conversation or not text:
+    files = _attachments(event)
+    if not conversation or not (text or files):
         return JSONResponse({"ok": True})
 
-    speaker = _speaker(event)
+    speaker = await _speaker(event)
     # A direct message is one person, so they are the customer and repeating
     # their name on every line is noise. A shared channel is a room: the
     # customer is the room, and every line needs an author.
     is_dm = event.get("channel_type") == "im"
 
-    async with db_session() as session:
-        result = await intake_service.receive(session, intake_service.Inbound(
+    def inbound(body: str, attachment=None) -> intake_service.Inbound:
+        return intake_service.Inbound(
             channel=SLACK,
             # The conversation, not the person. A DM and a channel shared with
             # a client's whole team are the same thing to Slack, and making
             # them the same thing here is what lets one adapter serve both.
             address=conversation,
-            text=text,
+            text=body,
             display_name=speaker if is_dm else f"Slack {conversation}",
             speaker=None if is_dm else speaker,
-        ))
+            attachment=attachment,
+        )
+
+    async with db_session() as session:
+        # One Slack message can carry several files. Recorded as one row each,
+        # with the text on the first — which is how Slack itself shows them,
+        # and it keeps every attachment individually openable.
+        result = await intake_service.receive(
+            session, inbound(text, files[0] if files else None)
+        )
+        for extra in files[1:]:
+            await intake_service.receive(session, inbound("", extra))
         await session.commit()
 
     if result.rejected:

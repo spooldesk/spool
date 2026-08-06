@@ -415,7 +415,7 @@ def test_every_adapter_matches_the_protocol(adapter):
     the first time, and it looked like a bug in the feature rather than in the
     fake.
     """
-    for name in ("send_text", "send_file", "unsend", "typing"):
+    for name in ("send_text", "send_file", "fetch_file", "unsend", "typing"):
         expected = inspect.signature(getattr(Channel, name))
         actual = inspect.signature(getattr(adapter, name))
         assert list(actual.parameters) == list(expected.parameters), (

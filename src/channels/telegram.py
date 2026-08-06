@@ -122,6 +122,17 @@ class TelegramChannel:
         d = Delivery.sent(sent.message_id)
         return Delivery(ok=True, ref=d.ref, error_detail=file_ref)
 
+    async def fetch_file(self, ref: str) -> bytes | None:
+        """A file_id back into bytes. Two calls, because Telegram says so:
+        one to turn the id into a path, one to fetch the path."""
+        try:
+            described = await self._bot.get_file(ref)
+            buffer = await self._bot.download_file(described.file_path)
+        except Exception as e:  # noqa: BLE001 — the caller cannot act on which
+            logger.warning(f"Could not fetch Telegram file {ref}: {e}")
+            return None
+        return buffer.read() if hasattr(buffer, "read") else buffer
+
     async def unsend(self, address: str, ref: str) -> bool:
         try:
             await self._bot.delete_message(

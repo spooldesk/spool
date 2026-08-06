@@ -142,6 +142,20 @@ class Channel(Protocol):
         self, address: str, *, filename: str, content: bytes, caption: str | None = None
     ) -> Delivery: ...
 
+    async def fetch_file(self, ref: str) -> bytes | None:
+        """The bytes behind an attachment a customer sent us, or None.
+
+        Attachments are stored as a reference, not as bytes: a Telegram
+        file_id, a Slack private URL. Getting them back is channel work —
+        Telegram wants a two-step Bot API call, Slack wants an HTTP GET with
+        a bearer token — and the dashboard should not know which.
+
+        None rather than an exception, because the caller's honest answer to
+        a failed fetch is the same either way: this attachment cannot be
+        shown right now.
+        """
+        ...
+
     async def unsend(self, address: str, ref: str) -> bool:
         """Withdraw a message. Returns False when it could not be withdrawn —
         including when this channel never could, so callers need not check

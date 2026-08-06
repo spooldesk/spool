@@ -162,7 +162,9 @@ right up until somebody forged an event at it.
 
 1. Create an app at <https://api.slack.com/apps> → **From scratch**.
 2. **OAuth & Permissions** → bot token scopes:
-   `chat:write`, `im:history`, `channels:history`, `groups:history`.
+   `chat:write`, `im:history`, `channels:history`, `groups:history`,
+   and — for attachments and names — `files:write`, `files:read`,
+   `users:read`.
 3. Install it to the workspace and copy the bot token (`xoxb-…`).
 4. **Basic Information** → copy the **Signing Secret**.
 5. Put both in the environment and restart.
@@ -179,9 +181,17 @@ host.
 
 **What arrives where.** A direct message is one person, so they become the
 customer. A shared channel is a room: the room is the customer, one ticket
-covers the conversation, and each message carries who wrote it. Attachments
-are not carried in either direction yet, and the operator's reply box says so
-rather than failing after the click.
+covers the conversation, and each message carries who wrote it. Files travel
+both ways: what a client attaches opens from the ticket page, and what an
+operator attaches is uploaded to the conversation.
+
+**Three scopes are optional in practice.** Without `files:write` the app
+cannot send attachments — the first refusal is enough for the instance to
+stop offering the button, rather than failing again for every operator in
+turn. Without `files:read` a client's attachment cannot be fetched back for
+the ticket page. Without `users:read` each message is labelled with a Slack
+user id instead of a name: not pretty, but it still tells two people in a
+shared channel apart, which is what the label is for.
 
 **Credentials stay out of the dashboard on purpose.** The Settings page shows
 whether Slack is connected, never what its secrets are — a signing secret on
