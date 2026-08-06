@@ -145,8 +145,47 @@ has no IP allowlist of its own.
 | `DASH_SECRET_KEY` | no | Signs session cookies; generated and stored in the database if unset |
 | `DASH_COOKIE_SECURE` | no | `true` when serving over HTTPS |
 | `GEMINI_API_KEY` | no | Turns the AI suggestions on |
+| `SLACK_BOT_TOKEN` | no | Slack channel — needs `SLACK_SIGNING_SECRET` too |
+| `SLACK_SIGNING_SECRET` | no | Proves an incoming event really came from Slack |
 
 The full list with comments is in [`.env.example`](.env.example).
+
+---
+
+## Slack
+
+Optional. Lets a client write to you in Slack — a direct message, or a
+channel shared with their whole team — and have it arrive as an ordinary
+ticket. Off until both variables above are set, because a token without a
+signing secret can send but cannot safely receive: the instance would work
+right up until somebody forged an event at it.
+
+1. Create an app at <https://api.slack.com/apps> → **From scratch**.
+2. **OAuth & Permissions** → bot token scopes:
+   `chat:write`, `im:history`, `channels:history`, `groups:history`.
+3. Install it to the workspace and copy the bot token (`xoxb-…`).
+4. **Basic Information** → copy the **Signing Secret**.
+5. Put both in the environment and restart.
+6. **Event Subscriptions** → request URL `https://your-host/slack/events`.
+   Slack verifies it immediately, so the instance has to be running and
+   reachable first. Then subscribe the bot to `message.im` and
+   `message.channels`.
+7. Invite the app into whichever channels it should watch.
+
+The request URL is also shown on the Settings page once the credentials are
+in place, filled in with the host that served the page — that is the one to
+copy, because the commonest setup failure is pointing Slack at the wrong
+host.
+
+**What arrives where.** A direct message is one person, so they become the
+customer. A shared channel is a room: the room is the customer, one ticket
+covers the conversation, and each message carries who wrote it. Attachments
+are not carried in either direction yet, and the operator's reply box says so
+rather than failing after the click.
+
+**Credentials stay out of the dashboard on purpose.** The Settings page shows
+whether Slack is connected, never what its secrets are — a signing secret on
+a screen is a signing secret in a screenshot.
 
 ---
 
@@ -157,6 +196,13 @@ The full list with comments is in [`.env.example`](.env.example).
   removes it on startup by itself.
 - **Tickets do not reach the group** → usually a wrong `ADMIN_CHAT_ID` (group
   ids are negative), or the bot is not an administrator of that group.
+- **Slack says the request URL is invalid** → the instance must be
+  running and reachable from the internet when you paste it; Slack
+  verifies it on the spot. Check the host in the URL matches the one on
+  the Settings page.
+- **Slack messages do not become tickets** → the app has to be *in* the
+  channel, and subscribed to `message.channels` (or `message.im` for
+  direct messages). Its own messages are ignored by design.
 - **Dashboard returns 500 at startup** → most often a damaged or very old
   `support.db`. Back it up and recreate, or read the dashboard log first.
 - **`No time zone found`** → `tzdata` is missing. Only happens on a manual

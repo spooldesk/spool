@@ -66,6 +66,12 @@ class Inbound:
     language: str | None = None
     category: str | None = None
     attachment: Attachment | None = None
+    #: Who wrote this, when that is not the same as whose conversation it is.
+    #: A Slack channel shared with a client's team is one conversation with
+    #: several people in it; without this the transcript reads as one person
+    #: contradicting themselves. Left empty for one-to-one channels, where the
+    #: speaker and the customer are the same and repeating it is noise.
+    speaker: str | None = None
 
 
 @dataclass(frozen=True)
@@ -153,6 +159,7 @@ async def receive(session: AsyncSession, inbound: Inbound) -> IntakeResult:
         # to users on a number, and a widget token would not match.
         sender_id=user.tg_id,
         text=text,
+        sender_label=inbound.speaker,
         file_id=att.ref if att else None,
         file_type=att.kind if att else None,
         file_name=att.name if att else None,

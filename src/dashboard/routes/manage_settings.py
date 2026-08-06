@@ -262,6 +262,9 @@ async def close_reason_delete(reason_id: int):
 # ==================== Settings ====================
 
 
+from src.channels import slack as slack_channel  # noqa: E402
+
+
 @router.get("/manage/settings", response_class=HTMLResponse)
 async def settings_page(request: Request, sent: str | None = None):
     templates = request.app.state.templates
@@ -302,6 +305,10 @@ async def settings_page(request: Request, sent: str | None = None):
         "widget_enabled": await settings_service.get_widget_enabled(),
         "widget_origins": "\n".join(await settings_service.get_widget_origins()),
         "widget_greeting": await settings_service.get_widget_greeting(),
+        # Read from the environment, never written from here: this page shows
+        # whether Slack is wired up, not what its secrets are.
+        "slack_ready": slack_channel.is_configured(),
+        "slack_url": f'{str(request.base_url).rstrip("/")}/slack/events',
         "widget_snippet": (
             f'<script src="{str(request.base_url).rstrip("/")}/widget/embed.js" async></script>'
         ),

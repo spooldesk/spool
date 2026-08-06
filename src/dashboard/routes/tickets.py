@@ -474,6 +474,9 @@ async def tickets_export_xlsx(
     )
 
 
+from src.channels import caps as _channel_caps  # noqa: E402
+
+
 @router.get("/tickets/{ticket_id}", response_class=HTMLResponse)
 async def ticket_detail_page(request: Request, ticket_id: int,
                              sent: str | None = None, err: str | None = None,
@@ -528,6 +531,10 @@ async def ticket_detail_page(request: Request, ticket_id: int,
             "queue_size": await queries.queue_size(
                 _current_operator_id(request), queue if queue in QUEUE_SOURCES else "open"),
             "max_upload_files": _MAX_UPLOAD_FILES,
+        # Whether the composer may offer an attachment at all. Slack and
+        # the widget cannot carry one, and a button that always fails is
+        # worse than no button.
+        "channel_takes_files": _channel_caps(detail.get("channel")).files,
             "max_upload_bytes": _MAX_UPLOAD_BYTES,
         },
     )

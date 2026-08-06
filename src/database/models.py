@@ -161,6 +161,14 @@ class Message(Base):
     # for AI answers that go straight to a user (see src/ai/deflect.py).
     is_internal: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     sender_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    # Who actually said it, when that differs from whose ticket it is.
+    #
+    # A conversation is normally one person, and this stays empty. But a Slack
+    # channel shared with a client's team is one conversation with five people
+    # in it, and without a per-message author the transcript reads as one
+    # person contradicting themselves. Not Slack-specific: any group
+    # conversation has the same problem.
+    sender_label: Mapped[str | None] = mapped_column(String(80), nullable=True)
     text: Mapped[str] = mapped_column(Text, nullable=False, default="")
     file_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     file_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -170,9 +178,17 @@ class Message(Base):
     template_id: Mapped[int | None] = mapped_column(
         ForeignKey("reply_templates.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    # Message id in the USER's chat, for messages we sent them. Without it we
-    # cannot ask Telegram to unsend anything — deleteMessage addresses a
-    # message by (chat, id), and neither is recoverable after the fact.
+    # The channel's own id for a message we sent, and the only thing that
+    # makes an unsend possible later: most channels address a message by
+    # (conversation, id) and neither part survives the call.
+    #
+    # A string, because Telegram's is a number, Slack's is a timestamp and
+    # email's would be a Message-ID header. `tg_message_id` below is what this
+    # replaced; it is backfilled from and no longer read.
+    channel_ref: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Superseded by `channel_ref`. Kept so an instance can be rolled back to
+    # the previous release without losing the ability to unsend; safe to drop
+    # once nobody is doing that.
     tg_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     # Set when an operator unsends. The row stays: a support transcript that
     # quietly loses messages is worse than one that says something was removed,

@@ -38,6 +38,7 @@ from src.dashboard.routes import manage_settings as manage_settings_routes
 from src.dashboard.routes import manage_templates as manage_templates_routes
 from src.dashboard.routes import overview as overview_routes
 from src.dashboard.routes import reports as reports_routes
+from src.dashboard.routes import slack as slack_routes
 from src.dashboard.routes import templates_page as templates_routes
 from src.dashboard.routes import tickets as tickets_routes
 from src.dashboard.routes import users as users_routes
@@ -287,6 +288,11 @@ app.include_router(admin_users_routes.router, dependencies=_OWNER_ONLY)
 # another site. See src/dashboard/routes/widget.py.
 app.include_router(widget_routes.router)
 
+# Slack's Events API. Public like the widget's, and unauthenticated in the
+# same sense, but protected differently: exactly one caller is legitimate and
+# it proves that with a signature over the raw body. See routes/slack.py.
+app.include_router(slack_routes.router)
+
 
 # Root now lands on the management side (tickets), not analytics
 @app.get("/", include_in_schema=False)
@@ -325,6 +331,13 @@ async def _startup() -> None:
         ensure_channel(TelegramChannel(get_bot()))
         from src.channels.widget import WidgetChannel
         ensure_channel(WidgetChannel())
+        # Registered only when it has credentials: an adapter that
+        # cannot authenticate would answer `get("slack")` and then fail
+        # every send, which reads like an outage rather than a setting
+        # nobody filled in.
+        from src.channels.slack import SlackChannel, is_configured
+        if is_configured():
+            ensure_channel(SlackChannel())
     except Exception as e:
         # A missing token should not stop the dashboard from serving pages;
         # the reply box will report the failure when someone actually sends.

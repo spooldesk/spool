@@ -328,6 +328,34 @@ def _migrate_to_new_schema(sync_connection) -> None:
             text("ALTER TABLE tickets ADD COLUMN csat_rated_at DATETIME")
         )
 
+    # The channel's id for a message we sent. Backfilled from the Telegram-only
+    # column it replaces, so unsending keeps working for everything already in
+    # the transcript.
+    _msg_cols = {col["name"] for col in inspector.get_columns("messages")} \
+        if "messages" in tables else set()
+    if _msg_cols and "channel_ref" not in _msg_cols:
+        try:
+            sync_connection.execute(
+                text("ALTER TABLE messages ADD COLUMN channel_ref VARCHAR(64)")
+            )
+            if "tg_message_id" in _msg_cols:
+                sync_connection.execute(text(
+                    "UPDATE messages SET channel_ref = CAST(tg_message_id AS TEXT) "
+                    "WHERE tg_message_id IS NOT NULL AND channel_ref IS NULL"
+                ))
+        except Exception:
+            pass
+
+    # Who spoke, in conversations that have more than one person in them.
+    message_columns = {col["name"] for col in inspector.get_columns("messages")}         if "messages" in tables else set()
+    if message_columns and "sender_label" not in message_columns:
+        try:
+            sync_connection.execute(
+                text("ALTER TABLE messages ADD COLUMN sender_label VARCHAR(80)")
+            )
+        except Exception:
+            pass
+
     # SLA policy bookkeeping — see src/services/sla_service.py
     if "sla_breached_at" not in ticket_columns:
         sync_connection.execute(

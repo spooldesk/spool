@@ -889,6 +889,7 @@ async def messages_after(ticket_id: int, after_id: int = 0) -> dict | None:
             {
                 "id": m.id,
                 "sender_type": m.sender_type,
+                "sender_label": m.sender_label,
                 "text": _dash_t("msg_masked_credentials") if sensitive else (m.text or ""),
                 "is_template": m.template_id is not None,
                 "is_internal": bool(m.is_internal),
@@ -977,6 +978,10 @@ async def ticket_detail(ticket_id: int) -> dict | None:
             "id": m.id,
             "sender_type": m.sender_type,
             "sender_id": m.sender_id,
+            # Set only when the conversation has more than one person in it —
+            # a Slack channel shared with a client's team. Empty everywhere
+            # else, where naming the sender on every line is noise.
+            "sender_label": m.sender_label,
             "text": text,
             "file_name": m.file_name,
             "file_type": m.file_type,

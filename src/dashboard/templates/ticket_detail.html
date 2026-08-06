@@ -101,7 +101,11 @@
                 {% elif m.sender_type == 'admin' %}
                   <i class="ti ti-tool" style="font-size:11px" aria-hidden="true"></i> admin
                 {% else %}
-                  <i class="ti ti-user" style="font-size:11px" aria-hidden="true"></i> {{ t.user_label }}
+                  {# In a shared conversation the customer is the room, and
+                     each line has its own author. Elsewhere they are the same
+                     person and the label is empty. #}
+                  <i class="ti ti-user" style="font-size:11px" aria-hidden="true"></i>
+                  {{ m.sender_label or t.user_label }}
                 {% endif %}
               </span>
               {% if m.is_internal %}
@@ -199,11 +203,13 @@
                   class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800">
             <i class="ti ti-robot" style="font-size:13px" aria-hidden="true"></i> {{ T.ask_ai }}
           </button>
-          <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 cursor-pointer">
-            <i class="ti ti-paperclip" style="font-size:13px" aria-hidden="true"></i> {{ T.attach_file }}
-            <input type="file" name="attachments" multiple class="hidden" id="file-input"
-                   data-max-files="{{ max_upload_files }}" data-max-bytes="{{ max_upload_bytes }}">
-          </label>
+          {% if channel_takes_files %}
+            <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 cursor-pointer">
+              <i class="ti ti-paperclip" style="font-size:13px" aria-hidden="true"></i> {{ T.attach_file }}
+              <input type="file" name="attachments" multiple class="hidden" id="file-input"
+                     data-max-files="{{ max_upload_files }}" data-max-bytes="{{ max_upload_bytes }}">
+            </label>
+          {% endif %}
           <span id="ai-status" class="text-zinc-500"></span>
           <span class="ml-auto text-zinc-600 hidden sm:inline">{{ T.composer_hint }}</span>
 
@@ -726,7 +732,8 @@
       ? '<i class="ti ti-notes text-amber-400" style="font-size:11px" aria-hidden="true"></i> <span class="text-amber-400">{{ T.internal_note }}</span>'
       : (m.sender_type === 'admin'
           ? '<i class="ti ti-tool" style="font-size:11px" aria-hidden="true"></i> admin'
-          : '<i class="ti ti-user" style="font-size:11px" aria-hidden="true"></i> ' + userLabel);
+          : '<i class="ti ti-user" style="font-size:11px" aria-hidden="true"></i> ' +
+            escapeHtml(m.sender_label || userLabel));
     const who = `<span class="inline-flex items-center gap-1">${whoIcon}</span>`;
     const noteBadge = m.is_internal
       ? ' <span class="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400/90 text-[9px] normal-case tracking-normal">{{ T.note_badge }}</span>'

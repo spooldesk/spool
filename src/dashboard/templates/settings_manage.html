@@ -291,5 +291,38 @@
     {% endif %}
   </div>
 
+  <!-- Slack -->
+  <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-5 mb-6">
+    <div class="flex items-center gap-2 mb-1">
+      <div class="text-sm font-medium">{{ T.sl_title }}</div>
+      {% if slack_ready %}
+        <span class="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/15 text-emerald-400">
+          {{ T.sl_on }}
+        </span>
+      {% else %}
+        <span class="px-1.5 py-0.5 rounded text-[10px] bg-zinc-800 text-zinc-400">
+          {{ T.sl_off }}
+        </span>
+      {% endif %}
+    </div>
+    <p class="text-xs text-zinc-500 mb-3">{{ T.sl_intro }}</p>
+
+    {% if slack_ready %}
+      <div class="text-xs text-zinc-500 mb-1">{{ T.sl_url }}</div>
+      <code class="block px-3 py-2 rounded-lg bg-black border border-zinc-800 text-xs
+                   text-zinc-300 font-mono overflow-x-auto whitespace-nowrap">{{ slack_url }}</code>
+      <p class="text-xs text-zinc-500 mt-1">{{ T.sl_url_hint }}</p>
+
+      <div class="text-xs text-zinc-500 mt-3 mb-1">{{ T.sl_scopes }}</div>
+      <code class="block px-3 py-2 rounded-lg bg-black border border-zinc-800 text-xs
+                   text-zinc-300 font-mono overflow-x-auto whitespace-nowrap"
+            >chat:write · im:history · channels:history · groups:history</code>
+
+      <p class="text-xs text-zinc-500 mt-3">{{ T.sl_shared }}</p>
+    {% else %}
+      <p class="text-xs text-zinc-500">{{ T.sl_off_hint }}</p>
+    {% endif %}
+  </div>
+
 </div>
 {% endblock %}

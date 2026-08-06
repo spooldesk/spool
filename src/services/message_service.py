@@ -73,7 +73,9 @@ def can_delete(
 
     # Elsewhere we can only address what we wrote down at the time, and only
     # until the platform stops accepting the request.
-    if not get("tg_message_id"):
+    # The fallback covers a row written before the backfill, which is a
+    # partial upgrade rather than a state anything should be left in.
+    if not (get("channel_ref") or get("tg_message_id")):
         return False
     created = get("created_at")
     if not created:
@@ -111,7 +113,10 @@ async def delete_for_user(bot: Bot, message_id: int) -> DeleteResult:
             return DeleteResult(False, "e_delete_unsupported")
         if not can_delete(row, channel=channel):
             return DeleteResult(False, "e_delete_window_passed")
-        ref = str(row.id if caps(channel).unsend_by_row else row.tg_message_id)
+        ref = str(
+            row.id if caps(channel).unsend_by_row
+            else (row.channel_ref or row.tg_message_id)
+        )
 
     # The adapter decides what "could not be withdrawn" means on its own
     # medium and reports it the same way regardless.

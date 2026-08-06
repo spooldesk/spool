@@ -192,6 +192,13 @@ async def main() -> None:
         register_channel(TelegramChannel(bot))
         from src.channels.widget import WidgetChannel
         register_channel(WidgetChannel())
+        # Registered only when it has credentials: an adapter that
+        # cannot authenticate would answer `get("slack")` and then fail
+        # every send, which reads like an outage rather than a setting
+        # nobody filled in.
+        from src.channels.slack import SlackChannel, is_configured
+        if is_configured():
+            register_channel(SlackChannel())
 
         dp = Dispatcher()
         

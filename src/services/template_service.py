@@ -62,21 +62,6 @@ def _delivery_error(delivery) -> str:
         return _t(key, tg=detail)
     return f"{_t(key)}{f': {detail}' if detail else ''}"
 
-def _ref_as_int(ref: str | None) -> int | None:
-    """The channel's id for what we sent, if it fits the column.
-
-    `tg_message_id` is a BigInteger from the days when only Telegram existed.
-    Channels that address messages by something else — a UUID, a Message-ID
-    header — store nothing here and simply cannot unsend, which their
-    capabilities already declare.
-    """
-    if ref is None:
-        return None
-    try:
-        return int(ref)
-    except (TypeError, ValueError):
-        return None
-
 
 
 # ==================== Public types ====================
@@ -89,7 +74,6 @@ class ApplyResult:
     success: bool
     error: Optional[str] = None
     rendered_text: Optional[str] = None
-    sent_user_message_id: Optional[int] = None
 
 
 class TemplateError(Exception):
@@ -374,7 +358,7 @@ async def apply_text(
             sender_id=admin_tg_id,
             text=text,
             # Recorded so an operator can unsend this later.
-            tg_message_id=_ref_as_int(delivery.ref),
+            channel_ref=delivery.ref,
         )
     )
     if ticket.stage == "new":
@@ -390,7 +374,6 @@ async def apply_text(
     return ApplyResult(
         success=True,
         rendered_text=text,
-        sent_user_message_id=_ref_as_int(delivery.ref),
     )
 
 
@@ -473,7 +456,7 @@ async def apply(
             sender_id=admin_tg_id,
             text=rendered,
             template_id=template.id,
-            tg_message_id=_ref_as_int(delivery.ref),
+            channel_ref=delivery.ref,
         )
     )
     template.usage_count += 1
@@ -488,5 +471,4 @@ async def apply(
     return ApplyResult(
         success=True,
         rendered_text=rendered,
-        sent_user_message_id=_ref_as_int(delivery.ref),
     )
