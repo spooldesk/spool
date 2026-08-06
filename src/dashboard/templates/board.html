@@ -39,6 +39,8 @@
       </div>
     </div>
 
+    {% with page = "/board" %}{% include "_saved_views.html" %}{% endwith %}
+
     <form method="get" action="/board"
           class="mt-4 flex flex-wrap items-end gap-3 bg-zinc-950 border border-zinc-900 rounded-xl p-3">
       <div class="flex-1 min-w-[200px]">

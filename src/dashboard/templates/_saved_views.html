@@ -1,0 +1,46 @@
+{# Named filter sets, shared by the list and the board.
+
+   Setting up "my overdue, unassigned, this team" takes four controls and gets
+   done twenty times a week. Naming it once is the whole feature.
+
+   Expects: saved_views, current_query, and `page` as the path to save under. #}
+<div class="flex flex-wrap items-center gap-2 mb-3">
+  {% for v in saved_views %}
+    <span class="group inline-flex items-center rounded-lg border text-xs
+                 {% if (v.query or '') == (current_query or '') %}
+                   bg-brand-600/20 border-brand-500/40 text-brand-300
+                 {% else %}
+                   bg-zinc-900 border-zinc-800 text-zinc-300 hover:border-zinc-700
+                 {% endif %}">
+      <a href="{{ page }}{% if v.query %}?{{ v.query }}{% endif %}" class="px-2.5 py-1">{{ v.name }}</a>
+      {# Delete sits inside the chip and appears on hover: it is destructive
+         and rare, so it should not compete with the thing you came to click. #}
+      <form method="post" action="/views/{{ v.id }}/delete"
+            class="opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition">
+        <input type="hidden" name="path" value="{{ page }}">
+        <button class="px-1.5 py-1 text-zinc-500 hover:text-red-400 rounded-r-lg"
+                title="{{ T.sv_delete }}" aria-label="{{ T.sv_delete }} {{ v.name }}">
+          <i class="ti ti-x" style="font-size:11px" aria-hidden="true"></i>
+        </button>
+      </form>
+    </span>
+  {% endfor %}
+
+  {# Offered only when there is something to save. An empty filter set named
+     "everything" is a chip that does nothing. #}
+  {% if current_query %}
+    <form method="post" action="/views/save" class="inline-flex items-center gap-1">
+      <input type="hidden" name="path" value="{{ page }}">
+      <input type="hidden" name="query" value="{{ current_query }}">
+      <input name="name" required maxlength="60" placeholder="{{ T.sv_name_placeholder }}"
+             class="w-32 px-2 py-1 rounded-lg bg-black border border-zinc-800 text-xs
+                    text-zinc-100 placeholder:text-zinc-600 focus:border-brand-500 focus:outline-none">
+      <button class="px-2 py-1 rounded-lg border border-zinc-800 text-zinc-400
+                     hover:text-zinc-100 hover:bg-zinc-900 text-xs"
+              title="{{ T.sv_save_hint }}">
+        <i class="ti ti-bookmark" style="font-size:12px" aria-hidden="true"></i>
+        {{ T.sv_save }}
+      </button>
+    </form>
+  {% endif %}
+</div>

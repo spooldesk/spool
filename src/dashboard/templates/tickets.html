@@ -20,6 +20,8 @@
   </a>
 </div>
 
+{% with page = "/tickets" %}{% include "_saved_views.html" %}{% endwith %}
+
 <!-- Filters -->
 <form method="get" action="/tickets"
       class="bg-zinc-950 border border-zinc-900 rounded-xl p-4 mb-4

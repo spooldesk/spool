@@ -6,7 +6,7 @@ import io
 import logging
 from datetime import datetime
 from typing import Optional
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
@@ -178,6 +178,8 @@ async def tickets_list(
             "prev_url": prev_url,
             "next_url": next_url,
             "export_url": export_url,
+            "saved_views": await _views_for(request, "/tickets"),
+            "current_query": request.url.query,
             "fmt_seconds": _fmt_seconds,
         },
     )
@@ -233,6 +235,8 @@ async def board_page(
             "stage_labels": {s: tr(f"stage_{s}") for s in STAGES},
             # Drives the take-next button and its counter.
             "queue_size": await queries.queue_size(me.id if me else None, "open"),
+            "saved_views": await _views_for(request, "/board"),
+            "current_query": request.url.query,
             "teams": teams,
             "operators": operators,
             "filters": {
@@ -823,6 +827,54 @@ def _current_operator_id(request: Request) -> int | None:
     from src.dashboard.auth import current_user
     me = current_user(request)
     return me.id if me is not None else None
+
+
+# ==================== Saved views ====================
+
+
+@router.post("/views/save")
+async def saved_view_create(request: Request, name: str = Form(""),
+                            path: str = Form("/tickets"), query: str = Form("")):
+    """Name the filters currently applied."""
+    from src.services import saved_view_service
+
+    operator_id = _current_operator_id(request)
+    if operator_id is None:
+        return RedirectResponse(path, status_code=303)
+
+    view = await saved_view_service.save(
+        operator_id, name=name, path=path, query=query,
+    )
+    target = path if path in saved_view_service.ALLOWED_PATHS else "/tickets"
+    if view is None:
+        return RedirectResponse(f"{target}?err={quote(tr('sv_not_saved'))}",
+                                status_code=303)
+    return RedirectResponse(f"{target}?{view.query}" if view.query else target,
+                            status_code=303)
+
+
+@router.post("/views/{view_id}/delete")
+async def saved_view_delete(request: Request, view_id: int,
+                            path: str = Form("/tickets")):
+    from src.services import saved_view_service
+
+    operator_id = _current_operator_id(request)
+    if operator_id is not None:
+        await saved_view_service.remove(operator_id, view_id)
+    return RedirectResponse(
+        path if path in saved_view_service.ALLOWED_PATHS else "/tickets",
+        status_code=303,
+    )
+
+
+async def _views_for(request: Request, path: str) -> list:
+    """This operator's saved views for one page, or nothing when signed out."""
+    from src.services import saved_view_service
+
+    operator_id = _current_operator_id(request)
+    if operator_id is None:
+        return []
+    return await saved_view_service.list_for(operator_id, path)
 
 
 # ==================== The work queue ====================

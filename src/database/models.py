@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import List
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, LargeBinary, String, Text, JSON
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, LargeBinary, String, Text, JSON, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -315,3 +315,34 @@ class ReplyTemplate(Base):
     )
 
     team: Mapped["Team"] = relationship(back_populates="templates")
+
+
+class SavedView(Base):
+    """A filter set an operator named and kept.
+
+    Per operator, not per instance: "my overdue" means something different to
+    each person, and a shared list would fill up with everyone else's idea of
+    what matters. Sharing can come later if anyone asks; starting shared and
+    retreating to private is the harder direction.
+    """
+
+    __tablename__ = "saved_views"
+    __table_args__ = (
+        UniqueConstraint("admin_id", "name", name="uq_saved_view_owner_name"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    admin_id: Mapped[int] = mapped_column(
+        ForeignKey("admin_users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(60), nullable=False)
+    # Which page it belongs to — the same filters mean different things on the
+    # list and on the board, so a view is offered only where it applies.
+    path: Mapped[str] = mapped_column(String(32), nullable=False)
+    # The query string as submitted, without the leading "?". Stored verbatim
+    # rather than parsed: the filters change over releases, and a view that
+    # survives by being opaque outlives one that has to be migrated.
+    query: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, nullable=False
+    )
