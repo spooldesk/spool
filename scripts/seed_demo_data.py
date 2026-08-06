@@ -509,13 +509,58 @@ async def main() -> None:
                     created_at=created + timedelta(minutes=random.randint(1, 4)),
                 ))
 
+        # A few conversations that came from the website widget rather than
+        # Telegram. Without them the demo quietly says this is a Telegram
+        # product: every ticket carries the same channel badge, and the one
+        # thing the channel layer bought is invisible.
+        from src.channels.identity import create_customer
+        from src.channels.widget import NAME as WIDGET_CHANNEL, address_for
+
+        WIDGET_VISITORS = [
+            ("Visitor from /pricing", "Billing", [
+                "Does the team plan bill per operator or per mailbox?",
+                "And can we pay yearly?",
+            ]),
+            ("Visitor from /docs", "Access", [
+                "The API key I generated yesterday returns 401 on every call.",
+            ]),
+            ("Visitor from /checkout", "Other", [
+                "Checkout hangs on the payment step \u2014 card works elsewhere.",
+                "Chrome, latest. It says 'gateway timeout' after about 30 seconds.",
+            ]),
+        ]
+
+        widget_tickets = 0
+        for name, category, lines in WIDGET_VISITORS:
+            visitor = await create_customer(
+                session, channel=WIDGET_CHANNEL,
+                address=address_for(f"demo-session-{name}"),
+                username=name, language="en",
+            )
+            opened = NOW - timedelta(hours=random.randint(1, 30))
+            ticket = Ticket(
+                user_id=visitor.id, team_id=None, category=category,
+                status="active", stage=random.choice(["new", "in_progress"]),
+                ticket_code="", telegram_id=visitor.tg_id, created_at=opened,
+            )
+            session.add(ticket)
+            await session.flush()
+            ticket.ticket_code = f"#{ticket.id}"
+            for i, line in enumerate(lines):
+                session.add(Message(
+                    ticket_id=ticket.id, sender_type="user", sender_id=visitor.tg_id,
+                    text=line, created_at=opened + timedelta(minutes=i * 3),
+                ))
+            widget_tickets += 1
+        await session.flush()
+
         for row in ai_rows:
             session.add(row)
 
     print(f"Demo DB ready: {DEMO_DB_PATH}")
     print(f"  teams:     {len(TEAMS) + 1}")
     print(f"  users:     {len(FAKE_USERS)}")
-    print(f"  tickets:   {n_tickets}")
+    print(f"  tickets:   {n_tickets} (+{widget_tickets} from the widget)")
     print(f"  templates: {len(TEMPLATES)}")
     print(f"  ai_calls:  {len(ai_rows)}")
 

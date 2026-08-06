@@ -214,5 +214,82 @@
     </form>
   </div>
 
+  <!-- Website widget -->
+  <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-5 mb-6">
+    <div class="text-sm font-medium mb-1">{{ T.wgs_title }}</div>
+    <p class="text-xs text-zinc-500 mb-3">{{ T.wgs_intro }}</p>
+
+    {# One form on purpose. Enabling the public endpoints without having
+       thought about who may embed them is the mistake worth making hard, and
+       two separate cards is how that mistake gets made. #}
+    <form method="post" action="/manage/settings/widget" class="space-y-3">
+      <label class="flex items-center gap-2 text-sm cursor-pointer">
+        <input type="checkbox" name="widget_enabled" value="1" {% if widget_enabled %}checked{% endif %}
+               class="rounded bg-black border-zinc-700 text-brand-600 focus:ring-brand-500">
+        <span>{{ T.wgs_enabled }}</span>
+      </label>
+      <p class="text-xs text-zinc-500 -mt-1">{{ T.wgs_enabled_hint }}</p>
+
+      <div>
+        <div class="text-xs text-zinc-500 mb-1">{{ T.wgs_origins }}</div>
+        <textarea name="widget_origins" rows="3" placeholder="https://example.com"
+                  class="w-full px-3 py-2 rounded-lg bg-black border border-zinc-800 text-sm font-mono
+                         focus:border-brand-500 focus:outline-none text-zinc-100
+                         placeholder:text-zinc-600">{{ widget_origins }}</textarea>
+        <p class="text-xs text-zinc-500 mt-1">{{ T.wgs_origins_hint }}</p>
+      </div>
+
+      <div>
+        <div class="text-xs text-zinc-500 mb-1">{{ T.wgs_greeting }}</div>
+        <input name="widget_greeting" maxlength="300" value="{{ widget_greeting }}"
+               class="w-full px-3 py-2 rounded-lg bg-black border border-zinc-800 text-sm
+                      focus:border-brand-500 focus:outline-none text-zinc-100 placeholder:text-zinc-600">
+        <p class="text-xs text-zinc-500 mt-1">{{ T.wgs_greeting_hint }}</p>
+      </div>
+
+      <button class="px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium">{{ T.save }}</button>
+    </form>
+
+    {# Shown only once it is on: a snippet that would 404 is worse than no
+       snippet, because it gets pasted and then quietly blamed on the site. #}
+    {% if widget_enabled %}
+      <div class="mt-5 pt-4 border-t border-zinc-900">
+        <div class="text-xs text-zinc-500 mb-1">{{ T.wgs_snippet }}</div>
+        <div class="flex items-stretch gap-2">
+          <code id="wgSnippet"
+                class="flex-1 px-3 py-2 rounded-lg bg-black border border-zinc-800 text-xs
+                       text-zinc-300 font-mono overflow-x-auto whitespace-nowrap">{{ widget_snippet }}</code>
+          <button type="button" id="wgCopy"
+                  class="shrink-0 px-3 rounded-lg border border-zinc-800 text-zinc-400 text-xs
+                         hover:text-zinc-100 hover:bg-zinc-900">{{ T.wgs_copy }}</button>
+        </div>
+        <p class="text-xs text-zinc-500 mt-1">{{ T.wgs_snippet_hint }}</p>
+        <a href="/widget/frame" target="_blank" rel="noopener"
+           class="inline-flex items-center gap-1 mt-3 text-xs text-brand-400 hover:text-brand-300">
+          <i class="ti ti-external-link" style="font-size:12px" aria-hidden="true"></i>
+          {{ T.wgs_preview }}
+        </a>
+      </div>
+      <script>
+        (function () {
+          var btn = document.getElementById("wgCopy");
+          if (!btn) return;
+          btn.addEventListener("click", function () {
+            var text = document.getElementById("wgSnippet").textContent;
+            // Clipboard access needs a secure context, which a self-hosted
+            // instance on plain http will not have. Say nothing rather than
+            // throw; the text is selectable either way.
+            if (!navigator.clipboard) return;
+            navigator.clipboard.writeText(text).then(function () {
+              var was = btn.textContent;
+              btn.textContent = {{ T.wgs_copied|tojson }};
+              setTimeout(function () { btn.textContent = was; }, 1500);
+            });
+          });
+        })();
+      </script>
+    {% endif %}
+  </div>
+
 </div>
 {% endblock %}

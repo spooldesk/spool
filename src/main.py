@@ -190,6 +190,8 @@ async def main() -> None:
         from src.channels import register as register_channel
         from src.channels.telegram import TelegramChannel
         register_channel(TelegramChannel(bot))
+        from src.channels.widget import WidgetChannel
+        register_channel(WidgetChannel())
 
         dp = Dispatcher()
         

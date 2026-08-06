@@ -41,6 +41,7 @@ from src.dashboard.routes import reports as reports_routes
 from src.dashboard.routes import templates_page as templates_routes
 from src.dashboard.routes import tickets as tickets_routes
 from src.dashboard.routes import users as users_routes
+from src.dashboard.routes import widget as widget_routes
 from src.utils.logger import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -279,6 +280,13 @@ app.include_router(manage_settings_routes.router, dependencies=_ADMIN_UP)
 app.include_router(manage_ai_routes.router, dependencies=_ADMIN_UP)
 app.include_router(admin_users_routes.router, dependencies=_OWNER_ONLY)
 
+# The only router with no auth and no CSRF dependency, which is the point of
+# it: these endpoints answer a stranger's browser on somebody else's website.
+# What stands in for a login is a bearer token in a header, and what stands in
+# for CSRF protection is the fact that a header cannot be forged by a form on
+# another site. See src/dashboard/routes/widget.py.
+app.include_router(widget_routes.router)
+
 
 # Root now lands on the management side (tickets), not analytics
 @app.get("/", include_in_schema=False)
@@ -315,6 +323,8 @@ async def _startup() -> None:
         from src.channels.telegram import TelegramChannel
         from src.dashboard.bot_client import get_bot
         ensure_channel(TelegramChannel(get_bot()))
+        from src.channels.widget import WidgetChannel
+        ensure_channel(WidgetChannel())
     except Exception as e:
         # A missing token should not stop the dashboard from serving pages;
         # the reply box will report the failure when someone actually sends.

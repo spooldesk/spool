@@ -365,3 +365,50 @@ async def get_or_create_secret_key() -> str:
         await set_value(KEY_DASH_SECRET, val)
         logger.info("Generated and stored a new dashboard secret key")
     return val
+
+
+# ---- Website widget ----------------------------------------------------
+#
+# Off until someone turns it on. Everything else in this file configures
+# behaviour the instance already had; this one opens a door to the public
+# internet, and a door that appears by itself is not a door anyone chose.
+
+KEY_WIDGET_ENABLED = "widget_enabled"      # "1" = the embed endpoints answer
+KEY_WIDGET_ORIGINS = "widget_origins"      # newline/comma list of allowed sites
+KEY_WIDGET_GREETING = "widget_greeting"    # first line a visitor sees
+
+
+async def get_widget_enabled() -> bool:
+    return (await get_value(KEY_WIDGET_ENABLED, "0")) == "1"
+
+
+async def set_widget_enabled(enabled: bool, *, updated_by: int = 0) -> None:
+    await set_value(KEY_WIDGET_ENABLED, "1" if enabled else "0", updated_by=updated_by)
+
+
+async def get_widget_origins() -> list[str]:
+    """Sites allowed to embed the widget, for CORS.
+
+    This is a spam control, not a security boundary, and the difference is
+    worth being clear about: browsers enforce it, and anything that is not a
+    browser ignores it entirely. What actually protects the endpoints is the
+    rate limiting in the widget routes. An empty list means any site — which
+    is the right default for something that has to be pasted into a page and
+    just work, given that it is off until switched on.
+    """
+    raw = await get_value(KEY_WIDGET_ORIGINS, "")
+    parts = [p.strip().rstrip("/") for p in raw.replace(",", "\n").splitlines()]
+    return [p for p in parts if p]
+
+
+async def set_widget_origins(raw: str, *, updated_by: int = 0) -> None:
+    await set_value(KEY_WIDGET_ORIGINS, (raw or "").strip(), updated_by=updated_by)
+
+
+async def get_widget_greeting() -> str:
+    """The opening line, or empty to use the translated default."""
+    return (await get_value(KEY_WIDGET_GREETING, "")).strip()
+
+
+async def set_widget_greeting(text: str, *, updated_by: int = 0) -> None:
+    await set_value(KEY_WIDGET_GREETING, (text or "").strip()[:300], updated_by=updated_by)

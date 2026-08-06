@@ -38,6 +38,12 @@ class Capabilities:
 
     #: Messages we sent can be withdrawn from the customer's view.
     unsend: bool = False
+    #: The channel has no separate copy of a message: it renders the
+    #: transcript, so hiding the row hides the message. Such channels are
+    #: addressed by the row itself rather than by an id the platform handed
+    #: back, and they have no time limit — there is nothing sitting in
+    #: somebody's chat history to expire.
+    unsend_by_row: bool = False
     #: Attachments can be delivered.
     files: bool = False
     #: Tappable options can be attached to a message — CSAT asks for a rating

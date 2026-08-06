@@ -295,8 +295,36 @@ async def settings_page(request: Request, sent: str | None = None):
         "sla_minutes": await work_hours_service.get_sla_minutes(),
         "sla_policy": await sla_service.get_policy(),
         "wh_day_labels": work_hours_service.day_labels(),
+        # The snippet is built from the request rather than typed in, so the
+        # host in it is always the host that served the page. Asking someone
+        # to keep the two in agreement is asking for the failure where the
+        # bubble appears and nothing behind it works.
+        "widget_enabled": await settings_service.get_widget_enabled(),
+        "widget_origins": "\n".join(await settings_service.get_widget_origins()),
+        "widget_greeting": await settings_service.get_widget_greeting(),
+        "widget_snippet": (
+            f'<script src="{str(request.base_url).rstrip("/")}/widget/embed.js" async></script>'
+        ),
         "flash_sent": sent,
     })
+
+
+@router.post("/manage/settings/widget")
+async def settings_save_widget(
+    widget_enabled: str = Form("0"),
+    widget_origins: str = Form(""),
+    widget_greeting: str = Form(""),
+):
+    """Turn the public endpoints on or off, and configure what they say.
+
+    Deliberately one form. Enabling the widget without having thought about
+    which sites may embed it is the mistake worth making hard, and splitting
+    them into two cards is how people end up doing exactly that.
+    """
+    await settings_service.set_widget_enabled(widget_enabled == "1", updated_by=0)
+    await settings_service.set_widget_origins(widget_origins, updated_by=0)
+    await settings_service.set_widget_greeting(widget_greeting, updated_by=0)
+    return RedirectResponse("/manage/settings?sent=widget", status_code=303)
 
 
 @router.post("/manage/settings/dash-language")

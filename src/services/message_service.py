@@ -58,11 +58,22 @@ def can_delete(
     get = message.get if isinstance(message, dict) else lambda k: getattr(message, k, None)
     if get("sender_type") != "admin" or get("is_internal"):
         return False
-    if not get("tg_message_id") or get("deleted_at"):
+    if get("deleted_at"):
         return False
     # Asked per message because the answer is per customer: the same operator,
     # the same minute, can unsend to one person and not to another.
-    if not caps(channel).unsend:
+    channel_caps = caps(channel)
+    if not channel_caps.unsend:
+        return False
+
+    if channel_caps.unsend_by_row:
+        # Nothing is sitting in anyone's chat history, so nothing expires and
+        # there is no platform id to have recorded. The row is the message.
+        return bool(get("id"))
+
+    # Elsewhere we can only address what we wrote down at the time, and only
+    # until the platform stops accepting the request.
+    if not get("tg_message_id"):
         return False
     created = get("created_at")
     if not created:
@@ -100,7 +111,7 @@ async def delete_for_user(bot: Bot, message_id: int) -> DeleteResult:
             return DeleteResult(False, "e_delete_unsupported")
         if not can_delete(row, channel=channel):
             return DeleteResult(False, "e_delete_window_passed")
-        ref = str(row.tg_message_id)
+        ref = str(row.id if caps(channel).unsend_by_row else row.tg_message_id)
 
     # The adapter decides what "could not be withdrawn" means on its own
     # medium and reports it the same way regardless.

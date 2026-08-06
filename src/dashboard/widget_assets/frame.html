@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Support chat</title>
+<!--
+  The panel. Served into an iframe on somebody else's site, so it is one
+  file with no external requests: a widget that pulls a font or a script
+  from a CDN is a widget that fails on any page with a strict CSP, and
+  those are exactly the pages worth having as customers.
+
+  It follows the visitor's own light/dark preference rather than the host
+  site's, because the host site has no way to tell us and guessing wrong
+  looks broken either way. Matching the operating system is at least a
+  choice the visitor made.
+-->
+<style>
+  :root {
+    --bg: #ffffff; --panel: #f4f4f5; --text: #18181b; --muted: #71717a;
+    --line: #e4e4e7; --brand: #7c5cff; --brand-text: #ffffff; --mine: #7c5cff;
+    --mine-text: #ffffff; --theirs: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0c0c0e; --panel: #18181b; --text: #f4f4f5; --muted: #a1a1aa;
+      --line: #27272a; --theirs: #1f1f23;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: flex; flex-direction: column; background: var(--bg); color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  header {
+    display: flex; align-items: center; gap: 10px; padding: 14px 16px;
+    border-bottom: 1px solid var(--line); background: var(--bg); flex: 0 0 auto;
+  }
+  header .mark {
+    width: 30px; height: 30px; border-radius: 15px; background: var(--brand);
+    color: var(--brand-text); display: flex; align-items: center;
+    justify-content: center; font-weight: 600; font-size: 13px; flex: 0 0 auto;
+  }
+  header .who { font-weight: 600; min-width: 0; overflow: hidden;
+                text-overflow: ellipsis; white-space: nowrap; }
+  header .state { font-size: 12px; color: var(--muted); font-weight: 400; }
+  header button {
+    margin-left: auto; border: 0; background: transparent; color: var(--muted);
+    cursor: pointer; padding: 6px; border-radius: 8px; line-height: 0;
+  }
+  header button:hover { background: var(--panel); color: var(--text); }
+
+  #log { flex: 1 1 auto; overflow-y: auto; padding: 16px; display: flex;
+         flex-direction: column; gap: 10px; background: var(--panel); }
+  .msg { max-width: 82%; padding: 9px 12px; border-radius: 14px;
+         white-space: pre-wrap; overflow-wrap: anywhere; }
+  .msg.you { align-self: flex-end; background: var(--mine); color: var(--mine-text);
+             border-bottom-right-radius: 4px; }
+  .msg.agent { align-self: flex-start; background: var(--theirs);
+               border: 1px solid var(--line); border-bottom-left-radius: 4px; }
+  .greet { color: var(--muted); font-size: 14px; align-self: flex-start;
+           padding: 2px 2px 6px; }
+  .note { color: var(--muted); font-size: 12px; align-self: center;
+          text-align: center; padding: 4px 8px; }
+
+  form { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--line);
+         background: var(--bg); flex: 0 0 auto; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+  textarea {
+    flex: 1 1 auto; resize: none; border: 1px solid var(--line); border-radius: 10px;
+    padding: 9px 12px; font: inherit; color: inherit; background: var(--bg);
+    max-height: 120px; min-height: 40px;
+  }
+  textarea:focus { outline: 2px solid var(--brand); outline-offset: -1px; border-color: transparent; }
+  button.send {
+    flex: 0 0 auto; border: 0; border-radius: 10px; background: var(--brand);
+    color: var(--brand-text); padding: 0 14px; cursor: pointer; font: inherit;
+    font-weight: 600;
+  }
+  button.send:disabled { opacity: .5; cursor: default; }
+
+  /* Screen-reader-only: the live region that announces a reply. Visually
+     absent, because the message itself is already on screen. */
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden;
+        clip: rect(0 0 0 0); white-space: nowrap; }
+</style>
+</head>
+<body>
+<header>
+  <div class="mark" id="mark">S</div>
+  <div>
+    <div class="who" id="brand">Support</div>
+    <div class="state" id="state"></div>
+  </div>
+  <button type="button" id="close" aria-label="Close">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" aria-hidden="true">
+      <path d="M18 6 6 18M6 6l12 12"/>
+    </svg>
+  </button>
+</header>
+
+<div id="log" role="log" aria-live="polite"></div>
+<div class="sr" id="announce" aria-live="polite"></div>
+
+<form id="composer">
+  <textarea id="text" rows="1" maxlength="4000" autocomplete="off"></textarea>
+  <button class="send" id="send" type="submit">→</button>
+</form>
+
+<script>
+(function () {
+  "use strict";
+
+  var BASE = location.origin;
+  var KEY = "spool.session";
+  var POLL_IDLE = 8000;    // nothing has happened for a while
+  var POLL_LIVE = 3000;    // the visitor just wrote something
+
+  var log = document.getElementById("log");
+  var announce = document.getElementById("announce");
+  var box = document.getElementById("text");
+  var send = document.getElementById("send");
+  var state = document.getElementById("state");
+  var strings = {};
+  var seen = {};           // message ids already on screen
+  var timer = null;
+  var pollMs = POLL_IDLE;
+
+  // Third-party iframe storage is partitioned, and in strict configurations
+  // refused outright. Falling back to memory keeps the conversation alive
+  // for this page view instead of failing at the first keystroke.
+  var memory = null;
+  function token(value) {
+    if (value !== undefined) {
+      memory = value;
+      try { localStorage.setItem(KEY, value); } catch (e) { /* memory only */ }
+      return value;
+    }
+    if (memory) return memory;
+    try { return localStorage.getItem(KEY) || ""; } catch (e) { return ""; }
+  }
+
+  function tell(parent, payload) {
+    try { parent.postMessage(payload, "*"); } catch (e) { /* not embedded */ }
+  }
+
+  function bubble(cls, text) {
+    var el = document.createElement("div");
+    el.className = cls;
+    el.textContent = text;
+    log.appendChild(el);
+    log.scrollTop = log.scrollHeight;
+    return el;
+  }
+
+  function render(messages) {
+    var fresh = 0;
+    (messages || []).forEach(function (m) {
+      if (seen[m.id]) return;
+      seen[m.id] = true;
+      bubble("msg " + (m.from === "you" ? "you" : "agent"), m.text);
+      if (m.from !== "you") fresh++;
+    });
+    if (fresh) {
+      announce.textContent = strings.replied || "New reply";
+      tell(window.parent, { spool: "unread" });
+      // Someone is actually at the other end right now; look more often for
+      // a while, then settle back down.
+      pollMs = POLL_LIVE;
+      schedule();
+    }
+  }
+
+  function schedule() {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(tick, pollMs);
+  }
+
+  function tick() {
+    if (!token()) { schedule(); return; }
+    // A hidden tab has nobody looking at it. Polling it anyway is how a
+    // chat widget ends up in somebody's battery report.
+    if (document.hidden) { schedule(); return; }
+    fetch(BASE + "/widget/api/poll", {
+      headers: { "x-spool-session": token() },
+    }).then(function (r) {
+      return r.ok ? r.json() : null;
+    }).then(function (data) {
+      if (data) render(data.messages);
+      // Nothing new for a while: stop asking so eagerly.
+      if (pollMs === POLL_LIVE) pollMs = POLL_IDLE;
+    }).catch(function () {
+      /* offline, or the instance restarted; the next tick tries again */
+    }).then(schedule);
+  }
+
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden) tick();
+  });
+
+  document.getElementById("close").addEventListener("click", function () {
+    tell(window.parent, { spool: "close" });
+  });
+
+  // Enter sends, Shift+Enter breaks the line — the convention every chat
+  // uses, and getting it backwards is noticed immediately.
+  box.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      document.getElementById("composer").requestSubmit();
+    }
+  });
+  box.addEventListener("input", function () {
+    box.style.height = "auto";
+    box.style.height = Math.min(box.scrollHeight, 120) + "px";
+  });
+
+  document.getElementById("composer").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var text = box.value.trim();
+    if (!text) return;
+
+    box.value = "";
+    box.style.height = "auto";
+    send.disabled = true;
+    state.textContent = strings.sending || "";
+
+    var headers = { "content-type": "application/json" };
+    if (token()) headers["x-spool-session"] = token();
+
+    fetch(BASE + "/widget/api/message", {
+      method: "POST",
+      headers: headers,
+      body: JSON.stringify({ text: text, lang: navigator.language || "" }),
+    }).then(function (r) {
+      if (r.status === 429) throw new Error("slow_down");
+      if (!r.ok) throw new Error("failed");
+      return r.json();
+    }).then(function (data) {
+      if (data.session) token(data.session);
+      state.textContent = "";
+      render(data.messages);
+      pollMs = POLL_LIVE;
+      schedule();
+    }).catch(function (err) {
+      state.textContent = "";
+      // The text is gone from the box, so it has to come back somewhere or
+      // the visitor has simply lost what they wrote.
+      bubble("note", err.message === "slow_down"
+        ? (strings.slow || "Too many messages — please wait a moment.")
+        : (strings.offline || "Could not send. Please try again."));
+      box.value = text;
+    }).then(function () {
+      send.disabled = false;
+      box.focus();
+    });
+  });
+
+  window.addEventListener("message", function (e) {
+    if ((e.data || {}).spool === "opened") box.focus();
+  });
+
+  fetch(BASE + "/widget/api/hello").then(function (r) {
+    return r.ok ? r.json() : null;
+  }).then(function (info) {
+    if (!info) return;
+    strings = info;
+    document.getElementById("brand").textContent = info.brand || "Support";
+    document.getElementById("mark").textContent = (info.brand || "S").trim().charAt(0).toUpperCase();
+    box.placeholder = info.placeholder || "";
+    document.title = info.brand || "Support";
+    if (info.greeting) bubble("greet", info.greeting);
+  }).catch(function () {
+    // Not just cosmetic. An instance that is restarting — or a free host
+    // waking from sleep, which is what a public demo usually is — leaves a
+    // panel that looks finished and does nothing. Say something.
+    bubble("note", "Connecting…");
+    setTimeout(function () {
+      location.reload();
+    }, 4000);
+  });
+
+  // A returning visitor sees their conversation before they type anything.
+  if (token()) tick(); else schedule();
+})();
+</script>
+</body>
+</html>

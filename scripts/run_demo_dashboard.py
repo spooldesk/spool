@@ -22,21 +22,42 @@ os.environ.setdefault("ACCESS_PASSWORD", "admin")
 if not DEMO_DB_PATH.exists():
     sys.exit("demo_support.db not found — run scripts/seed_demo_data.py first")
 
-# The public demo is shared: any visitor can change instance settings, and the
-# UI language is one of them. Pin it to English on every start so a visitor who
-# switches to Russian doesn't leave the demo in Russian for everyone after them.
+# The public demo is shared, and every instance setting is editable from inside
+# it. Pin the ones the demo depends on at every start, so one visitor cannot
+# leave the demo broken (or in a language they chose) for everyone after them.
 import sqlite3  # noqa: E402
+
+# The widget is pinned on for the same reason and one more: the landing page
+# embeds it, so an instance that came up with it off would show a bubble that
+# does nothing. Origins stay empty because the page it is embedded on is a
+# GitHub Pages domain that may change, and the rate limits are what actually
+# protect the endpoints anyway.
+_DEMO_SETTINGS = {
+    "dash_language": "en",
+    "widget_enabled": "1",
+    "widget_origins": "",
+    # Said out loud rather than buried in a privacy note nobody opens. The
+    # demo is one shared instance; whatever a visitor types is on a dashboard
+    # that anyone can open.
+    "widget_greeting": (
+        "This is a live demo \u2014 write anything and it becomes a real ticket "
+        "you can open in the dashboard. The instance is shared, so please don't "
+        "type anything private."
+    ),
+}
 
 try:
     _con = sqlite3.connect(DEMO_DB_PATH)
-    _con.execute(
-        "INSERT INTO app_settings (key, value, updated_at) VALUES ('dash_language','en',datetime('now')) "
-        "ON CONFLICT(key) DO UPDATE SET value='en'"
-    )
+    for _key, _value in _DEMO_SETTINGS.items():
+        _con.execute(
+            "INSERT INTO app_settings (key, value, updated_at) VALUES (?,?,datetime('now')) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (_key, _value),
+        )
     _con.commit()
     _con.close()
 except Exception as _e:  # table may not exist on a brand-new DB — startup seeds it
-    print(f"demo: could not pin UI language to en ({_e})")
+    print(f"demo: could not pin instance settings ({_e})")
 
 import uvicorn  # noqa: E402
 
