@@ -1,4 +1,9 @@
-"""Dashboard UI translations — instance-level language (en default, ru).
+"""Dashboard UI translations.
+
+An instance has a language, and an operator may override it for themselves —
+two people sharing an installation can disagree about that without either
+being wrong. The override lives in a ContextVar so it is per request; see
+`use_language`.
 
 Separate from src/utils/i18n.py on purpose: that one localizes the BOT for
 end users (per-user language); this one localizes the OPERATOR dashboard
@@ -9,11 +14,14 @@ Usage:
                                           active language, refreshed on save)
     routes:    from src.dashboard.i18n import t;  t("kpi_total")
 
-The active language is cached module-level; app startup and the settings
-save route call set_active_language().
+The instance language is cached module-level; app startup and the settings
+save route call set_active_language(). The per-operator override is applied
+by middleware on each request.
 """
 
 from __future__ import annotations
+
+from contextvars import ContextVar
 
 DEFAULT_DASH_LANGUAGE = "en"
 
@@ -741,6 +749,48 @@ _STRINGS: dict[str, dict[str, str]] = {
         "sl_scopes": "Scopes the app needs",
         "sl_shared": "In a shared channel every message shows who wrote it; in a direct message it does not, because there is only one person there.",
         "sl_optional": "The last three scopes are optional. Without files:write the app cannot send attachments; without users:read each message is labelled with a Slack user id instead of a name.",
+        "pr_title": "Preferences",
+        "pr_intro": "Yours alone. Nothing here changes what anyone else sees.",
+        "pr_anonymous": "You are signed in with the shared password, so there is no account to save preferences against. Create an operator account under Operators.",
+        "pr_saved": "Preferences saved.",
+        "pr_language": "Interface language",
+        "pr_language_follow": "Follow the instance ({name})",
+        "pr_theme": "Theme",
+        "pr_theme_system": "Match my system",
+        "pr_theme_dark": "Dark",
+        "pr_theme_light": "Light",
+        "pr_density": "Row height",
+        "pr_density_comfortable": "Comfortable",
+        "pr_density_compact": "Compact",
+        "pr_density_hint": "Compact fits about a third more tickets on screen.",
+        "pr_landing": "Open on",
+        "pr_landing_hint": "Where the logo takes you.",
+        "pr_workflow": "Working style",
+        "pr_queue_advance": "After replying, hand me the next waiting ticket",
+        "pr_queue_advance_hint": "Off by default: moving the page out from under you is welcome when you asked for it and alarming when you did not.",
+        "pr_notify_new": "Notify me about new tickets",
+        "pr_notify_new_hint": "A desktop notification. Your browser will ask for permission the first time.",
+        "pr_signature": "Signature",
+        "pr_signature_hint": "Added to the end of your replies. Leave empty for none — a signature nobody chose is a change to what customers receive.",
+        "pr_hotkeys": "Keyboard shortcuts",
+        "pr_hotkeys_on": "Enable keyboard shortcuts",
+        "pr_hotkeys_hint": "Press ? anywhere to see the list.",
+        "pr_keys_title": "Keyboard shortcuts",
+        "pr_keys_nav": "Getting around",
+        "pr_keys_ticket": "In a ticket",
+        "pr_keys_go_tickets": "Go to tickets",
+        "pr_keys_go_board": "Go to the board",
+        "pr_keys_go_prefs": "Go to preferences",
+        "pr_keys_search": "Search",
+        "pr_keys_help": "Show this list",
+        "pr_keys_close_overlay": "Close anything open",
+        "pr_keys_reply": "Write a reply",
+        "pr_keys_note": "Write an internal note",
+        "pr_keys_send": "Send",
+        "pr_keys_next": "Next waiting ticket",
+        "pr_keys_back": "Back to the list",
+        "pr_keys_then": "then",
+        "menu_preferences": "Preferences",
         "ch_telegram": "Telegram",
         "ch_widget": "Web widget",
         "ch_email": "Email",
@@ -1553,6 +1603,48 @@ _STRINGS: dict[str, dict[str, str]] = {
         "sl_scopes": "Права, которые нужны приложению",
         "sl_shared": "В общем канале у каждого сообщения виден автор; в личке — нет, там человек всего один.",
         "sl_optional": "Последние три права необязательны. Без files:write приложение не сможет отправлять вложения; без users:read у сообщений вместо имени будет id пользователя Slack.",
+        "pr_title": "Настройки",
+        "pr_intro": "Только ваши. Ничего из этого не меняет то, что видят другие.",
+        "pr_anonymous": "Вы вошли по общему паролю, поэтому сохранять настройки не к чему. Создайте учётную запись оператора в разделе «Операторы».",
+        "pr_saved": "Настройки сохранены.",
+        "pr_language": "Язык интерфейса",
+        "pr_language_follow": "Как на сервере ({name})",
+        "pr_theme": "Тема",
+        "pr_theme_system": "Как в системе",
+        "pr_theme_dark": "Тёмная",
+        "pr_theme_light": "Светлая",
+        "pr_density": "Высота строк",
+        "pr_density_comfortable": "Просторно",
+        "pr_density_compact": "Плотно",
+        "pr_density_hint": "Плотно — примерно на треть больше заявок на экране.",
+        "pr_landing": "Открывать при входе",
+        "pr_landing_hint": "Куда ведёт логотип.",
+        "pr_workflow": "Стиль работы",
+        "pr_queue_advance": "После ответа сразу давать следующую заявку",
+        "pr_queue_advance_hint": "По умолчанию выключено: страница, уходящая из-под рук, уместна, когда вы этого просили, и пугает, когда нет.",
+        "pr_notify_new": "Уведомлять о новых заявках",
+        "pr_notify_new_hint": "Уведомление рабочего стола. Браузер спросит разрешение при первом включении.",
+        "pr_signature": "Подпись",
+        "pr_signature_hint": "Добавляется в конец ваших ответов. Пусто — без подписи: подпись, которую никто не выбирал, меняет то, что получает клиент.",
+        "pr_hotkeys": "Горячие клавиши",
+        "pr_hotkeys_on": "Включить горячие клавиши",
+        "pr_hotkeys_hint": "Нажмите ? в любом месте, чтобы увидеть список.",
+        "pr_keys_title": "Горячие клавиши",
+        "pr_keys_nav": "Перемещение",
+        "pr_keys_ticket": "Внутри заявки",
+        "pr_keys_go_tickets": "К заявкам",
+        "pr_keys_go_board": "К доске",
+        "pr_keys_go_prefs": "К настройкам",
+        "pr_keys_search": "Поиск",
+        "pr_keys_help": "Показать этот список",
+        "pr_keys_close_overlay": "Закрыть открытое",
+        "pr_keys_reply": "Написать ответ",
+        "pr_keys_note": "Написать внутреннюю заметку",
+        "pr_keys_send": "Отправить",
+        "pr_keys_next": "Следующая заявка",
+        "pr_keys_back": "Назад к списку",
+        "pr_keys_then": "затем",
+        "menu_preferences": "Настройки",
         "ch_telegram": "Telegram",
         "ch_widget": "Веб-виджет",
         "ch_email": "Почта",
@@ -1648,20 +1740,38 @@ SUPPORTED_DASH_LANGUAGES = {"en": "English", "ru": "Русский"}
 
 _active_language: str = DEFAULT_DASH_LANGUAGE
 
+# One operator's choice must not become everyone's. A module global would:
+# under asyncio two requests share the process and interleave at every await,
+# so a language set at the start of one request can be read by another
+# halfway through. A ContextVar is per-task, which is per-request, and it is
+# the only mechanism here that is actually safe.
+_request_language: ContextVar[str | None] = ContextVar("dash_language", default=None)
+
 
 def set_active_language(lang: str) -> None:
-    """Install the instance language (called at startup + on settings save)."""
+    """Install the INSTANCE language (called at startup + on settings save).
+
+    The fallback for everyone who has not chosen one for themselves.
+    """
     global _active_language
     _active_language = lang if lang in _STRINGS else DEFAULT_DASH_LANGUAGE
 
 
+def use_language(lang: str | None) -> None:
+    """Render the rest of this request in `lang`. None means follow the
+    instance. Set once per request, from the operator's preferences."""
+    _request_language.set(lang if lang in _STRINGS else None)
+
+
 def active_language() -> str:
-    return _active_language
+    """What this request should be rendered in: the operator's choice if they
+    made one, the instance's otherwise."""
+    return _request_language.get() or _active_language
 
 
 def strings(lang: str | None = None) -> dict[str, str]:
     """Full dict for the language — exposed to Jinja as the `T` global."""
-    return _STRINGS.get(lang or _active_language, _STRINGS[DEFAULT_DASH_LANGUAGE])
+    return _STRINGS.get(lang or active_language(), _STRINGS[DEFAULT_DASH_LANGUAGE])
 
 
 def t(key: str, lang: str | None = None, **kwargs) -> str:

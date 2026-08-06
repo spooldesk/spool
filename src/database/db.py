@@ -346,6 +346,17 @@ def _migrate_to_new_schema(sync_connection) -> None:
         except Exception:
             pass
 
+    # Per-operator interface preferences.
+    if "admin_users" in tables:
+        _admin_cols = {col["name"] for col in inspector.get_columns("admin_users")}
+        if "preferences" not in _admin_cols:
+            try:
+                sync_connection.execute(
+                    text("ALTER TABLE admin_users ADD COLUMN preferences TEXT")
+                )
+            except Exception:
+                pass
+
     # Who spoke, in conversations that have more than one person in them.
     message_columns = {col["name"] for col in inspector.get_columns("messages")}         if "messages" in tables else set()
     if message_columns and "sender_label" not in message_columns:

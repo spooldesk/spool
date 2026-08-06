@@ -632,6 +632,19 @@ async def ticket_delete_message(ticket_id: int, message_id: int):
     return RedirectResponse(f"/tickets/{ticket_id}?sent=deleted", status_code=303)
 
 
+
+def _standing_queue(request: Request) -> str:
+    """"Always hand me the next one", from the operator's preferences.
+
+    The `queue` form field means "keep going" for this one click, which is
+    what the Send-and-next button sends. Someone who set the preference is
+    asking for that click to be implied on every reply, so it stands in
+    where the field is empty — and only there, so an ordinary Send from a
+    ticket opened out of the blue still leaves them where they were.
+    """
+    prefs = getattr(request.state, "prefs", None) or {}
+    return "open" if prefs.get("queue_advance") else ""
+
 @router.post("/tickets/{ticket_id}/reply")
 async def ticket_reply(
     request: Request,
@@ -659,6 +672,13 @@ async def ticket_reply(
     from src.services import template_service, workflow_service
 
     text = (text or "").strip()
+    # The operator's own sign-off, if they set one. Applied before the
+    # duplicate check rather than after, so two identical replies are still
+    # two identical replies once signed.
+    prefs = getattr(request.state, "prefs", None) or {}
+    if text and prefs.get("signature"):
+        from src.services.preferences_service import apply_signature
+        text = apply_signature(text, prefs["signature"])
     # Duck-typed on purpose: through that union pydantic hands back Starlette's
     # UploadFile, not FastAPI's subclass, so isinstance against the imported
     # name quietly matches nothing and every upload falls into the text branch.
@@ -778,7 +798,8 @@ async def ticket_reply(
         if sent_count:
             await _auto_assign_to_me(request, ticket_id)
             await workflow_service.advance_on_admin_reply(ticket_id)
-            nxt = await _queue_redirect(request, queue, ticket_id)
+            nxt = await _queue_redirect(
+                request, queue or _standing_queue(request), ticket_id)
             if nxt and not failure:
                 return nxt
         if failure:
@@ -815,7 +836,7 @@ async def ticket_reply(
     # The text-only reply is the common one, so the loop has to continue from
     # here too — wiring only the attachment branch left the queue working for
     # the rarer path and silently stopping on the usual one.
-    nxt = await _queue_redirect(request, queue, ticket_id)
+    nxt = await _queue_redirect(request, queue or _standing_queue(request), ticket_id)
     if nxt:
         return nxt
     return RedirectResponse(f"/tickets/{ticket_id}?sent=1", status_code=303)

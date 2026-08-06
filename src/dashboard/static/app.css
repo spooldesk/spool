@@ -219,3 +219,16 @@ aside a { transition: background-color 120ms ease, color 120ms ease; }
      entirely, so this only tightens the ones that opted in. */
   main.p-6 { padding: 1rem; }
 }
+
+/* ---------------------------------------------------------------------------
+   6. Row height
+   ---------------------------------------------------------------------------
+   A preference, not a breakpoint. An operator working a long queue on a small
+   laptop wants a third more rows on screen; one reading carefully wants room.
+   Applied on the root element by the theme bootstrap, so it is in place before
+   the first paint rather than jumping a moment later.
+*/
+html[data-density="compact"] table td,
+html[data-density="compact"] table th { padding-top: .3rem; padding-bottom: .3rem; }
+html[data-density="compact"] .board-card { padding: .45rem .6rem; }
+html[data-density="compact"] .msg { padding-top: .35rem; padding-bottom: .35rem; }

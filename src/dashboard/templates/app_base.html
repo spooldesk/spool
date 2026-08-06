@@ -7,13 +7,23 @@
 
   <!--
     Theme init — runs synchronously before any paint to prevent flash.
-    Reads localStorage; defaults to dark if nothing saved.
+
+    The operator's saved preference wins, then whatever they last toggled in
+    this browser, then dark. "system" is a real answer rather than a synonym
+    for dark: someone who set their laptop to light mode at 9am has already
+    told us something.
   -->
   <script>
     (function(){
-      var t = localStorage.getItem('dash-theme');
+      var pref = {{ (prefs.theme if prefs else 'system')|tojson }};
+      var t = pref === 'system' ? localStorage.getItem('dash-theme') : pref;
+      if (!t && pref === 'system' && window.matchMedia) {
+        t = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      }
       if (t === 'light') document.documentElement.classList.remove('dark');
-      else              document.documentElement.classList.add('dark');
+      else               document.documentElement.classList.add('dark');
+      if (prefs_density()) document.documentElement.dataset.density = prefs_density();
+      function prefs_density(){ return {{ (prefs.density if prefs else '')|tojson }}; }
     })();
   </script>
 
@@ -187,6 +197,12 @@
           <p class="text-xs font-medium text-gray-800 dark:text-zinc-200 truncate">{{ _u_name }}</p>
           <p class="text-[10px] text-gray-400 dark:text-zinc-600 truncate">{{ _u_email }}</p>
         </div>
+        <a href="/me"
+           class="text-gray-300 dark:text-zinc-600
+                  hover:text-gray-600 dark:hover:text-zinc-300 transition-colors"
+           title="{{ T.menu_preferences }}">
+          <i class="ti ti-adjustments-horizontal" style="font-size:14px" aria-hidden="true"></i>
+        </a>
         <a href="/logout"
            class="text-gray-300 dark:text-zinc-600
                   hover:text-gray-600 dark:hover:text-zinc-300 transition-colors"
@@ -225,6 +241,7 @@
 
       <!-- Breadcrumb — page label auto-derived from active_page -->
       {% set _names = {
+        'me':                  T.pr_title,
         'tickets':             T.nav_tickets,
         'board':               T.nav_board,
         'broadcast':           T.nav_broadcast,
@@ -603,5 +620,124 @@
   }, false);
 })();
 </script>
+
+<!-- Keyboard shortcuts: the overlay ? opens, and the keys themselves. -->
+<div id="keys-overlay"
+     class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-sm p-4 overflow-y-auto"
+     role="dialog" aria-modal="true" aria-label="{{ T.pr_keys_title }}">
+  <div class="max-w-2xl mx-auto mt-16 bg-white dark:bg-zinc-950 border border-gray-200
+              dark:border-zinc-800 rounded-xl shadow-2xl p-5">
+    <div class="flex items-center justify-between mb-1">
+      <div class="text-sm font-medium">{{ T.pr_keys_title }}</div>
+      <button type="button" id="keys-close"
+              class="text-gray-400 dark:text-zinc-600 hover:text-gray-700 dark:hover:text-zinc-300"
+              aria-label="{{ T.pr_keys_close_overlay }}">
+        <i class="ti ti-x" style="font-size:16px" aria-hidden="true"></i>
+      </button>
+    </div>
+    {% include "_shortcuts.html" %}
+    <a href="/me" class="inline-block mt-4 text-xs text-brand-500 hover:text-brand-400">
+      {{ T.menu_preferences }} →
+    </a>
+  </div>
+</div>
+
+<script>
+/* Keyboard shortcuts.
+ *
+ * A fixed set rather than a remapping UI: the value is in not reaching for
+ * the mouse forty times an hour, and every operator inventing their own
+ * bindings makes that harder to teach, not easier. The set is small enough
+ * to learn in a day and is written down in one place — templates/_shortcuts.html
+ * — which both this overlay and the preferences page render, so the list can
+ * never drift from the keys.
+ *
+ * Nothing fires while the operator is typing. A support reply contains the
+ * letters r, n, j and g rather a lot.
+ */
+(function () {
+  if (!{{ (prefs.hotkeys if prefs else True)|tojson }}) return;
+
+  const overlay = document.getElementById('keys-overlay');
+  let pending = null;      // the 'g' of a 'g t' pair
+  let pendingAt = 0;
+
+  function typing(el) {
+    if (!el) return false;
+    const tag = el.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+  }
+
+  function showKeys(show) {
+    overlay.classList.toggle('hidden', !show);
+    if (show) document.getElementById('keys-close').focus();
+  }
+
+  document.getElementById('keys-close').addEventListener('click', () => showKeys(false));
+  overlay.addEventListener('click', e => { if (e.target === overlay) showKeys(false); });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+    // Escape works everywhere, including out of a field the operator is
+    // stuck in — it is the way back, so it cannot itself need the way back.
+    if (e.key === 'Escape') {
+      if (!overlay.classList.contains('hidden')) { showKeys(false); return; }
+      if (typing(document.activeElement)) { document.activeElement.blur(); return; }
+      const back = document.querySelector('[data-back-link]');
+      if (back) back.click();
+      return;
+    }
+
+    if (typing(document.activeElement)) return;
+
+    // 'g' opens a pair; a second key within two seconds completes it, and
+    // after that it is just a letter again.
+    if (pending === 'g' && Date.now() - pendingAt < 2000) {
+      pending = null;
+      const target = {t: '/tickets', b: '/board', p: '/me'}[e.key];
+      if (target) { e.preventDefault(); location.href = target; }
+      return;
+    }
+    pending = null;
+
+    switch (e.key) {
+      case 'g':
+        pending = 'g'; pendingAt = Date.now();
+        break;
+      case '?':
+        e.preventDefault(); showKeys(true);
+        break;
+      case '/': {
+        const search = document.querySelector('input[name="q"]');
+        if (search) { e.preventDefault(); search.focus(); search.select(); }
+        break;
+      }
+      case 'r': {
+        const box = document.getElementById('reply-text');
+        const reply = document.getElementById('mode-reply');
+        if (box) { e.preventDefault(); if (reply) reply.click(); box.focus(); }
+        break;
+      }
+      case 'n': {
+        const box = document.getElementById('reply-text');
+        const note = document.getElementById('mode-note');
+        if (box && note) { e.preventDefault(); note.click(); box.focus(); }
+        break;
+      }
+      case 'j': {
+        // Whatever "next" means on this page: the queue button on a ticket,
+        // the first row on a list.
+        const next = document.querySelector('[data-queue-next]');
+        if (next) { e.preventDefault(); next.click(); break; }
+        const row = document.querySelector('tbody tr[data-href], tbody tr');
+        if (row) { e.preventDefault(); row.click(); }
+        break;
+      }
+    }
+  });
+})();
+</script>
+
 </body>
 </html>

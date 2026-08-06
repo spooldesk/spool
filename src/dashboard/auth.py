@@ -103,6 +103,29 @@ def is_valid_session(cookie_value: str | None) -> bool:
 # ==================== Auth dependency ====================
 
 
+async def _apply_preferences(request: Request, admin_id: int | None) -> None:
+    """Stash this operator's preferences and switch the request to their
+    language.
+
+    Here rather than in middleware, because middleware runs before
+    dependencies and the operator is not known until this one has run.
+    Doing it in the wrong place is not a subtle failure — every page renders
+    in the instance language no matter what anyone chose — but it is a silent
+    one, which is why it survived to be found by hand.
+    """
+    from src.dashboard.i18n import use_language
+    from src.services import preferences_service
+
+    try:
+        prefs = await preferences_service.for_operator(admin_id)
+    except Exception as e:  # noqa: BLE001 — never fail a page over a preference
+        logger.debug(f"Could not load operator preferences: {e}")
+        prefs = preferences_service.defaults()
+
+    request.state.prefs = prefs
+    use_language(prefs.get("language") or None)
+
+
 async def require_auth(request: Request) -> None:
     """FastAPI dependency: ensure a valid operator session, else redirect to /login.
 
@@ -121,6 +144,7 @@ async def require_auth(request: Request) -> None:
         # Bootstrap session: valid only while no real accounts exist.
         if await admin_user_service.count_admins() == 0:
             request.state.current_user = None  # synthetic owner, no row yet
+            await _apply_preferences(request, None)
             return
         raise _redirect_to_login(request)
 
@@ -128,6 +152,7 @@ async def require_auth(request: Request) -> None:
     if admin is None or not admin.is_active:
         raise _redirect_to_login(request)
     request.state.current_user = admin
+    await _apply_preferences(request, admin.id)
 
 
 def _redirect_to_login(request: Request) -> HTTPException:

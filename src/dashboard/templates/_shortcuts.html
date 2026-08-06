@@ -1,0 +1,54 @@
+{# The shortcut list, shown in two places: on the preferences page, and in
+   the overlay that ? opens. One partial, because a cheat sheet that has
+   drifted from the keys it describes is worse than no cheat sheet. #}
+<div class="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-sm">
+  <div>
+    <div class="text-[10px] uppercase tracking-wide text-gray-400 dark:text-zinc-600 mt-3 mb-1.5">
+      {{ T.pr_keys_nav }}
+    </div>
+    {% for keys, label in [
+      (['g', 't'], T.pr_keys_go_tickets),
+      (['g', 'b'], T.pr_keys_go_board),
+      (['g', 'p'], T.pr_keys_go_prefs),
+      (['/'],      T.pr_keys_search),
+      (['?'],      T.pr_keys_help),
+      (['Esc'],    T.pr_keys_close_overlay),
+    ] %}
+      <div class="flex items-center justify-between gap-4 py-1">
+        <span class="text-gray-600 dark:text-zinc-400">{{ label }}</span>
+        <span class="shrink-0 flex items-center gap-1">
+          {% for k in keys %}
+            {% if not loop.first %}<span class="text-[10px] text-gray-400 dark:text-zinc-600">{{ T.pr_keys_then }}</span>{% endif %}
+            <kbd class="px-1.5 py-0.5 rounded border border-gray-200 dark:border-zinc-700
+                        bg-gray-50 dark:bg-zinc-900 text-xs font-mono">{{ k }}</kbd>
+          {% endfor %}
+        </span>
+      </div>
+    {% endfor %}
+  </div>
+
+  <div>
+    <div class="text-[10px] uppercase tracking-wide text-gray-400 dark:text-zinc-600 mt-3 mb-1.5">
+      {{ T.pr_keys_ticket }}
+    </div>
+    {% for keys, label in [
+      (['r'],            T.pr_keys_reply),
+      (['n'],            T.pr_keys_note),
+      (['Ctrl', 'Enter'], T.pr_keys_send),
+      (['j'],            T.pr_keys_next),
+      (['Esc'],          T.pr_keys_back),
+    ] %}
+      <div class="flex items-center justify-between gap-4 py-1">
+        <span class="text-gray-600 dark:text-zinc-400">{{ label }}</span>
+        <span class="shrink-0 flex items-center gap-1">
+          {% for k in keys %}
+            {% if not loop.first and keys[0] != 'Ctrl' %}<span class="text-[10px] text-gray-400 dark:text-zinc-600">{{ T.pr_keys_then }}</span>{% endif %}
+            {% if not loop.first and keys[0] == 'Ctrl' %}<span class="text-[10px] text-gray-400 dark:text-zinc-600">+</span>{% endif %}
+            <kbd class="px-1.5 py-0.5 rounded border border-gray-200 dark:border-zinc-700
+                        bg-gray-50 dark:bg-zinc-900 text-xs font-mono">{{ k }}</kbd>
+          {% endfor %}
+        </span>
+      </div>
+    {% endfor %}
+  </div>
+</div>

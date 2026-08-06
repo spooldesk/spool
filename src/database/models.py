@@ -266,6 +266,14 @@ class AdminUser(Base):
     # Optional link to the operator's Telegram admin id.
     tg_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)  # False = access revoked
+    # How this operator likes the dashboard: language, theme, density,
+    # keyboard shortcuts. One JSON blob rather than a column each, because the
+    # set will keep growing and none of it is ever queried on — it is read
+    # whole, with the account, on every page.
+    #
+    # Personal, not instance-wide: two people sharing an installation can
+    # disagree about the interface language without either being wrong.
+    preferences: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=False

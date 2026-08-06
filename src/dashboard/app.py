@@ -37,6 +37,7 @@ from src.dashboard.routes import manage_ai as manage_ai_routes
 from src.dashboard.routes import manage_settings as manage_settings_routes
 from src.dashboard.routes import manage_templates as manage_templates_routes
 from src.dashboard.routes import overview as overview_routes
+from src.dashboard.routes import preferences as preferences_routes
 from src.dashboard.routes import reports as reports_routes
 from src.dashboard.routes import slack as slack_routes
 from src.dashboard.routes import templates_page as templates_routes
@@ -58,9 +59,26 @@ def _current_user_context(request: Request) -> dict:
     return {"current_user": current_user(request)}
 
 
+def _preferences_context(request: Request) -> dict:
+    """This operator's own settings, and the strings in their language.
+
+    `T` is also a Jinja global, set once from the instance language. A context
+    variable of the same name shadows it, so a page rendered for someone who
+    chose Russian is Russian without anything global changing — which under
+    asyncio it must not, since two requests share the process.
+    """
+    from src.dashboard.i18n import strings
+
+    prefs = getattr(request.state, "prefs", None) or {}
+    context = {"prefs": prefs}
+    if prefs.get("language"):
+        context["T"] = strings(prefs["language"])
+    return context
+
+
 TEMPLATES = Jinja2Templates(
     directory=str(_PKG_DIR / "templates"),
-    context_processors=[csrf_context, _current_user_context],
+    context_processors=[csrf_context, _current_user_context, _preferences_context],
 )
 
 # Cache-busting version for static CSS: browsers cache /static/*.css heuristically,
@@ -280,6 +298,9 @@ app.include_router(manage_templates_routes.router, dependencies=_ADMIN_UP)
 app.include_router(manage_settings_routes.router, dependencies=_ADMIN_UP)
 app.include_router(manage_ai_routes.router, dependencies=_ADMIN_UP)
 app.include_router(admin_users_routes.router, dependencies=_OWNER_ONLY)
+# Personal settings: authenticated, but no role check. Nothing here affects
+# anybody else, so an agent may choose their own language and shortcuts.
+app.include_router(preferences_routes.router, dependencies=_ANY_ROLE)
 
 # The only router with no auth and no CSRF dependency, which is the point of
 # it: these endpoints answer a stranger's browser on somebody else's website.
@@ -295,9 +316,20 @@ app.include_router(slack_routes.router)
 
 
 # Root now lands on the management side (tickets), not analytics
-@app.get("/", include_in_schema=False)
-async def root():
-    return RedirectResponse(url="/tickets", status_code=status.HTTP_302_FOUND)
+# Authenticated, unlike the other routes on the app itself: it has to know
+# who is asking before it can honour their landing preference, and a logged-out
+# visitor lands on /login one hop sooner than it used to.
+@app.get("/", include_in_schema=False, dependencies=[Depends(require_auth)])
+async def root(request: Request):
+    """Where the logo takes you — the operator's choice, tickets by default.
+
+    Read from what `require_auth` stashed rather than queried again: this runs
+    on every visit to the bare host, which for someone who keeps the dashboard
+    open is several times a day.
+    """
+    prefs = getattr(request.state, "prefs", None) or {}
+    return RedirectResponse(url=prefs.get("landing") or "/tickets",
+                            status_code=status.HTTP_302_FOUND)
 
 
 # Analytics entry point — the old overview dashboard lives under this alias now
