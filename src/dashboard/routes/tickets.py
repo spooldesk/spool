@@ -531,11 +531,12 @@ async def ticket_detail_page(request: Request, ticket_id: int,
             "queue_size": await queries.queue_size(
                 _current_operator_id(request), queue if queue in QUEUE_SOURCES else "open"),
             "max_upload_files": _MAX_UPLOAD_FILES,
-        # Whether the composer may offer an attachment at all. Slack and
-        # the widget cannot carry one, and a button that always fails is
-        # worse than no button.
-        "channel_takes_files": _channel_caps(detail.get("channel")).files,
             "max_upload_bytes": _MAX_UPLOAD_BYTES,
+            # Whether the composer offers the attach button. The input itself
+            # is always rendered — the script reads it on load, and making the
+            # element conditional once killed every behaviour registered after
+            # that line. See tests/test_composer_regressions.py.
+            "channel_takes_files": _channel_caps(detail.get("channel")).files,
         },
     )
 
@@ -738,10 +739,11 @@ async def ticket_reply(
                         # Whatever already left is real and stays recorded below.
                         failure = delivery.error_detail or tr(delivery.error_key or "e_send_failed")
                         break
-                    # Telegram hands back a reusable id so the mirror below need
-                    # not upload the same bytes twice. Channels without one store
-                    # nothing here and mirror the caption alone.
-                    file_id = delivery.error_detail
+                    # What the ticket page will fetch this back with, and what
+                    # the mirror below forwards instead of re-uploading the
+                    # bytes. Channels that hand back nothing store nothing, and
+                    # the transcript simply shows no link.
+                    file_id = delivery.file_ref
 
                     # Mirror into admin thread
                     try:

@@ -111,11 +111,11 @@ class RecordingChannel:
             return Delivery.failed("e_send_failed", "channel said no")
         self.files.append({"address": address, "filename": filename,
                            "content": content, "caption": caption})
-        # Telegram puts a reusable file id in `error_detail` on success; the
-        # dashboard mirrors with it, so the fake supplies one too.
-        d = Delivery.sent(self._next_ref())
-        from src.channels.base import Delivery as _D
-        return _D(ok=True, ref=d.ref, error_detail=f"fid-{len(self.files)}")
+        # A real channel hands back two references: one for the message, one
+        # for the file. The fake does the same, or the tests would agree with
+        # a shape the adapters do not have.
+        return Delivery(ok=True, ref=self._next_ref(),
+                        file_ref=f"fid-{len(self.files)}")
 
     async def fetch_file(self, ref):
         # Whatever was handed over on the way in comes back out. Enough to

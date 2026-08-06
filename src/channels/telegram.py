@@ -115,12 +115,14 @@ class TelegramChannel:
         except (TelegramAPIError, ValueError) as e:
             return Delivery.failed("e_send_failed", f"{type(e).__name__}: {e}")
 
-        # The file_id is what lets the same upload be mirrored into the admin
-        # thread without sending the bytes a second time, so it is worth more
-        # here than the message id an unsend would use.
-        file_ref = sent.document.file_id if sent.document else None
-        d = Delivery.sent(sent.message_id)
-        return Delivery(ok=True, ref=d.ref, error_detail=file_ref)
+        # Two references, for two different jobs: the message id addresses
+        # this message for an unsend, and the file_id lets the same upload be
+        # mirrored into the admin thread without sending the bytes twice.
+        return Delivery(
+            ok=True,
+            ref=str(sent.message_id),
+            file_ref=sent.document.file_id if sent.document else None,
+        )
 
     async def fetch_file(self, ref: str) -> bytes | None:
         """A file_id back into bytes. Two calls, because Telegram says so:

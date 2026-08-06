@@ -564,9 +564,20 @@
  * from lying about what it is doing.
  */
 (function () {
+  // Bubble phase, not capture. A form's own `onsubmit="return confirm(...)"`
+  // runs on the element before this runs on the document, so by now the event
+  // says whether the operator actually went through with it. On capture the
+  // guard committed first and never rolled back, which left the button dead
+  // for ten seconds after a cancelled confirmation — most visible when
+  // closing tickets one after another, which is the rhythm the queue mode
+  // encourages.
   document.addEventListener('submit', function (e) {
     const form = e.target;
     if (!(form instanceof HTMLFormElement) || form.method.toLowerCase() !== 'post') return;
+
+    // Somebody said no, or a validator refused. Nothing was sent, so nothing
+    // needs guarding against being sent twice.
+    if (e.defaultPrevented) return;
 
     if (form.dataset.submitting === '1') {
       e.preventDefault();
@@ -589,7 +600,7 @@
         b.classList.remove('opacity-60', 'cursor-not-allowed');
       });
     }, 10000);
-  }, true);
+  }, false);
 })();
 </script>
 </body>

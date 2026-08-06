@@ -249,10 +249,15 @@ class SlackChannel:
         if not ok:
             return self._file_error(data)
 
-        # The message id, so the reply can be unsent like any other. Slack
-        # returns it nested under the file it just shared.
+        # The message id, so the reply can be unsent like any other, and the
+        # file id so the ticket page can fetch it back. Slack returns both
+        # nested under the file it just shared.
         shared = (data.get("files") or [{}])[0]
-        return Delivery.sent(shared.get("timestamp") or data.get("ts"))
+        return Delivery(
+            ok=True,
+            ref=str(shared.get("timestamp") or data.get("ts") or ""),
+            file_ref=shared.get("id") or file_id,
+        )
 
     def _file_error(self, data: dict) -> Delivery:
         error = str(data.get("error") or "unknown")
@@ -270,7 +275,17 @@ class SlackChannel:
         token Slack answers 200 with an HTML sign-in page, which is the sort
         of failure that gets stored as a corrupt image and puzzled over.
         """
-        if not (self._token and _is_slack_file(ref)):
+        if not self._token:
+            return None
+        # A bare file id, which is what an upload of ours hands back. One extra
+        # call turns it into a URL; the alternative is storing a link that
+        # expires and a broken thumbnail months later.
+        if ref and not ref.startswith("http") and ref.isalnum():
+            ok, data = await self._post("files.info", {"file": ref})
+            if not ok:
+                return None
+            ref = ((data.get("file") or {}).get("url_private") or "")
+        if not _is_slack_file(ref):
             return None
         try:
             async with httpx.AsyncClient(timeout=_UPLOAD_TIMEOUT) as client:

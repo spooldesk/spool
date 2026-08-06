@@ -95,6 +95,10 @@ class Delivery:
     #: messaging API has a rate limit and most will say how long they want;
     #: guessing instead of obeying is how an account gets throttled harder.
     retry_after: float | None = None
+    #: For a delivered file: what `fetch_file` will accept to get it back.
+    #: Separate from `ref`, which addresses the *message* for an unsend —
+    #: channels give the two out independently and neither substitutes.
+    file_ref: str | None = None
 
     @staticmethod
     def sent(ref: str | int | None = None) -> "Delivery":
