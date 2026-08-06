@@ -29,13 +29,22 @@ def _login(c: TestClient) -> str:
 
 
 class _Bot:
-    """Anything that lands here escaped the trial."""
+    """The operators' Telegram. Anything that lands here escaped the trial.
+
+    Kept as a bot rather than a channel on purpose: the admin thread is not a
+    customer channel, and the suggestions the trial withholds are posted to
+    operators, not to the person who wrote in.
+    """
 
     def __init__(self):
         self.sent: list[tuple] = []
 
     async def send_message(self, chat_id, text, **kw):
         self.sent.append((chat_id, text))
+
+
+#: For paths that take a bot only to reach the admin thread and never use it.
+_BOT = _Bot()
 
 
 async def _ticket_with_shadow_call(*, suggested: str, human: str | None = None) -> int:
@@ -112,13 +121,12 @@ async def test_operators_are_not_interrupted_either(initialized_db):
     assert bot.sent == [], "a suggestion was posted while the trial was running"
 
 
-async def test_with_the_trial_off_the_answer_goes_out(initialized_db):
+async def test_with_the_trial_off_the_answer_goes_out(initialized_db, channel):
     """The gate has to be a gate, not a wall — otherwise this test passes for
     the wrong reason and the one above proves nothing."""
     from src.ai import deflect
 
     await settings_service.set_ai_shadow_mode(False, updated_by=0)
-    bot = _Bot()
 
     async def _confident(ticket_id, user_text):
         return deflect.DeflectResult(answer="Restart the VPN client.", ai_call_id=1)
@@ -126,11 +134,12 @@ async def test_with_the_trial_off_the_answer_goes_out(initialized_db):
     original = deflect.try_deflect_for_ticket
     deflect.try_deflect_for_ticket = _confident
     try:
-        await deflect.deflect_and_offer(bot, 1, "vpn broken", 555, "en")
+        await deflect.deflect_and_offer(_BOT, 1, "vpn broken", 555, "en")
     finally:
         deflect.try_deflect_for_ticket = original
 
-    assert len(bot.sent) == 1, "the gate is stuck shut"
+    assert len(channel.texts) == 1, "the gate is stuck shut"
+    assert channel.texts[0][0] == "555", "it must reach the customer, not the admin chat"
 
 
 async def test_the_pair_is_the_draft_and_the_reply_that_followed(initialized_db):

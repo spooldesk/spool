@@ -26,6 +26,8 @@ from src.database.models import (
     Ticket,
     User,
 )
+from src.channels import DEFAULT as CHANNEL_DEFAULT
+from src.channels.identity import channel_of, display_address
 from src.dashboard.formatting import EMPTY
 from src.dashboard.i18n import t as _dash_t
 from src.services import close_reason_service, message_service, work_hours_service
@@ -577,8 +579,9 @@ async def list_tickets(
             "board_column": board_column(t.status, t.stage),
             "category": t.category,
             "team": team_names.get(t.team_id, "—") if t.team_id else "—",
-            "user_label": (f"@{username}" if username else f"id:{u.tg_id}") if u else "—",
+            "user_label": (f"@{username}" if username else f"id:{display_address(u)}") if u else "—",
             "user_tg_id": u.tg_id if u else None,
+            "channel": channel_of(u) if u else CHANNEL_DEFAULT,
             "user_db_id": u.id if u else None,
             "local_user_id": u.local_user_id if u else None,
             "linked_work": work_label,  # set → this ticket is from a personal account
@@ -952,6 +955,10 @@ async def ticket_detail(ticket_id: int) -> dict | None:
 
     sensitive = is_sensitive_category(ticket.category)
     username = (u.username if u else None) or ""
+    # Which pipe this conversation runs on decides what the page may offer:
+    # the unsend button below, and eventually anything else a channel cannot
+    # honour. Resolved once here rather than per message.
+    user_channel = channel_of(u) if u is not None else CHANNEL_DEFAULT
 
     messages = []
     for m in sorted(ticket.messages, key=lambda x: x.created_at):
@@ -982,12 +989,14 @@ async def ticket_detail(ticket_id: int) -> dict | None:
             "is_template_reply": m.template_id is not None,
             "is_internal": bool(m.is_internal),
             "deleted_at": m.deleted_at,
-            "can_delete": message_service.can_delete(m),
+            "can_delete": message_service.can_delete(m, channel=user_channel),
             "created_at": m.created_at,
         })
 
     return {
         "id": ticket.id,
+        "channel": user_channel,
+        "user_address": display_address(u) if u else None,
         "status": ticket.status,
         "stage": ticket.stage,
         "board_column": board_column(ticket.status, ticket.stage),

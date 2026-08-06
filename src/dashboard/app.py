@@ -307,6 +307,19 @@ async def _startup() -> None:
     except Exception as e:
         logger.error(f"Dashboard startup migration failed: {e}", exc_info=True)
 
+    # Which pipes this process can reach customers through. Telegram is
+    # registered against the send-only client the dashboard already builds;
+    # channels added later register themselves here too.
+    try:
+        from src.channels import ensure as ensure_channel
+        from src.channels.telegram import TelegramChannel
+        from src.dashboard.bot_client import get_bot
+        ensure_channel(TelegramChannel(get_bot()))
+    except Exception as e:
+        # A missing token should not stop the dashboard from serving pages;
+        # the reply box will report the failure when someone actually sends.
+        logger.warning(f"Telegram channel unavailable in this process: {e}")
+
     # Expose brand_name as a Jinja2 global so every template can reference
     # {{ g_brand_name }} without each route having to pass it explicitly.
     # Updated via _refresh_brand_global() when admin saves a new brand name.

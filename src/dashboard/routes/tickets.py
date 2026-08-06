@@ -327,7 +327,9 @@ async def _show_typing_to_customer(ticket_id: int) -> None:
             )).scalar_one_or_none()
         if ticket is None or ticket.user is None:
             return
-        await get_bot().send_chat_action(chat_id=ticket.user.tg_id, action="typing")
+        from src.channels import get as _get_channel
+        from src.channels.identity import address_of as _addr, channel_of as _chan
+        await _get_channel(_chan(ticket.user)).typing(_addr(ticket.user))
     except Exception as e:  # noqa: BLE001
         logger.debug(f"typing action skipped for ticket #{ticket_id}: {e}")
 
@@ -642,6 +644,8 @@ async def ticket_reply(
     """
     from urllib.parse import quote
     from src.config import load_settings
+    from src.channels import get as get_channel
+    from src.channels.identity import address_of, channel_of
     from src.dashboard.bot_client import get_bot
     from src.database.db import db_session
     from src.services import template_service, workflow_service
@@ -666,7 +670,6 @@ async def ticket_reply(
 
     # ----- File branch -----
     if has_file:
-        from aiogram.types import BufferedInputFile
         from sqlalchemy import select
         from sqlalchemy.orm import selectinload
         from src.database.models import Message as MessageRecord, Ticket
@@ -705,29 +708,38 @@ async def ticket_reply(
                 if ticket is None or ticket.status != "active":
                     return RedirectResponse(
                         f"/tickets/{ticket_id}?err={quote(tr("e_ticket_not_active"))}", status_code=303)
-                user_tg_id = ticket.user.tg_id if ticket.user else None
-                if not user_tg_id:
+                if ticket.user is None:
                     return RedirectResponse(
                         f"/tickets/{ticket_id}?err={quote(tr("e_no_recipient"))}", status_code=303)
+                channel = get_channel(channel_of(ticket.user))
+                address = address_of(ticket.user)
+                # Asked before anything is read back to the operator, not after
+                # three files have gone nowhere.
+                if not channel.caps.files:
+                    return RedirectResponse(
+                        f"/tickets/{ticket_id}?err={quote(tr("e_no_files_on_channel"))}",
+                        status_code=303)
 
                 for name, content in payloads:
                     # The text is a caption on the first file only — repeating it
                     # under every attachment would read like five separate replies.
                     caption = text if (text and sent_count == 0) else None
-                    try:
-                        input_file = BufferedInputFile(content, filename=name)
-                        # Send as document (universal); caption carries the text if any
-                        sent = await bot.send_document(
-                            chat_id=user_tg_id, document=input_file, caption=caption,
-                        )
-                    except Exception as e:  # noqa: BLE001
+                    delivery = await channel.send_file(
+                        address, filename=name, content=content, caption=caption,
+                    )
+                    if not delivery.ok:
                         # Whatever already left is real and stays recorded below.
-                        failure = type(e).__name__
+                        failure = delivery.error_detail or tr(delivery.error_key or "e_send_failed")
                         break
-                    file_id = sent.document.file_id if sent.document else None
+                    # Telegram hands back a reusable id so the mirror below need
+                    # not upload the same bytes twice. Channels without one store
+                    # nothing here and mirror the caption alone.
+                    file_id = delivery.error_detail
 
                     # Mirror into admin thread
                     try:
+                        if not file_id:
+                            raise ValueError("no reusable id to mirror with")
                         kwargs = {"chat_id": settings.admin_chat_id, "document": file_id,
                                   "caption": f'{tr("src_web_dashboard")} 📎 {name}' + (f"\n{caption}" if caption else "")}
                         if ticket.thread_id is not None:

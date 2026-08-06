@@ -7,38 +7,79 @@ cannot be undone, so the tests are mostly about it NOT doing more than asked.
 import asyncio
 
 import pytest
-from aiogram.exceptions import TelegramForbiddenError, TelegramNotFound, TelegramRetryAfter
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from src.dashboard.app import app
 from src.database.db import db_session
 from src.database.models import Team, User
+import src.channels as channels
+from src.channels.base import Capabilities, Delivery
 from src.services import broadcast_service as bc
 from tests.conftest import next_tg_id
 
 
-class FakeBot:
-    """Records what was sent; can be told to fail for specific chats."""
+class FakeChannel:
+    """Records what was sent; can be told to fail for specific addresses.
+
+    Written against the channel rather than the Bot API, which is what the
+    broadcast loop now speaks. The outcomes it can produce — blocked, gone,
+    throttled — are the vocabulary every channel reports in, so the same
+    accounting has to hold when the audience is on a widget or in a mailbox.
+    """
+
+    name = "telegram"
+    caps = Capabilities(unsend=True, files=True, buttons=True, typing=True)
 
     def __init__(self, blocked=(), missing=(), retry_after=()):
         self.sent: list[tuple[int, str]] = []
-        self.blocked = set(blocked)
-        self.missing = set(missing)
-        self.retry_after = dict(retry_after)   # chat_id -> times to raise
+        self.blocked = {str(x) for x in blocked}
+        self.missing = {str(x) for x in missing}
+        self.retry_after = {str(k): v for k, v in dict(retry_after).items()}
         self.attempts: dict[int, int] = {}
 
-    async def send_message(self, chat_id: int, text: str, **kw):
-        self.attempts[chat_id] = self.attempts.get(chat_id, 0) + 1
-        if chat_id in self.blocked:
-            raise TelegramForbiddenError(method=None, message="blocked")
-        if chat_id in self.missing:
-            raise TelegramNotFound(method=None, message="not found")
-        left = self.retry_after.get(chat_id, 0)
+    async def send_text(self, address: str, text: str, *, options=None):
+        chat = int(address)
+        self.attempts[chat] = self.attempts.get(chat, 0) + 1
+        if address in self.blocked:
+            return Delivery.failed("e_user_blocked_bot", address, blocked=True)
+        if address in self.missing:
+            return Delivery.failed("e_user_chat_not_found", address, blocked=True)
+        left = self.retry_after.get(address, 0)
         if left:
-            self.retry_after[chat_id] = left - 1
-            raise TelegramRetryAfter(method=None, message="flood", retry_after=0)
-        self.sent.append((chat_id, text))
+            self.retry_after[address] = left - 1
+            return Delivery.failed("e_send_rate_limited", "flood", retry_after=0)
+        self.sent.append((chat, text))
+        return Delivery.sent(len(self.sent))
+
+    async def send_file(self, address, *, filename, content, caption=None):
+        raise AssertionError("broadcast never sends files")
+
+    async def unsend(self, address, ref):
+        return False
+
+    async def typing(self, address):
+        pass
+
+
+# The bot argument survives only because `start` still takes one; nothing in
+# the broadcast path uses it now that sending goes through the channel.
+_BOT = object()
+
+
+@pytest.fixture(autouse=True)
+def _channel(request):
+    """Install whichever fake the test built, and take it out again."""
+    fake = getattr(request, "param", None) or FakeChannel()
+    channels.register(fake)
+    yield fake
+    channels.reset()
+
+
+def _use(fake: FakeChannel) -> FakeChannel:
+    """Swap in a fake configured for this test."""
+    channels.register(fake)
+    return fake
 
 
 @pytest.fixture(autouse=True)
@@ -118,20 +159,19 @@ async def test_counts_only_reachable_users(initialized_db):
     assert await bc.count_recipients("team", ids["beta"]) == 1
 
 
-async def test_blocked_and_unverified_never_receive(initialized_db):
+async def test_blocked_and_unverified_never_receive(initialized_db, _channel):
     ids = await _seed(initialized_db)
-    bot = FakeBot()
-    ok, _ = await bc.start(bot, text="hi", audience="team", team_id=ids["beta"])
+    ok, _ = await bc.start(_BOT, text="hi", audience="team", team_id=ids["beta"])
     assert ok
     await _drain()
-    assert [c for c, _ in bot.sent] == ids["beta_tg"]
+    assert [c for c, _ in _channel.sent] == ids["beta_tg"]
 
 
 async def test_delivery_outcomes_are_counted_separately(initialized_db):
     ids = await _seed(initialized_db)
     a1, a2 = ids["alpha_tg"]
-    bot = FakeBot(blocked={a1}, missing={a2})
-    ok, _ = await bc.start(bot, text="hi", audience="team", team_id=ids["alpha"])
+    _use(FakeChannel(blocked={a1}, missing={a2}))
+    ok, _ = await bc.start(_BOT, text="hi", audience="team", team_id=ids["alpha"])
     assert ok
     await _drain()
 
@@ -142,39 +182,44 @@ async def test_delivery_outcomes_are_counted_separately(initialized_db):
 
 
 async def test_flood_control_is_obeyed_and_retried(initialized_db):
-    """Telegram's 429 must not silently drop the message."""
+    """A rate limit must not silently drop the message.
+
+    The channel names the delay it wants; the broadcast waits it out and tries
+    once more. Dropping instead would lose whoever happened to be in the
+    audience at the moment the limit was hit, with nothing in the report to
+    say so.
+    """
     ids = await _seed(initialized_db)
     a1 = ids["alpha_tg"][0]
-    bot = FakeBot(retry_after={a1: 1})
-    ok, _ = await bc.start(bot, text="hi", audience="team", team_id=ids["alpha"])
+    fake = _use(FakeChannel(retry_after={a1: 1}))
+    ok, _ = await bc.start(_BOT, text="hi", audience="team", team_id=ids["alpha"])
     assert ok
     await _drain()
 
     assert bc.last_result().sent == 2, "the throttled message should land on retry"
-    assert bot.attempts[a1] == 2
+    assert fake.attempts[a1] == 2
 
 
-async def test_empty_and_overlong_text_rejected(initialized_db):
+async def test_empty_and_overlong_text_rejected(initialized_db, _channel):
     ids = await _seed(initialized_db)
-    bot = FakeBot()
-    ok, key = await bc.start(bot, text="   ", audience="team", team_id=ids["alpha"])
+    ok, key = await bc.start(_BOT, text="   ", audience="team", team_id=ids["alpha"])
     assert not ok and key == "e_empty_message"
-    ok, key = await bc.start(bot, text="x" * 4097, audience="all")
+    ok, key = await bc.start(_BOT, text="x" * 4097, audience="all")
     assert not ok and key == "e_broadcast_too_long"
-    assert bot.sent == []
+    assert _channel.sent == []
 
 
 async def test_team_audience_needs_a_team(initialized_db):
     await _seed(initialized_db)
-    ok, key = await bc.start(FakeBot(), text="hi", audience="team", team_id=None)
+    ok, key = await bc.start(_BOT, text="hi", audience="team", team_id=None)
     assert not ok and key == "e_broadcast_no_team"
 
 
 async def test_refuses_to_start_twice(initialized_db):
     ids = await _seed(initialized_db)
-    ok, _ = await bc.start(FakeBot(), text="one", audience="team", team_id=ids["alpha"])
+    ok, _ = await bc.start(_BOT, text="one", audience="team", team_id=ids["alpha"])
     assert ok
-    ok2, key = await bc.start(FakeBot(), text="two", audience="team", team_id=ids["alpha"])
+    ok2, key = await bc.start(_BOT, text="two", audience="team", team_id=ids["alpha"])
     assert not ok2 and key == "e_broadcast_running"
     await _drain()
 

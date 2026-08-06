@@ -23,11 +23,12 @@ from datetime import datetime
 from typing import Literal, Optional
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramForbiddenError, TelegramNotFound, TelegramRetryAfter
 from sqlalchemy import func, select
 
 from src.database.db import db_session
 from src.database.models import Team, User
+
+from src.channels import get as get_channel  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -144,29 +145,48 @@ async def start(
     return True, ""
 
 
+async def _deliver(channel, address: str, text: str):
+    """One send, obeying the channel's own backoff once.
+
+    Rate limits are not a Telegram peculiarity — every messaging API has them,
+    and most will say how long they want to be left alone. Waiting the stated
+    time and trying once more is the difference between a broadcast that
+    finishes and one that quietly loses the second half of its audience.
+    """
+    delivery = await channel.send_text(address, text)
+    # `is not None`, not truthiness: a channel that says "wait zero seconds"
+    # is still saying try again, and reading that as a permanent failure would
+    # drop the message for exactly the recipients the limit was hit on.
+    if not delivery.ok and delivery.retry_after is not None:
+        await asyncio.sleep(delivery.retry_after + 1)
+        delivery = await channel.send_text(address, text)
+    return delivery
+
+
 async def _run(bot: Bot, text: str, targets: list[tuple[int, str]], result: BroadcastResult) -> None:
+    channel = get_channel(None)
     for tg_id, label in targets:
         try:
-            await bot.send_message(chat_id=tg_id, text=text)
-            result.sent += 1
-        except TelegramRetryAfter as e:
-            # Telegram told us exactly how long to wait — obey, then retry once.
-            await asyncio.sleep(e.retry_after + 1)
-            try:
-                await bot.send_message(chat_id=tg_id, text=text)
-                result.sent += 1
-            except Exception:
-                result.failed += 1
-                _note(result, label, "retry failed")
-        except TelegramForbiddenError:
-            result.blocked += 1
-            _note(result, label, "blocked the bot")
-        except TelegramNotFound:
-            result.not_found += 1
-            _note(result, label, "chat not found")
+            delivery = await _deliver(channel, str(tg_id), text)
         except Exception as e:  # noqa: BLE001 — one bad chat must not stop the run
             result.failed += 1
             _note(result, label, type(e).__name__)
+        else:
+            if delivery.ok:
+                result.sent += 1
+            elif delivery.blocked:
+                # Two different kinds of unreachable, kept apart because they
+                # mean different things about the list: someone who blocked us
+                # made a choice, a missing chat is stale data.
+                if delivery.error_key == "e_user_chat_not_found":
+                    result.not_found += 1
+                    _note(result, label, "chat not found")
+                else:
+                    result.blocked += 1
+                    _note(result, label, "blocked the bot")
+            else:
+                result.failed += 1
+                _note(result, label, delivery.error_key or "send failed")
         await asyncio.sleep(_SEND_INTERVAL_SEC)
 
     result.finished_at = datetime.utcnow()

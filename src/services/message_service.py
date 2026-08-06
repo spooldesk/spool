@@ -1,8 +1,9 @@
 """Unsending a message an operator already delivered.
 
-Telegram lets a bot delete its own messages for 48 hours. After that the copy
-in the customer's chat is permanent no matter what we do here, so the UI has to
-stop offering it rather than fail later and look broken.
+Not every channel can. Telegram lets a bot delete its own messages for 48
+hours; an email cannot be recalled at all. Both facts are declared on the
+channel's capabilities so the UI stops offering the button rather than failing
+after the click, when the operator has already been told it worked.
 
 Deleting is soft on our side. A support transcript that silently loses messages
 is worse than one that says a message was withdrawn: the next operator needs to
@@ -17,10 +18,11 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramBadRequest
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from src.channels import caps, get as get_channel
+from src.channels.identity import address_of, channel_of
 from src.database.db import db_session
 from src.database.models import Message as MessageRecord, Ticket
 
@@ -34,19 +36,33 @@ DELETE_WINDOW = timedelta(hours=48)
 class DeleteResult:
     ok: bool
     error_key: str = ""
-    removed_from_telegram: bool = False
+    removed_from_channel: bool = False
 
 
-def can_delete(message: MessageRecord | dict, now: datetime | None = None) -> bool:
+def can_delete(
+    message: MessageRecord | dict,
+    now: datetime | None = None,
+    *,
+    channel: str | None = None,
+) -> bool:
     """Whether the unsend button should be offered for this message.
 
-    Only operator messages we actually delivered, that we recorded an id for,
-    that are not already withdrawn, and that are still inside Telegram's window.
+    Only operator messages we actually delivered, on a channel that can take
+    one back, that we recorded an id for, that are not already withdrawn, and
+    that are still inside the window.
+
+    `channel` is passed in rather than read off the message, because it lives
+    on the customer and a message row does not carry one. Omitting it assumes
+    Telegram, which is what every row predating the channel columns is.
     """
     get = message.get if isinstance(message, dict) else lambda k: getattr(message, k, None)
     if get("sender_type") != "admin" or get("is_internal"):
         return False
     if not get("tg_message_id") or get("deleted_at"):
+        return False
+    # Asked per message because the answer is per customer: the same operator,
+    # the same minute, can unsend to one person and not to another.
+    if not caps(channel).unsend:
         return False
     created = get("created_at")
     if not created:
@@ -70,26 +86,26 @@ async def delete_for_user(bot: Bot, message_id: int) -> DeleteResult:
         if row is None:
             return DeleteResult(False, "e_message_not_found")
         if row.deleted_at:
-            return DeleteResult(True, "", removed_from_telegram=False)
-        if not can_delete(row):
-            return DeleteResult(False, "e_delete_window_passed")
+            return DeleteResult(True, "", removed_from_channel=False)
 
         user = row.ticket.user if row.ticket else None
         if user is None or not user.tg_id:
             return DeleteResult(False, "e_no_recipient")
-        chat_id, tg_message_id = user.tg_id, row.tg_message_id
+        channel, address = channel_of(user), address_of(user)
 
-    try:
-        await bot.delete_message(chat_id=chat_id, message_id=tg_message_id)
-    except TelegramBadRequest as e:
-        # Already gone, or past the window on Telegram's clock rather than
-        # ours. Either way the customer no longer sees it or never will stop
-        # seeing it; both are terminal, so say so instead of retrying.
-        logger.warning(f"delete_message refused for message #{message_id}: {e}")
+        # Two different noes, told apart because the operator can act on one
+        # of them: "too late" means next time, "this channel can't" means
+        # never, and hearing the first when it was the second wastes an hour.
+        if not caps(channel).unsend:
+            return DeleteResult(False, "e_delete_unsupported")
+        if not can_delete(row, channel=channel):
+            return DeleteResult(False, "e_delete_window_passed")
+        ref = str(row.tg_message_id)
+
+    # The adapter decides what "could not be withdrawn" means on its own
+    # medium and reports it the same way regardless.
+    if not await get_channel(channel).unsend(address, ref):
         return DeleteResult(False, "e_delete_refused")
-    except Exception as e:  # noqa: BLE001
-        logger.error(f"delete_message failed for message #{message_id}: {e}")
-        return DeleteResult(False, "e_delete_failed")
 
     async with db_session() as session:
         row = await session.get(MessageRecord, message_id)
@@ -97,5 +113,5 @@ async def delete_for_user(bot: Bot, message_id: int) -> DeleteResult:
             row.deleted_at = datetime.utcnow()
             await session.commit()
 
-    logger.info(f"Message #{message_id} withdrawn from chat {chat_id}")
-    return DeleteResult(True, "", removed_from_telegram=True)
+    logger.info(f"Message #{message_id} withdrawn from {channel}:{address}")
+    return DeleteResult(True, "", removed_from_channel=True)

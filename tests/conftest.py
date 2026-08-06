@@ -45,3 +45,94 @@ _TG_IDS = itertools.count(1_000_000)
 def next_tg_id() -> int:
     """A telegram id no other test is using."""
     return next(_TG_IDS)
+
+
+# ---------------------------------------------------------------------------
+# Channels
+#
+# Tests used to hand a fake aiogram Bot to whichever module was about to send.
+# That only worked while Telegram was the one way out, and it tested the Bot
+# API's shape rather than ours. Since the channel layer landed, the seam a test
+# should stand on is the channel: install a recorder in the registry and assert
+# on what an *operator* caused, not on which Bot API method got called.
+
+
+class RecordingChannel:
+    """A channel that keeps what it was asked to send instead of sending it.
+
+    `fail_on` makes the Nth send fail, which is how the partial-delivery paths
+    get tested — the interesting case is three of five arriving, and there is
+    no other way to reach it.
+    """
+
+    name = "telegram"
+
+    def __init__(self, *, fail_on: int | None = None, caps=None, name: str | None = None):
+        from src.channels.base import Capabilities
+
+        if name:
+            self.name = name
+        self.caps = caps or Capabilities(
+            unsend=True, files=True, buttons=True, typing=True, push=True
+        )
+        self.fail_on = fail_on
+        self.texts: list[tuple[str, str]] = []
+        self.files: list[dict] = []
+        self.offered: list[list] = []
+        self.unsent: list[tuple[str, str]] = []
+        self.typing_for: list[str] = []
+        self._n = 0
+
+    @property
+    def sent(self) -> int:
+        return len(self.texts) + len(self.files)
+
+    def _next_ref(self) -> str:
+        self._n += 1
+        return str(9000 + self._n)
+
+    async def send_text(self, address, text, *, options=None):
+        from src.channels.base import Delivery
+
+        if self.fail_on is not None and self.sent + 1 == self.fail_on:
+            return Delivery.failed("e_send_failed", "channel said no")
+        self.texts.append((address, text))
+        # Kept separately so a test can assert an unrelated message carried no
+        # choices — offering a rating twice is worse than not offering one.
+        self.offered.append(list(options or []))
+        return Delivery.sent(self._next_ref())
+
+    async def send_file(self, address, *, filename, content, caption=None):
+        from src.channels.base import Delivery
+
+        if self.fail_on is not None and self.sent + 1 == self.fail_on:
+            return Delivery.failed("e_send_failed", "channel said no")
+        self.files.append({"address": address, "filename": filename,
+                           "content": content, "caption": caption})
+        # Telegram puts a reusable file id in `error_detail` on success; the
+        # dashboard mirrors with it, so the fake supplies one too.
+        d = Delivery.sent(self._next_ref())
+        from src.channels.base import Delivery as _D
+        return _D(ok=True, ref=d.ref, error_detail=f"fid-{len(self.files)}")
+
+    async def unsend(self, address, ref):
+        self.unsent.append((address, ref))
+        return True
+
+    async def typing(self, address):
+        self.typing_for.append(address)
+
+
+@pytest.fixture()
+def channel():
+    """Install a recording channel as Telegram, and take it out again.
+
+    Torn down explicitly: the registry is process-wide, and a fake left behind
+    would silently absorb the sends of every test that ran afterwards.
+    """
+    import src.channels as channels
+
+    recorder = RecordingChannel()
+    channels.register(recorder)
+    yield recorder
+    channels.reset()

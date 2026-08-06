@@ -162,26 +162,46 @@ async def _find_ticket_for_admin_message(
 
 
 async def _forward_admin_message_to_user(
-    bot: Bot, user_tg_id: int, text_content: str, attachment, ticket_id: int = None
+    bot: Bot, user_tg_id: int, text_content: str, attachment, ticket_id: int = None,
+    channel: str | None = None, address: str | None = None,
 ) -> None:
-    """
-    Forward admin message to user.
-    Sends either text OR attachment (with optional caption), not both separately.
-    Note: We don't use reply_to_message_id here because user messages are in private chat,
-    not in a thread structure.
-    
+    """Forward an operator's message from the admin chat to the customer.
+
+    Sends either text OR the attachment with the text as its caption, never
+    both separately.
+
+    The customer is not necessarily on Telegram. `user_tg_id` is the routing
+    key, which for anyone who arrived elsewhere is a synthetic negative number
+    and not a chat that exists — so the text goes through their channel, and
+    attachments are refused where the channel cannot carry them rather than
+    failing somewhere that looks like a Telegram outage.
+
     Args:
-        bot: Bot instance
-        user_tg_id: Telegram user ID to send message to
+        bot: Bot instance, for the Telegram-native attachment path
+        user_tg_id: internal routing key, used for logging and as the Telegram
+            address when no other is given
         text_content: Text content of the message
         attachment: Attachment data if any
         ticket_id: Optional ticket ID for logging context
+        channel: the customer's channel; Telegram when omitted
+        address: the customer's address on it; their tg_id when omitted
     """
+    from src.channels import caps as channel_caps, get as get_channel
+
     ticket_info = f" (Ticket #{ticket_id})" if ticket_id else ""
     
     try:
         # Log attempt to send message
         if attachment:
+            if not channel_caps(channel).files:
+                # Forwarding by file_id is a Telegram trick and nothing else
+                # understands it. Say so to the operator instead of throwing
+                # an error that reads like the customer's chat is broken.
+                logger.warning(
+                    f"Attachment not forwarded to user {user_tg_id}{ticket_info}: "
+                    f"channel {channel or 'telegram'} does not carry files"
+                )
+                raise ValueError("channel cannot carry attachments")
             logger.info(
                 f"Attempting to send attachment to user {user_tg_id}{ticket_info}. "
                 f"Type: {attachment.content_type}, File: {attachment.file_name or 'N/A'}"
@@ -198,7 +218,11 @@ async def _forward_admin_message_to_user(
                 f"Attempting to send text message to user {user_tg_id}{ticket_info}. "
                 f"Length: {len(text_content)} chars"
             )
-            await bot.send_message(chat_id=user_tg_id, text=text_content)
+            delivery = await get_channel(channel).send_text(
+                address or str(user_tg_id), text_content,
+            )
+            if not delivery.ok:
+                raise RuntimeError(delivery.error_key or "send failed")
             logger.info(f"Successfully sent text message to user {user_tg_id}{ticket_info}")
         else:
             logger.warning(f"No content to send to user {user_tg_id}{ticket_info}")
@@ -326,35 +350,15 @@ async def handle_close_ticket(message: Message, bot: Bot, command: CommandObject
     # Notify admin
     await message.reply(_op("op_closed", id=ticket_id))
 
-    # Notify user (in their language) + ask for a CSAT rating
-    try:
-        logger.info(f"Attempting to notify user {user_tg_id} about ticket #{ticket_id} closure")
-        from src.services import csat_service
-        await bot.send_message(
-            chat_id=user_tg_id,
-            text=(get_text("ticket_closed_user", user_lang, id=ticket_id)
-                  + "\n\n" + get_text("csat_invite", user_lang)),
-            reply_markup=csat_service.build_rating_keyboard(ticket_id),
-        )
-        logger.info(f"Successfully notified user {user_tg_id} about ticket #{ticket.id} closure")
-    except TelegramForbiddenError as e:
-        logger.error(
-            f"❌ FAILED to notify user {user_tg_id} about ticket #{ticket.id} closure: "
-            f"User blocked the bot. Error: {e}"
-        )
-        logger.error(f"Full error details: {traceback.format_exc()}")
-    except TelegramNotFound as e:
-        logger.error(
-            f"❌ FAILED to notify user {user_tg_id} about ticket #{ticket.id} closure: "
-            f"Chat/user not found. Error: {e}"
-        )
-        logger.error(f"Full error details: {traceback.format_exc()}")
-    except Exception as e:
-        logger.error(
-            f"❌ FAILED to notify user {user_tg_id} about ticket #{ticket.id} closure: "
-            f"{type(e).__name__}: {e}"
-        )
-        logger.error(f"Full error details: {traceback.format_exc()}")
+    # Notify user (in their language) + ask for a CSAT rating.
+    #
+    # This used to assemble and send its own copy of the closing message, which
+    # meant two places had to agree on what a closed ticket says and on which
+    # buttons come with it. They did not stay in agreement.
+    from src.services import csat_service
+    await csat_service.send_close_notification(
+        bot, user_tg_id=user_tg_id, ticket_id=ticket_id, lang=user_lang,
+    )
 
 
 @admin_router.message(F.chat.id == settings.admin_chat_id, Command("t"))
@@ -468,6 +472,11 @@ async def handle_admin_reply(message: Message, bot: Bot) -> None:
         )
 
         user_tg_id = ticket.user.tg_id
+        # Where they actually are. For a Telegram customer these are the id
+        # again and "telegram"; for anyone else the id is a routing key that
+        # no chat answers to.
+        from src.channels.identity import address_of, channel_of
+        user_channel, user_address = channel_of(ticket.user), address_of(ticket.user)
 
         # Clean text content (remove ticket ID prefix if present)
         cleaned_text = text_content
@@ -504,7 +513,8 @@ async def handle_admin_reply(message: Message, bot: Bot) -> None:
         # Forward to user (only once - either text OR attachment with caption)
         try:
             await _forward_admin_message_to_user(
-                bot, user_tg_id, cleaned_text, attachment, ticket_id=ticket.id
+                bot, user_tg_id, cleaned_text, attachment, ticket_id=ticket.id,
+                channel=user_channel, address=user_address,
             )
             logger.info(
                 f"✅ Successfully forwarded admin message to user {user_tg_id} for ticket #{ticket.id}"

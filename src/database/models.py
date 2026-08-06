@@ -31,13 +31,32 @@ class Team(Base):
 
 
 class User(Base):
-    """Represents a registered Telegram user interacting with the bot."""
+    """A customer, reachable on exactly one channel.
+
+    See src/channels/identity.py for why `tg_id` survived the arrival of other
+    channels: it is the internal routing key, unique and non-null, and it is a
+    real Telegram id only when `channel` says so. Off-Telegram customers get a
+    negative one, since Telegram's are always positive and the two ranges
+    therefore cannot collide.
+    """
 
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     tg_id: Mapped[int] = mapped_column(
         BigInteger, unique=True, nullable=False, index=True
+    )
+    # Which pipe this customer talks to us through: "telegram", "widget",
+    # "email"… Stored per customer rather than per ticket, because a person
+    # writing from two channels is two conversations that happen to be the
+    # same human — merging them is a separate feature with its own UI.
+    channel: Mapped[str] = mapped_column(
+        String(20), default="telegram", nullable=False, index=True
+    )
+    # The address on that channel, as the channel spells it. A chat id, an
+    # email address, a widget session token — hence a string.
+    channel_user_id: Mapped[str | None] = mapped_column(
+        String(255), nullable=True, index=True
     )
     username: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Work nickname. Bridges someone's personal Telegram account and the name

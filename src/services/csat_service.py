@@ -20,6 +20,9 @@ from src.database.db import db_session
 from src.database.models import Ticket
 from src.utils.i18n import get_text
 
+from src.channels import get as get_channel  # noqa: E402
+from src.channels.base import Option  # noqa: E402
+
 logger = logging.getLogger(__name__)
 
 CSAT_CB_PREFIX = "csat"  # callback_data: "csat:{ticket_id}:{rating}"
@@ -28,7 +31,12 @@ STARS = {1: "1 ⭐", 2: "2 ⭐", 3: "3 ⭐", 4: "4 ⭐", 5: "5 ⭐"}
 
 
 def build_rating_keyboard(ticket_id: int) -> InlineKeyboardMarkup:
-    """One row of five rating buttons for this ticket."""
+    """One row of five rating buttons for this ticket.
+
+    Still here for the Telegram handlers that build a keyboard directly. New
+    code should use `rating_options` and let the channel decide how a choice
+    is presented.
+    """
     return InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(
             text=str(n) + "⭐",
@@ -38,13 +46,30 @@ def build_rating_keyboard(ticket_id: int) -> InlineKeyboardMarkup:
     ]])
 
 
+def rating_options(ticket_id: int) -> list[Option]:
+    """The same five choices, in a form any channel can render.
+
+    The payload is byte-for-byte what the Telegram callback handler already
+    parses, so nothing downstream had to learn a second format.
+    """
+    return [
+        Option(label=f"{n}⭐", payload=f"{CSAT_CB_PREFIX}:{ticket_id}:{n}")
+        for n in range(1, 6)
+    ]
+
+
 async def send_close_notification(
     bot: Bot, *, user_tg_id: int, ticket_id: int, lang: str | None,
+    channel: str | None = None, address: str | None = None,
 ) -> None:
-    """Notify the user their ticket is closed + ask for a rating.
+    """Tell the customer their ticket is closed and ask how it went.
 
-    Single message: closure text + invite + star keyboard. Never raises —
-    a failed notification must not break the close flow.
+    One message: closure text, the invite, and the five stars. Never raises —
+    a rating request that fails to send must not leave a ticket half-closed.
+
+    `channel`/`address` describe where to send; without them this falls back
+    to the Telegram id, which is what every caller inside the bot passes and
+    what every ticket predating the channel layer used.
     """
     text = (
         get_text("ticket_closed_user", lang, id=ticket_id)
@@ -52,11 +77,14 @@ async def send_close_notification(
         + get_text("csat_invite", lang)
     )
     try:
-        await bot.send_message(
-            chat_id=user_tg_id,
-            text=text,
-            reply_markup=build_rating_keyboard(ticket_id),
+        delivery = await get_channel(channel).send_text(
+            address or str(user_tg_id), text, options=rating_options(ticket_id),
         )
+        if not delivery.ok:
+            logger.error(
+                f"CSAT: could not ask user {user_tg_id} about ticket #{ticket_id}: "
+                f"{delivery.error_key} {delivery.error_detail or ''}"
+            )
     except Exception as e:
         logger.error(f"CSAT: failed to notify user {user_tg_id} for ticket #{ticket_id}: {e}")
 

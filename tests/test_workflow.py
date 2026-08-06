@@ -172,16 +172,13 @@ async def test_note_never_feeds_ai_context(initialized_db):
     assert secret not in transcript
 
 
-async def test_note_route_does_not_call_the_bot(initialized_db, monkeypatch):
-    """Posting a note must not touch the Bot API at all."""
-    called = []
+async def test_a_note_never_reaches_the_customer(initialized_db, channel):
+    """The whole point of an internal note.
 
-    def _boom(*a, **kw):
-        called.append(1)
-        raise AssertionError("the note path must never build a bot client")
-
-    monkeypatch.setattr("src.dashboard.bot_client.get_bot", _boom)
-
+    Asserted against the channel rather than against the Bot API, which is
+    both stronger and channel-agnostic: whatever a note is written about, the
+    person it is written about must not receive it on any medium.
+    """
     tid = await _seed_wf(initialized_db)
     with TestClient(app, base_url="http://testserver") as c:
         token = _login(c)
@@ -190,7 +187,7 @@ async def test_note_route_does_not_call_the_bot(initialized_db, monkeypatch):
                    follow_redirects=False)
     assert r.status_code == 303
     assert r.headers["location"].endswith("?sent=note")
-    assert not called
+    assert channel.sent == 0, "an internal note was delivered to the customer"
 
     detail = await queries.ticket_detail(tid)
     assert any(m["is_internal"] and m["text"] == "note via HTTP" for m in detail["messages"])
@@ -245,15 +242,13 @@ async def _ticket_for_reply() -> int:
     return tid
 
 
-async def test_mashing_send_reaches_the_customer_once(initialized_db, monkeypatch):
+async def test_mashing_send_reaches_the_customer_once(initialized_db, channel):
     """An impatient operator must not turn one reply into five.
 
     The button is disabled on submit, but a refresh or Back-then-resubmit walks
     straight past that, so the server has to refuse the duplicate itself.
     """
     tid = await _ticket_for_reply()
-    bot = _CountingBot()
-    monkeypatch.setattr("src.dashboard.bot_client.get_bot", lambda: bot)
 
     with TestClient(app, base_url="http://testserver") as c:
         token = _login(c)
@@ -262,13 +257,11 @@ async def test_mashing_send_reaches_the_customer_once(initialized_db, monkeypatc
                    data={"text": "Checking, one moment", "csrf_token": token},
                    follow_redirects=False)
 
-    assert bot.to_customer == ["Checking, one moment"]
+    assert [t for _addr, t in channel.texts] == ["Checking, one moment"]
 
 
-async def test_a_genuinely_different_reply_still_sends(initialized_db, monkeypatch):
+async def test_a_genuinely_different_reply_still_sends(initialized_db, channel):
     tid = await _ticket_for_reply()
-    bot = _CountingBot()
-    monkeypatch.setattr("src.dashboard.bot_client.get_bot", lambda: bot)
 
     with TestClient(app, base_url="http://testserver") as c:
         token = _login(c)
@@ -276,16 +269,16 @@ async def test_a_genuinely_different_reply_still_sends(initialized_db, monkeypat
             c.post(f"/tickets/{tid}/reply",
                    data={"text": text, "csrf_token": token}, follow_redirects=False)
 
-    assert bot.to_customer == ["first", "second"]
+    assert [t for _addr, t in channel.texts] == ["first", "second"]
 
 
-async def test_the_same_words_are_allowed_once_the_window_passes(initialized_db, monkeypatch):
+async def test_the_same_words_are_allowed_once_the_window_passes(
+    initialized_db, channel, monkeypatch
+):
     """"ok" twice in a row is a stutter; "ok" again later is a person talking."""
     import src.dashboard.routes.tickets as tickets_routes
 
     tid = await _ticket_for_reply()
-    bot = _CountingBot()
-    monkeypatch.setattr("src.dashboard.bot_client.get_bot", lambda: bot)
     monkeypatch.setattr(tickets_routes, "_DUPLICATE_WINDOW_SEC", 0)
 
     with TestClient(app, base_url="http://testserver") as c:
@@ -294,7 +287,7 @@ async def test_the_same_words_are_allowed_once_the_window_passes(initialized_db,
             c.post(f"/tickets/{tid}/reply",
                    data={"text": "ok", "csrf_token": token}, follow_redirects=False)
 
-    assert bot.to_customer == ["ok", "ok"]
+    assert [t for _addr, t in channel.texts] == ["ok", "ok"]
 
 
 def test_every_form_is_guarded_against_a_second_click():

@@ -24,36 +24,10 @@ def _login(c: TestClient) -> str:
     return c.cookies.get("supbot_csrf") or token
 
 
-class _Doc:
-    def __init__(self, file_id):
-        self.file_id = file_id
-
-
-class _Sent:
-    def __init__(self, file_id):
-        self.document = _Doc(file_id)
-
-
-class _Bot:
-    """Records what reached the customer, and can fail on the Nth send."""
-
-    def __init__(self, fail_on: int | None = None):
-        self.sent: list[dict] = []
-        self.fail_on = fail_on
-
-    async def send_document(self, chat_id, document, caption=None, **kw):
-        # Mirrors into the admin chat pass a file_id string, not an upload.
-        is_upload = hasattr(document, "filename")
-        if is_upload and self.fail_on is not None and len(self.to_user) + 1 == self.fail_on:
-            raise RuntimeError("Telegram said no")
-        self.sent.append({"chat_id": chat_id, "caption": caption,
-                          "filename": getattr(document, "filename", None),
-                          "upload": is_upload})
-        return _Sent(f"fid-{len(self.sent)}")
-
-    @property
-    def to_user(self):
-        return [s for s in self.sent if s["upload"]]
+# The recorder lives in conftest and counts only what left towards the
+# customer. The old fake sat on the Bot API and had to sort mirrors into the
+# admin chat from real deliveries by checking whether the argument was an
+# upload — a distinction the channel seam makes for free.
 
 
 async def _ticket() -> int:
@@ -91,9 +65,7 @@ def _post(c, tid, token, files, text=""):
                   follow_redirects=False)
 
 
-async def test_every_attached_file_reaches_the_customer(initialized_db, monkeypatch):
-    bot = _Bot()
-    monkeypatch.setattr("src.dashboard.bot_client.get_bot", lambda: bot)
+async def test_every_attached_file_reaches_the_customer(initialized_db, channel):
     tid = await _ticket()
 
     with TestClient(app, base_url="http://testserver") as c:
@@ -105,14 +77,12 @@ async def test_every_attached_file_reaches_the_customer(initialized_db, monkeypa
         ], text="all three logs")
 
     assert r.status_code == 303 and "sent=1" in r.headers["location"]
-    assert [s["filename"] for s in bot.to_user] == ["a.png", "b.png", "c.pdf"]
+    assert [f["filename"] for f in channel.files] == ["a.png", "b.png", "c.pdf"]
     assert [n for n, _ in await _files_on(tid)] == ["a.png", "b.png", "c.pdf"]
 
 
-async def test_the_text_is_a_caption_once_not_on_every_file(initialized_db, monkeypatch):
+async def test_the_text_is_a_caption_once_not_on_every_file(initialized_db, channel):
     """Repeating it under each attachment would read as three separate replies."""
-    bot = _Bot()
-    monkeypatch.setattr("src.dashboard.bot_client.get_bot", lambda: bot)
     tid = await _ticket()
 
     with TestClient(app, base_url="http://testserver") as c:
@@ -120,13 +90,11 @@ async def test_the_text_is_a_caption_once_not_on_every_file(initialized_db, monk
         _post(c, tid, token, [("a.png", b"x", "image/png"),
                               ("b.png", b"y", "image/png")], text="see attached")
 
-    captions = [s["caption"] for s in bot.to_user]
+    captions = [f["caption"] for f in channel.files]
     assert captions == ["see attached", None]
 
 
-async def test_one_file_still_behaves_exactly_as_before(initialized_db, monkeypatch):
-    bot = _Bot()
-    monkeypatch.setattr("src.dashboard.bot_client.get_bot", lambda: bot)
+async def test_one_file_still_behaves_exactly_as_before(initialized_db, channel):
     tid = await _ticket()
 
     with TestClient(app, base_url="http://testserver") as c:
@@ -134,14 +102,12 @@ async def test_one_file_still_behaves_exactly_as_before(initialized_db, monkeypa
         r = _post(c, tid, token, [("solo.txt", b"hello", "text/plain")], text="here")
 
     assert "sent=1" in r.headers["location"]
-    assert len(bot.to_user) == 1
+    assert len(channel.files) == 1
     assert await _files_on(tid) == [("solo.txt", "here")]
 
 
-async def test_an_oversized_file_stops_the_whole_batch(initialized_db, monkeypatch):
+async def test_an_oversized_file_stops_the_whole_batch(initialized_db, channel, monkeypatch):
     """The point of checking up front: the small ones must not go on ahead."""
-    bot = _Bot()
-    monkeypatch.setattr("src.dashboard.bot_client.get_bot", lambda: bot)
     monkeypatch.setattr(tickets_route, "_MAX_UPLOAD_BYTES", 10)
     tid = await _ticket()
 
@@ -153,13 +119,11 @@ async def test_an_oversized_file_stops_the_whole_batch(initialized_db, monkeypat
         ])
 
     assert "err=" in r.headers["location"]
-    assert bot.sent == [], "nothing may be sent when any file is rejected"
+    assert channel.sent == 0, "nothing may be sent when any file is rejected"
     assert await _files_on(tid) == []
 
 
-async def test_too_many_files_is_refused_before_sending(initialized_db, monkeypatch):
-    bot = _Bot()
-    monkeypatch.setattr("src.dashboard.bot_client.get_bot", lambda: bot)
+async def test_too_many_files_is_refused_before_sending(initialized_db, channel, monkeypatch):
     monkeypatch.setattr(tickets_route, "_MAX_UPLOAD_FILES", 2)
     tid = await _ticket()
 
@@ -168,13 +132,12 @@ async def test_too_many_files_is_refused_before_sending(initialized_db, monkeypa
         r = _post(c, tid, token, [(f"f{i}.txt", b"x", "text/plain") for i in range(3)])
 
     assert "err=" in r.headers["location"]
-    assert bot.sent == []
+    assert channel.sent == 0
 
 
-async def test_a_failure_midway_reports_how_far_it_got(initialized_db, monkeypatch):
+async def test_a_failure_midway_reports_how_far_it_got(initialized_db, channel):
     """Three of five delivered is not a failure to retry blindly."""
-    bot = _Bot(fail_on=3)
-    monkeypatch.setattr("src.dashboard.bot_client.get_bot", lambda: bot)
+    channel.fail_on = 3
     tid = await _ticket()
 
     with TestClient(app, base_url="http://testserver") as c:
@@ -182,18 +145,16 @@ async def test_a_failure_midway_reports_how_far_it_got(initialized_db, monkeypat
         r = _post(c, tid, token, [(f"f{i}.txt", b"x", "text/plain") for i in range(5)])
 
     assert "err=" in r.headers["location"]
-    assert len(bot.to_user) == 2, "it must stop, not push on through"
+    assert len(channel.files) == 2, "it must stop, not push on through"
     # What did leave is recorded, or the operator would resend it.
     assert [n for n, _ in await _files_on(tid)] == ["f0.txt", "f1.txt"]
 
 
-async def test_a_text_reply_survives_the_empty_file_part(initialized_db, monkeypatch):
+async def test_a_text_reply_survives_the_empty_file_part(initialized_db, channel):
     """A browser posts the file field even when nothing was picked, and a part
     with no filename arrives as a string. Typing list[UploadFile] rejects that
     with a 422 — which would break every ordinary text reply, not just uploads.
     """
-    bot = _Bot()
-    monkeypatch.setattr("src.dashboard.bot_client.get_bot", lambda: bot)
     tid = await _ticket()
 
     with TestClient(app, base_url="http://testserver") as c:
@@ -208,7 +169,8 @@ async def test_a_text_reply_survives_the_empty_file_part(initialized_db, monkeyp
                        follow_redirects=False)
 
     assert r.status_code == 303, "an empty file part must not fail validation"
-    assert bot.to_user == [], "an empty part is not an attachment"
+    assert channel.files == [], "an empty part is not an attachment"
+    assert len(channel.texts) == 1, "the text itself still had to go"
     assert "err=" in empty.headers["location"], "no text and no file is an empty reply"
 
 

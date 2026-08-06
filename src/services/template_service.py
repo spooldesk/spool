@@ -11,13 +11,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional, Sequence
 
+# The Bot here is the *operators'* Telegram — the admin group every reply is
+# mirrored into. Reaching the customer goes through their channel adapter, and
+# this file no longer knows what that adapter raises when it fails.
 from aiogram import Bot
-from aiogram.exceptions import (
-    TelegramAPIError,
-    TelegramBadRequest,
-    TelegramForbiddenError,
-    TelegramNotFound,
-)
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -38,6 +35,48 @@ def _t(key: str, **kwargs) -> str:
     follow the instance's UI language, not the ticket author's."""
     from src.dashboard.i18n import t as dash_t
     return dash_t(key, **kwargs)
+
+
+async def _send_to_customer(user: User, text: str):
+    """Deliver to the customer on their own channel.
+
+    Every caller here used to name Telegram's exceptions to decide what an
+    operator was told, which made this file a Telegram file. Now the adapter
+    answers in a vocabulary that survives the next channel.
+    """
+    from src.channels import get as get_channel
+    from src.channels.identity import address_of, channel_of
+
+    return await get_channel(channel_of(user)).send_text(address_of(user), text)
+
+
+def _delivery_error(delivery) -> str:
+    """A failed delivery, in the operator's language.
+
+    The key is localised; the detail is not, because a Bot API sentence has no
+    translation and hiding it would leave nothing to debug with.
+    """
+    key = delivery.error_key or "e_send_failed"
+    detail = delivery.error_detail or ""
+    if delivery.blocked:
+        return _t(key, tg=detail)
+    return f"{_t(key)}{f': {detail}' if detail else ''}"
+
+def _ref_as_int(ref: str | None) -> int | None:
+    """The channel's id for what we sent, if it fits the column.
+
+    `tg_message_id` is a BigInteger from the days when only Telegram existed.
+    Channels that address messages by something else — a UUID, a Message-ID
+    header — store nothing here and simply cannot unsend, which their
+    capabilities already declare.
+    """
+    if ref is None:
+        return None
+    try:
+        return int(ref)
+    except (TypeError, ValueError):
+        return None
+
 
 
 # ==================== Public types ====================
@@ -303,32 +342,13 @@ async def apply_text(
     if ticket.status != "active":
         return ApplyResult(success=False, error=_t("e_ticket_already_closed", id=ticket_id))
 
-    # 1. Send to user
-    sent_user_msg = None
-    try:
-        sent_user_msg = await bot.send_message(chat_id=ticket.user.tg_id, text=text)
-    except TelegramForbiddenError:
+    # 1. Send to the customer, down whichever pipe they arrived on. The bot
+    #    below is the operators' Telegram, which is a different thing.
+    delivery = await _send_to_customer(ticket.user, text)
+    if not delivery.ok:
         return ApplyResult(
             success=False,
-            error=_t("e_user_blocked_bot", tg=ticket.user.tg_id),
-            rendered_text=text,
-        )
-    except TelegramNotFound:
-        return ApplyResult(
-            success=False,
-            error=_t("e_user_chat_not_found", tg=ticket.user.tg_id),
-            rendered_text=text,
-        )
-    except TelegramBadRequest as e:
-        return ApplyResult(
-            success=False,
-            error=f"Telegram BadRequest: {e}",
-            rendered_text=text,
-        )
-    except TelegramAPIError as e:
-        return ApplyResult(
-            success=False,
-            error=f"Telegram API error: {type(e).__name__}: {e}",
+            error=_delivery_error(delivery),
             rendered_text=text,
         )
 
@@ -354,7 +374,7 @@ async def apply_text(
             sender_id=admin_tg_id,
             text=text,
             # Recorded so an operator can unsend this later.
-            tg_message_id=sent_user_msg.message_id if sent_user_msg else None,
+            tg_message_id=_ref_as_int(delivery.ref),
         )
     )
     if ticket.stage == "new":
@@ -370,7 +390,7 @@ async def apply_text(
     return ApplyResult(
         success=True,
         rendered_text=text,
-        sent_user_message_id=sent_user_msg.message_id if sent_user_msg else None,
+        sent_user_message_id=_ref_as_int(delivery.ref),
     )
 
 
@@ -419,34 +439,11 @@ async def apply(
     rendered = render(template.body, context)
 
     # 1. Send to user (private chat)
-    sent_user_msg = None
-    try:
-        sent_user_msg = await bot.send_message(
-            chat_id=ticket.user.tg_id,
-            text=rendered,
-        )
-    except TelegramForbiddenError:
+    delivery = await _send_to_customer(ticket.user, rendered)
+    if not delivery.ok:
         return ApplyResult(
             success=False,
-            error=_t("e_user_blocked_bot", tg=ticket.user.tg_id),
-            rendered_text=rendered,
-        )
-    except TelegramNotFound:
-        return ApplyResult(
-            success=False,
-            error=_t("e_user_chat_not_found", tg=ticket.user.tg_id),
-            rendered_text=rendered,
-        )
-    except TelegramBadRequest as e:
-        return ApplyResult(
-            success=False,
-            error=f"Telegram BadRequest: {e}",
-            rendered_text=rendered,
-        )
-    except TelegramAPIError as e:
-        return ApplyResult(
-            success=False,
-            error=f"Telegram API error: {type(e).__name__}: {e}",
+            error=_delivery_error(delivery),
             rendered_text=rendered,
         )
 
@@ -476,7 +473,7 @@ async def apply(
             sender_id=admin_tg_id,
             text=rendered,
             template_id=template.id,
-            tg_message_id=sent_user_msg.message_id if sent_user_msg else None,
+            tg_message_id=_ref_as_int(delivery.ref),
         )
     )
     template.usage_count += 1
@@ -491,5 +488,5 @@ async def apply(
     return ApplyResult(
         success=True,
         rendered_text=rendered,
-        sent_user_message_id=sent_user_msg.message_id if sent_user_msg else None,
+        sent_user_message_id=_ref_as_int(delivery.ref),
     )

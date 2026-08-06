@@ -38,6 +38,9 @@ from src.database.db import db_session
 from src.database.models import AICall, Message as MessageRecord, ReplyTemplate, Ticket
 from src.utils.i18n import CLOSURE_SYSTEM_TEXT, get_text
 
+from src.channels import get as get_channel  # noqa: E402
+from src.channels.base import Option  # noqa: E402
+
 logger = logging.getLogger(__name__)
 
 DEFLECT_CB_PREFIX = "defl"  # "defl:ok:{ticket_id}:{ai_call_id}" / "defl:no:..."
@@ -164,22 +167,30 @@ async def try_deflect_for_ticket(ticket_id: int, user_text: str) -> DeflectResul
         return DeflectResult(None, None)
 
 
-def _deflect_keyboard(ticket_id: int, ai_call_id: int, lang: str | None) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(
-            text=get_text("deflect_solved_btn", lang),
-            callback_data=f"{DEFLECT_CB_PREFIX}:ok:{ticket_id}:{ai_call_id}",
-        ),
-        InlineKeyboardButton(
-            text=get_text("deflect_operator_btn", lang),
-            callback_data=f"{DEFLECT_CB_PREFIX}:no:{ticket_id}:{ai_call_id}",
-        ),
-    ]])
+def _deflect_options(ticket_id: int, ai_call_id: int, lang: str | None) -> list[Option]:
+    """"That solved it" / "I still need a person", in the customer's language.
+
+    The payloads match what the Telegram callback handler already parses, so
+    a channel that renders these as links or chips needs no second scheme.
+    """
+    return [
+        Option(get_text("deflect_solved_btn", lang),
+               f"{DEFLECT_CB_PREFIX}:ok:{ticket_id}:{ai_call_id}"),
+        Option(get_text("deflect_operator_btn", lang),
+               f"{DEFLECT_CB_PREFIX}:no:{ticket_id}:{ai_call_id}"),
+    ]
 
 
 async def deflect_and_offer(bot: Bot, ticket_id: int, user_text: str,
-                            user_tg_id: int, lang: str | None) -> None:
-    """Background entry-point: try to answer; if confident, message the user."""
+                            user_tg_id: int, lang: str | None,
+                            channel: str | None = None,
+                            address: str | None = None) -> None:
+    """Background entry-point: try to answer; if confident, message the user.
+
+    An answer written by a machine and sent without an operator reading it is
+    the riskiest thing this system does, so where it goes is explicit: pass
+    the channel and address, or get Telegram by the customer's id.
+    """
     result = await try_deflect_for_ticket(ticket_id, user_text)
     if not result.answer:
         return
@@ -191,14 +202,18 @@ async def deflect_and_offer(bot: Bot, ticket_id: int, user_text: str,
         logger.info(f"deflect: answer withheld (shadow mode) for ticket #{ticket_id}")
         return
     try:
-        await bot.send_message(
-            chat_id=user_tg_id,
-            text=(get_text("deflect_prefix", lang) + "\n\n" + result.answer
-                  + "\n\n" + get_text("deflect_question", lang)),
-            reply_markup=_deflect_keyboard(ticket_id, result.ai_call_id or 0, lang),
+        delivery = await get_channel(channel).send_text(
+            address or str(user_tg_id),
+            (get_text("deflect_prefix", lang) + "\n\n" + result.answer
+             + "\n\n" + get_text("deflect_question", lang)),
+            options=_deflect_options(ticket_id, result.ai_call_id or 0, lang),
         )
-        logger.info(f"🤖 deflect: answer offered to user for ticket #{ticket_id} "
-                    f"(ai_call={result.ai_call_id})")
+        if delivery.ok:
+            logger.info(f"🤖 deflect: answer offered to user for ticket #{ticket_id} "
+                        f"(ai_call={result.ai_call_id})")
+        else:
+            logger.error(f"deflect: could not send answer for #{ticket_id}: "
+                         f"{delivery.error_key}")
     except Exception as e:  # noqa: BLE001
         logger.error(f"deflect: failed to send answer for #{ticket_id}: {e}")
 

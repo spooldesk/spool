@@ -99,7 +99,13 @@ async def test_mark_outcome_once(initialized_db):
         assert (await session.get(AICall, call_id)).accepted is True
 
 
-def test_keyboard_callback_shape():
-    kb = deflect._deflect_keyboard(12, 34, "ru")
-    row = kb.inline_keyboard[0]
-    assert [b.callback_data for b in row] == ["defl:ok:12:34", "defl:no:12:34"]
+def test_option_payload_shape():
+    """The payloads outlive the keyboard.
+
+    A channel decides how a choice looks; what comes back when it is picked is
+    the same string on every one, and it is the string the callback handler
+    has always parsed.
+    """
+    options = deflect._deflect_options(12, 34, "ru")
+    assert [o.payload for o in options] == ["defl:ok:12:34", "defl:no:12:34"]
+    assert all(o.label for o in options), "a choice with no label cannot be picked"

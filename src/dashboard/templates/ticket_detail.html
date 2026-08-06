@@ -243,7 +243,18 @@
           {% else %}<span class="text-zinc-100">{{ t.user_label }}</span>{% endif %}
         </div>
         {% if t.local_user_id %}<div class="text-zinc-500 text-xs">{{ t.team }}:{{ t.local_user_id }}</div>{% endif %}
-        <div class="text-zinc-500 text-xs">tg_id: {{ t.user_tg_id or '—' }}</div>
+        {# Where this conversation lives. Labelled by channel rather than
+           "tg_id", which stopped being the truth once a customer could arrive
+           without a Telegram account at all. #}
+        <div class="text-zinc-500 text-xs flex items-center gap-1.5">
+          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded
+                       bg-zinc-800/70 text-zinc-400">
+            <i class="ti {{ 'ti-brand-telegram' if t.channel == 'telegram' else 'ti-message-circle' }}"
+               style="font-size:11px" aria-hidden="true"></i>
+            {{ T.get('ch_' ~ t.channel, t.channel) }}
+          </span>
+          <span class="tabular-nums">{{ t.user_address or '—' }}</span>
+        </div>
         {% if t.linked_work %}
           <div class="inline-flex items-start gap-1 text-xs text-amber-400/90 mt-1">
             <i class="ti ti-link shrink-0 mt-0.5" style="font-size:11px" aria-hidden="true"></i>

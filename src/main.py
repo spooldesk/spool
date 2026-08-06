@@ -182,6 +182,15 @@ async def main() -> None:
         settings = load_settings()
         bot = Bot(token=settings.bot_token)
 
+        # Register Telegram against *this* process's bot. Without it the
+        # registry would lazily build a second client from the dashboard's
+        # factory — harmless, since a token may send from many clients, but
+        # two objects where one was meant is the kind of thing that only
+        # shows up as a confusing log line months later.
+        from src.channels import register as register_channel
+        from src.channels.telegram import TelegramChannel
+        register_channel(TelegramChannel(bot))
+
         dp = Dispatcher()
         
         # Register error handler

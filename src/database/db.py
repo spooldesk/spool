@@ -184,6 +184,29 @@ def _migrate_to_new_schema(sync_connection) -> None:
         except Exception:
             pass
     
+    # Which channel a customer talks to us through, and their address on it.
+    # Backfilled rather than left null: every customer predating this column
+    # arrived through Telegram, where the routing key and the address were the
+    # same number. See src/channels/identity.py.
+    if "channel" not in user_columns:
+        try:
+            sync_connection.execute(
+                text("ALTER TABLE users ADD COLUMN channel VARCHAR(20) DEFAULT 'telegram' NOT NULL")
+            )
+        except Exception:
+            pass
+    if "channel_user_id" not in user_columns:
+        try:
+            sync_connection.execute(
+                text("ALTER TABLE users ADD COLUMN channel_user_id VARCHAR(255)")
+            )
+            sync_connection.execute(
+                text("UPDATE users SET channel_user_id = CAST(tg_id AS TEXT) "
+                     "WHERE channel_user_id IS NULL")
+            )
+        except Exception:
+            pass
+
     # Remove old columns if they exist (but keep is_active now)
     for old_col in ["is_deleted", "full_name"]:
         if old_col in user_columns:
