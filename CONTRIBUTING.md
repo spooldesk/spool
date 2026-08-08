@@ -1,4 +1,4 @@
-# Contributing to Spool
+# Contributing to Spooldesk
 
 Thanks for taking a look. This file covers how to get it running, what the tests
 expect, and the handful of traps that are not obvious from reading the code.

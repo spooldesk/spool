@@ -115,7 +115,7 @@
   "use strict";
 
   var BASE = location.origin;
-  var KEY = "spool.session";
+  var KEY = "spooldesk.session";
   var POLL_IDLE = 8000;    // nothing has happened for a while
   var POLL_LIVE = 3000;    // the visitor just wrote something
 
@@ -166,7 +166,7 @@
     });
     if (fresh) {
       announce.textContent = strings.replied || "New reply";
-      tell(window.parent, { spool: "unread" });
+      tell(window.parent, { spooldesk: "unread" });
       // Someone is actually at the other end right now; look more often for
       // a while, then settle back down.
       pollMs = POLL_LIVE;
@@ -185,7 +185,7 @@
     // chat widget ends up in somebody's battery report.
     if (document.hidden) { schedule(); return; }
     fetch(BASE + "/widget/api/poll", {
-      headers: { "x-spool-session": token() },
+      headers: { "x-spooldesk-session": token() },
     }).then(function (r) {
       return r.ok ? r.json() : null;
     }).then(function (data) {
@@ -202,7 +202,7 @@
   });
 
   document.getElementById("close").addEventListener("click", function () {
-    tell(window.parent, { spool: "close" });
+    tell(window.parent, { spooldesk: "close" });
   });
 
   // Enter sends, Shift+Enter breaks the line — the convention every chat
@@ -229,7 +229,7 @@
     state.textContent = strings.sending || "";
 
     var headers = { "content-type": "application/json" };
-    if (token()) headers["x-spool-session"] = token();
+    if (token()) headers["x-spooldesk-session"] = token();
 
     fetch(BASE + "/widget/api/message", {
       method: "POST",
@@ -260,7 +260,7 @@
   });
 
   window.addEventListener("message", function (e) {
-    if ((e.data || {}).spool === "opened") box.focus();
+    if ((e.data || {}).spooldesk === "opened") box.focus();
   });
 
   fetch(BASE + "/widget/api/hello").then(function (r) {

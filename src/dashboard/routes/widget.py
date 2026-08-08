@@ -100,7 +100,7 @@ def _cors(response: Response, origin: str | None) -> Response:
     if origin:
         response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Vary"] = "Origin"
-    response.headers["Access-Control-Allow-Headers"] = "content-type, x-spool-session"
+    response.headers["Access-Control-Allow-Headers"] = "content-type, x-spooldesk-session"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
     response.headers["Access-Control-Max-Age"] = "86400"
     return response
@@ -161,7 +161,7 @@ async def _transcript(ticket_id: int) -> list[dict[str, Any]]:
 @router.post("/api/message")
 async def post_message(
     request: Request,
-    x_spool_session: str | None = Header(default=None),
+    x_spooldesk_session: str | None = Header(default=None),
 ) -> JSONResponse:
     """A visitor said something. Opens the conversation if this is the first.
 
@@ -179,7 +179,7 @@ async def post_message(
     if not text:
         return _json({"error": "empty"}, origin, status.HTTP_400_BAD_REQUEST)
 
-    token = (x_spool_session or "").strip()
+    token = (x_spooldesk_session or "").strip()
     issued: str | None = None
 
     if token:
@@ -228,7 +228,7 @@ async def post_message(
 @router.get("/api/poll")
 async def poll(
     request: Request,
-    x_spool_session: str | None = Header(default=None),
+    x_spooldesk_session: str | None = Header(default=None),
 ) -> JSONResponse:
     """Whatever the operator has said since the visitor last looked.
 
@@ -240,7 +240,7 @@ async def poll(
     if (off := await _off(origin)) is not None:
         return off
 
-    token = (x_spool_session or "").strip()
+    token = (x_spooldesk_session or "").strip()
     if not token:
         return _json({"error": "no_session"}, origin, status.HTTP_401_UNAUTHORIZED)
 
@@ -300,7 +300,7 @@ async def embed_js(request: Request) -> Response:
     """
     if not await settings_service.get_widget_enabled():
         return PlainTextResponse(
-            "/* Spool widget is not enabled on this instance. */",
+            "/* Spooldesk widget is not enabled on this instance. */",
             status_code=status.HTTP_404_NOT_FOUND,
             media_type="application/javascript",
         )

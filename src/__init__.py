@@ -1,2 +1,2 @@
-"""Spool — Telegram-native helpdesk."""
+"""Spooldesk — Telegram-native helpdesk."""
 

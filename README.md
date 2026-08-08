@@ -1,4 +1,4 @@
-<h1 align="center">Spool</h1>
+<h1 align="center">Spooldesk</h1>
 
 <p align="center">
   <b>The open-source helpdesk your team never leaves Telegram to use.</b><br>
@@ -32,13 +32,13 @@ lands on your colleagues' boards too.*
 > [`scripts/seed_demo_data.py`](scripts/seed_demo_data.py) from word lists. No real conversation,
 > customer or company data exists anywhere in this repository.
 
-## Why Spool
+## Why Spooldesk
 
-Every helpdesk asks your agents to live in *its* inbox. Spool doesn't: a ticket is a
+Every helpdesk asks your agents to live in *its* inbox. Spooldesk doesn't: a ticket is a
 **thread in your Telegram admin group**, so the team answers where it already works —
 and still gets a real dashboard, metrics and an audit trail.
 
-|  | Spool | Chatwoot / Zendesk / Freshdesk |
+|  | Spooldesk | Chatwoot / Zendesk / Freshdesk |
 |---|---|---|
 | Where agents work | **Telegram threads** (web optional) | separate inbox app |
 | AI deflection | **built in, opt-in, measured** | paid add-on or absent |
@@ -162,17 +162,17 @@ see the header comment in [`tailwind.config.js`](tailwind.config.js).
 
 ## Licensing
 
-Spool is **fair-code**, licensed under the [Business Source License 1.1](LICENSE) —
+Spooldesk is **fair-code**, licensed under the [Business Source License 1.1](LICENSE) —
 the same model as Sentry and MariaDB.
 
 **In plain terms:**
 
 | You want to… | Allowed? |
 |---|---|
-| Run Spool for your own company, in production, for free | ✅ Yes |
+| Run Spooldesk for your own company, in production, for free | ✅ Yes |
 | Read, modify and fork the source | ✅ Yes |
 | Deploy it for a client as part of your IT services | ✅ Yes |
-| Resell Spool **as a hosted/managed service** to third parties | ❌ Needs a commercial licence |
+| Resell Spooldesk **as a hosted/managed service** to third parties | ❌ Needs a commercial licence |
 
 Every release converts automatically to **Apache 2.0** four years after publication
 (current Change Date: **2030-07-28**). Nothing can be taken away from you later.
@@ -189,7 +189,7 @@ Email [boykokuza12@gmail.com](mailto:boykokuza12@gmail.com).
 - **Webhooks / REST API** for integrations
 - **Operator ↔ Telegram linking** — assignment notifications to the operator's own account
 - PostgreSQL support for larger installations
-- **Managed cloud** — hosted Spool for teams that don't want to self-host
+- **Managed cloud** — hosted Spooldesk for teams that don't want to self-host
 
 ## Contributing
 

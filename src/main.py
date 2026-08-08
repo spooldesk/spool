@@ -175,7 +175,7 @@ async def main() -> None:
     setup_logging(log_level=log_level)
     
     logger.info("=" * 50)
-    logger.info("Starting Spool bot")
+    logger.info("Starting Spooldesk bot")
     logger.info("=" * 50)
 
     try:

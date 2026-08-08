@@ -43,7 +43,7 @@ async def widget_on(initialized_db):
 def _say(c: TestClient, text: str, token: str | None = None, **body):
     headers = {"origin": "https://shop.example"}
     if token:
-        headers["x-spool-session"] = token
+        headers["x-spooldesk-session"] = token
     return c.post("/widget/api/message", headers=headers,
                   content=json.dumps({"text": text, **body}))
 
@@ -72,7 +72,7 @@ async def test_turning_it_off_takes_effect_immediately(widget_on):
         await settings_service.set_widget_enabled(False, updated_by=0)
         assert _say(c, "after", token).status_code == 404
         assert c.get("/widget/api/poll",
-                     headers={"x-spool-session": token}).status_code == 404
+                     headers={"x-spooldesk-session": token}).status_code == 404
 
 
 # ---------------------------------------------------------------- limits
@@ -183,7 +183,7 @@ async def test_a_returning_visitor_continues_the_same_conversation(widget_on):
 async def test_a_stranger_cannot_read_a_conversation_by_guessing(widget_on):
     with TestClient(app, base_url="http://testserver") as c:
         _say(c, "something private")
-        r = c.get("/widget/api/poll", headers={"x-spool-session": "not-a-real-token"})
+        r = c.get("/widget/api/poll", headers={"x-spooldesk-session": "not-a-real-token"})
     assert r.status_code == 401
     assert "private" not in r.text
 
@@ -192,7 +192,7 @@ async def test_an_unknown_token_answers_exactly_like_a_missing_one(widget_on):
     """Otherwise the endpoint tells an attacker when a guess was close."""
     with TestClient(app, base_url="http://testserver") as c:
         missing = c.get("/widget/api/poll")
-        unknown = c.get("/widget/api/poll", headers={"x-spool-session": "nope"})
+        unknown = c.get("/widget/api/poll", headers={"x-spooldesk-session": "nope"})
     assert missing.status_code == unknown.status_code == 401
     assert missing.json() == unknown.json()
 
@@ -203,7 +203,7 @@ async def test_the_session_never_travels_in_a_url(widget_on):
     import inspect
 
     signature = inspect.signature(widget_routes.poll)
-    assert "x_spool_session" in signature.parameters, "the header parameter is gone"
+    assert "x_spooldesk_session" in signature.parameters, "the header parameter is gone"
     for name, param in signature.parameters.items():
         if "session" in name or "token" in name:
             assert "Header" in repr(param.default), \
@@ -226,7 +226,7 @@ async def test_a_visitor_never_sees_an_internal_note(widget_on):
                                 sender_id=1, text="Yes! How can we help?"))
             await session.commit()
 
-        r = c.get("/widget/api/poll", headers={"x-spool-session": opened["session"]})
+        r = c.get("/widget/api/poll", headers={"x-spooldesk-session": opened["session"]})
 
     texts = [m["text"] for m in r.json()["messages"]]
     assert "Yes! How can we help?" in texts
@@ -248,13 +248,13 @@ async def test_a_withdrawn_reply_disappears_from_the_visitors_view(widget_on):
             await session.commit()
             reply_id = reply.id
 
-        before = c.get("/widget/api/poll", headers={"x-spool-session": opened["session"]})
+        before = c.get("/widget/api/poll", headers={"x-spooldesk-session": opened["session"]})
         assert "wrong person" in before.text
 
         result = await message_service.delete_for_user(None, reply_id)
         assert result.ok, result.error_key
 
-        after = c.get("/widget/api/poll", headers={"x-spool-session": opened["session"]})
+        after = c.get("/widget/api/poll", headers={"x-spooldesk-session": opened["session"]})
 
     assert "wrong person" not in after.text
 
@@ -376,6 +376,6 @@ async def test_an_operators_reply_reaches_the_visitor(widget_on):
             await session.commit()
         assert result.success, result.error
 
-        r = c.get("/widget/api/poll", headers={"x-spool-session": opened["session"]})
+        r = c.get("/widget/api/poll", headers={"x-spooldesk-session": opened["session"]})
 
     assert "Try a hard refresh." in [m["text"] for m in r.json()["messages"]]

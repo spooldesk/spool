@@ -1,2 +1,2 @@
-"""Utility modules for Spool."""
+"""Utility modules for Spooldesk."""
 

@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  Spool landing page — served by GitHub Pages from /docs on the main branch.
+  Spooldesk landing page — served by GitHub Pages from /docs on the main branch.
 
   Waitlist form: set FORM_ENDPOINT below to your Formspree/Tally/Buttondown
   endpoint. Until then the form falls back to a mailto: link, so the page is
@@ -14,10 +14,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Spool — the open helpdesk your team never leaves Telegram to use</title>
+  <title>Spooldesk — the open helpdesk your team never leaves Telegram to use</title>
   <meta name="description" content="Open-source Telegram-native helpdesk. Tickets live as Telegram threads, AI answers what it can before a human is needed, full web dashboard included. Self-host in 5 minutes.">
 
-  <meta property="og:title" content="Spool — the helpdesk your team never leaves Telegram to use">
+  <meta property="og:title" content="Spooldesk — the helpdesk your team never leaves Telegram to use">
   <meta property="og:description" content="Tickets as Telegram threads. AI deflection out of the box. Self-host in one container.">
   <meta property="og:type" content="website">
 
@@ -34,7 +34,7 @@
       <div class="w-7 h-7 rounded-md bg-violet-600 flex items-center justify-center">
         <i class="ti ti-headset text-white" style="font-size:15px"></i>
       </div>
-      <span class="font-semibold">Spool</span>
+      <span class="font-semibold">Spooldesk</span>
     </div>
     <nav class="hidden sm:flex items-center gap-5 ml-6 text-sm text-zinc-400">
       <a href="#features" class="hover:text-zinc-100 transition-colors">Features</a>
@@ -115,7 +115,7 @@
 <!-- ============ SCREENSHOT ============ -->
 <section class="max-w-6xl mx-auto px-5 pb-20">
   <div class="rounded-2xl border border-zinc-900 overflow-hidden bg-zinc-950">
-    <img src="img/01_board.png" alt="Spool board — tickets as a Kanban board"
+    <img src="img/01_board.png" alt="Spooldesk board — tickets as a Kanban board"
          class="w-full" loading="lazy">
   </div>
   <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -160,7 +160,7 @@
         </div>
         <h3 class="font-medium">AI answers first, honestly</h3>
         <p class="mt-2 text-sm text-zinc-400 leading-relaxed">
-          Right after a ticket is created, Spool tries to solve it from your templates and
+          Right after a ticket is created, Spooldesk tries to solve it from your templates and
           resolved tickets. Confident answers only — and the deflection rate is a metric
           on your dashboard, not a marketing claim.
         </p>
@@ -236,13 +236,13 @@
 <!-- ============ COMPARE ============ -->
 <section id="compare" class="border-y border-zinc-900 bg-zinc-950/50">
   <div class="max-w-4xl mx-auto px-5 py-16">
-    <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight text-center">How Spool is different</h2>
+    <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight text-center">How Spooldesk is different</h2>
     <div class="mt-8 overflow-x-auto">
       <table class="w-full text-sm border-separate" style="border-spacing:0">
         <thead>
           <tr class="text-left text-xs uppercase tracking-wide text-zinc-500">
             <th class="py-3 pr-4"></th>
-            <th class="py-3 px-4 text-violet-400">Spool</th>
+            <th class="py-3 px-4 text-violet-400">Spooldesk</th>
             <th class="py-3 px-4">Chatwoot / Zendesk / Freshdesk</th>
           </tr>
         </thead>
@@ -278,7 +278,7 @@
     <p class="mt-5 text-xs text-zinc-600 text-center max-w-2xl mx-auto">
       Fair warning: those tools are broader products. If you need email, live chat widgets,
       Instagram and a public knowledge base in one place, they will serve you better.
-      Spool is deliberately narrow — Telegram, done properly.
+      Spooldesk is deliberately narrow — Telegram, done properly.
     </p>
   </div>
 </section>
@@ -377,7 +377,7 @@ docker compose up -d --build</code></pre>
     </div>
 
     <p class="mt-8 text-center text-sm text-zinc-500">
-      Running Spool for your own clients as part of IT services is fine and free.
+      Running Spooldesk for your own clients as part of IT services is fine and free.
       Reselling it as a hosted service needs a commercial licence —
       <a href="mailto:boykokuza12@gmail.com" class="text-violet-400 hover:text-violet-300">just ask</a>.
     </p>
@@ -391,14 +391,14 @@ docker compose up -d --build</code></pre>
   <div class="mt-8 space-y-3">
     <details class="group rounded-xl border border-zinc-900 bg-zinc-950/50 p-5">
       <summary class="flex items-center justify-between cursor-pointer font-medium list-none">
-        Is Spool open source?
+        Is Spooldesk open source?
         <i class="ti ti-chevron-down text-zinc-500 group-open:rotate-180 transition-transform"></i>
       </summary>
       <p class="mt-3 text-sm text-zinc-400 leading-relaxed">
-        Not by the OSI definition, and I won't pretend otherwise. Spool uses the Business
+        Not by the OSI definition, and I won't pretend otherwise. Spooldesk uses the Business
         Source License 1.1 — the same model as Sentry. You get the full source, can run it
         in production for free, modify and fork it. The one restriction: you can't resell
-        Spool as a hosted service. Every release turns into Apache 2.0 four years after
+        Spooldesk as a hosted service. Every release turns into Apache 2.0 four years after
         publication, so nothing can be taken away from you later.
       </p>
     </details>
@@ -409,9 +409,9 @@ docker compose up -d --build</code></pre>
         <i class="ti ti-chevron-down text-zinc-500 group-open:rotate-180 transition-transform"></i>
       </summary>
       <p class="mt-3 text-sm text-zinc-400 leading-relaxed">
-        Only what your provider charges. Spool talks to Google Gemini with your own API key,
+        Only what your provider charges. Spooldesk talks to Google Gemini with your own API key,
         and the AI layer sits behind a provider-agnostic interface, so swapping in another
-        model is a small change. Without a key Spool simply runs as a plain ticket system —
+        model is a small change. Without a key Spooldesk simply runs as a plain ticket system —
         nothing breaks.
       </p>
     </details>
@@ -422,7 +422,7 @@ docker compose up -d --build</code></pre>
         <i class="ti ti-chevron-down text-zinc-500 group-open:rotate-180 transition-transform"></i>
       </summary>
       <p class="mt-3 text-sm text-zinc-400 leading-relaxed">
-        Self-hosted Spool sends nothing home — there is no telemetry, no licence check, no
+        Self-hosted Spooldesk sends nothing home — there is no telemetry, no licence check, no
         analytics. The only outbound traffic is Telegram, and your LLM provider if you enable
         AI. Ticket text is run through a secret scrubber first, and you can exclude whole
         categories from AI entirely.
@@ -515,7 +515,7 @@ docker compose up -d --build</code></pre>
       <div class="w-5 h-5 rounded bg-violet-600 flex items-center justify-center">
         <i class="ti ti-headset text-white" style="font-size:11px"></i>
       </div>
-      <span>Spool</span>
+      <span>Spooldesk</span>
     </div>
     <span class="text-zinc-700">·</span>
     <a href="https://github.com/spooldesk/spool/blob/main/LICENSE" target="_blank" rel="noopener"
@@ -543,8 +543,8 @@ docker compose up -d --build</code></pre>
 
     if (!FORM_ENDPOINT) {
       window.location.href =
-        'mailto:boykokuza12@gmail.com?subject=' + encodeURIComponent('Spool Cloud waitlist') +
-        '&body=' + encodeURIComponent('Please add me to the Spool Cloud waitlist: ' + email);
+        'mailto:boykokuza12@gmail.com?subject=' + encodeURIComponent('Spooldesk Cloud waitlist') +
+        '&body=' + encodeURIComponent('Please add me to the Spooldesk Cloud waitlist: ' + email);
       msg.textContent = 'Opening your email client…';
       msg.className = 'text-xs text-zinc-400';
       return;

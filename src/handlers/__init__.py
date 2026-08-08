@@ -1,2 +1,2 @@
-"""Message and command handlers for Spool."""
+"""Message and command handlers for Spooldesk."""
 

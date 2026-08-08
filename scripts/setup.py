@@ -70,7 +70,7 @@ def main() -> int:
         except Exception:
             pass
 
-    print(_c("\n=== Spool setup ===\n", "1;36"))
+    print(_c("\n=== Spooldesk setup ===\n", "1;36"))
 
     if ENV_PATH.exists():
         ans = input(_c(".env already exists. Overwrite it? [y/N]: ", "33")).strip().lower()

@@ -1,2 +1,2 @@
-"""Database models and utilities for Spool."""
+"""Database models and utilities for Spooldesk."""
 

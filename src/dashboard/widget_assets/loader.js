@@ -1,4 +1,4 @@
-/* Spool widget loader.
+/* Spooldesk widget loader.
  *
  * One <script> tag on someone else's page, so the rules are strict: touch
  * nothing outside our own corner, break nothing if we fail, and stay small
@@ -20,7 +20,7 @@
   "use strict";
 
   var BASE = "__SPOOL_BASE__";
-  var MOUNT_ID = "spool-widget-root";
+  var MOUNT_ID = "spooldesk-widget-root";
 
   // Twice on one page means two conversations and two unread counts.
   if (document.getElementById(MOUNT_ID)) return;
@@ -87,7 +87,7 @@
     btn.setAttribute("aria-expanded", "true");
     dot.classList.remove("on");
     try {
-      panel.contentWindow.postMessage({ spool: "opened" }, BASE);
+      panel.contentWindow.postMessage({ spooldesk: "opened" }, BASE);
     } catch (e) {
       /* not loaded yet; the frame asks for focus itself once it is */
     }
@@ -115,8 +115,8 @@
     // host page, so the origin check is the only thing making that safe.
     if (e.origin !== BASE) return;
     var msg = e.data || {};
-    if (msg.spool === "close") close();
-    if (msg.spool === "unread" && !panel.classList.contains("on")) dot.classList.add("on");
+    if (msg.spooldesk === "close") close();
+    if (msg.spooldesk === "unread" && !panel.classList.contains("on")) dot.classList.add("on");
   });
 
   root.appendChild(style);

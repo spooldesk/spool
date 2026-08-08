@@ -91,7 +91,7 @@ try:
 except Exception:
     TEMPLATES.env.globals["g_asset_v"] = "1"
 
-app = FastAPI(title="Spool", docs_url=None, redoc_url=None)
+app = FastAPI(title="Spooldesk", docs_url=None, redoc_url=None)
 # CSRF: issues the token cookie and exposes it to templates. Validation happens
 # per-route via the csrf_protect dependency on authenticated routers + /login.
 app.add_middleware(CSRFMiddleware)
