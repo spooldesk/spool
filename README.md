@@ -12,7 +12,7 @@
 ![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0_async-D71F00)
 ![Gemini](https://img.shields.io/badge/Google_Gemini-AI_assist-4285F4?logo=google&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
-![CI](https://github.com/vassab/support-automation-bot/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/spooldesk/spool/actions/workflows/ci.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-BSL_1.1-blue)
 
 ### 🔴 [Live demo → support-bot-demo-he1w.onrender.com](https://support-bot-demo-he1w.onrender.com)
