@@ -242,6 +242,16 @@ async def events(request: Request) -> Response:
     if result.rejected:
         logger.info(f"Slack message from {conversation} not accepted: {result.rejected}")
     else:
+        if result.opened_ticket:
+            # Into the operators' group, so a Slack conversation is answerable
+            # from Telegram like any other ticket.
+            try:
+                from src.dashboard.bot_client import get_bot
+                from src.services import announce_service
+
+                await announce_service.announce_ticket(get_bot(), result.ticket_id)
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"Ticket #{result.ticket_id} not announced: {e}")
         logger.info(
             f"Slack message on ticket #{result.ticket_id}"
             f"{' (new conversation)' if result.opened_ticket else ''}"

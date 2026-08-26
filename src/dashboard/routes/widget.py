@@ -158,6 +158,22 @@ async def _transcript(ticket_id: int) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------- endpoints
 
 
+
+async def _announce(ticket_id: int) -> None:
+    """Put a new ticket in front of the operators.
+
+    Swallowed on purpose: the visitor's message is already recorded, and
+    failing their request because the *operators'* chat was unreachable would
+    have the priorities backwards. The ticket is on the board either way.
+    """
+    try:
+        from src.dashboard.bot_client import get_bot
+        from src.services import announce_service
+
+        await announce_service.announce_ticket(get_bot(), ticket_id)
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Ticket #{ticket_id} not announced: {e}")
+
 @router.post("/api/message")
 async def post_message(
     request: Request,
@@ -209,6 +225,11 @@ async def post_message(
         # blocked learning exactly that just opens a new session; someone
         # having a genuine problem gets the same generic failure either way.
         return _json({"error": "rejected"}, origin, status.HTTP_403_FORBIDDEN)
+
+    if result.opened_ticket:
+        # Into the operators' group, so a widget ticket is answerable from
+        # Telegram like any other. After the commit above, never inside it.
+        await _announce(result.ticket_id)
 
     logger.info(
         f"Widget message on ticket #{result.ticket_id}"

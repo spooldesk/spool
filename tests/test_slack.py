@@ -23,6 +23,7 @@ from src.channels.slack import NAME as SLACK, SlackChannel
 from src.dashboard.app import app
 from src.database.db import db_session
 from src.database.models import Message, Ticket
+from tests.conftest import next_tg_id
 
 SECRET = "test-signing-secret"
 
@@ -61,6 +62,22 @@ def _message(text: str, *, channel_id="C0ACME", user="U01DANA",
         "event": {"type": "message", "channel": channel_id, "user": user,
                   "text": text, "ts": "1700000000.000100", **event},
     }
+
+
+async def _slack_customers() -> int:
+    """How many customers have ever arrived through Slack.
+
+    Used as a before/after difference, never as an absolute: every test file
+    shares one database, so a total is really a claim about running order.
+    """
+    from sqlalchemy import func, select
+
+    from src.database.models import User
+
+    async with db_session() as session:
+        return (await session.execute(
+            select(func.count()).select_from(User).where(User.channel == SLACK)
+        )).scalar()
 
 
 # ---------------------------------------------------------------- the proof
@@ -143,42 +160,36 @@ async def test_the_setup_handshake_is_echoed_back(slack_env):
 async def test_our_own_messages_never_come_back_in(slack_env):
     """Slack delivers everything in a conversation, including what we posted.
     An adapter that answers whatever it sees answers itself, forever."""
+    before = await _slack_customers()
     with TestClient(app, base_url="http://testserver") as c:
         by_bot_id = _signed(c, _message("Thanks, on it.", event_id="Ev-bot-1",
                                         bot_id="B01SPOOL"))
         by_subtype = _signed(c, _message("Thanks, on it.", event_id="Ev-bot-2",
                                          subtype="bot_message"))
     assert by_bot_id.status_code == by_subtype.status_code == 200
-
-    async with db_session() as session:
-        from sqlalchemy import func, select
-        from src.database.models import User
-        count = (await session.execute(
-            select(func.count()).select_from(User).where(User.channel == SLACK)
-        )).scalar()
-    assert count == 0, "the bot opened a ticket about its own message"
+    assert await _slack_customers() == before, \
+        "the bot opened a ticket about its own message"
 
 
 async def test_an_edit_is_not_a_new_message(slack_env):
     """Edits, joins and deletions all arrive as messages with a subtype.
     Treating an edit as new shows an operator the same question twice."""
+    before = await _slack_customers()
     with TestClient(app, base_url="http://testserver") as c:
         r = _signed(c, _message("typo fixed", event_id="Ev-edit",
                                 subtype="message_changed"))
     assert r.status_code == 200
-    async with db_session() as session:
-        from sqlalchemy import func, select
-        from src.database.models import User
-        count = (await session.execute(
-            select(func.count()).select_from(User).where(User.channel == SLACK)
-        )).scalar()
-    assert count == 0
+    assert await _slack_customers() == before, "an edit opened a new ticket"
 
 
 async def test_a_retried_delivery_is_recorded_once(slack_env):
     """Slack resends anything it does not get a prompt 2xx for. Without
     dedupe one question becomes three."""
-    payload = _message("my build is stuck", event_id="Ev-retry-1")
+    # A phrase no other test writes: the suite shares a database, and
+    # "how many rows say this" is only a question about retries if nothing
+    # else says it.
+    said = f"my build is stuck {next_tg_id()}"
+    payload = _message(said, event_id=f"Ev-retry-{next_tg_id()}")
     with TestClient(app, base_url="http://testserver") as c:
         first = _signed(c, payload)
         again = _signed(c, payload)
@@ -188,7 +199,7 @@ async def test_a_retried_delivery_is_recorded_once(slack_env):
     async with db_session() as session:
         from sqlalchemy import select
         rows = (await session.execute(
-            select(Message).where(Message.text == "my build is stuck")
+            select(Message).where(Message.text == said)
         )).scalars().all()
     assert len(rows) == 1, f"one message arrived {len(rows)} times"
 
