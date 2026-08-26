@@ -138,15 +138,27 @@ has no IP allowlist of its own.
 
 | Variable | Required | What it does |
 |----------|:--------:|--------------|
-| `BOT_TOKEN` | yes | Bot token from @BotFather |
-| `ADMIN_CHAT_ID` | yes | Id of the chat tickets are posted to |
 | `ACCESS_PASSWORD` | yes | Password for the first sign-in (`admin@local`) |
 | `DATABASE_URL` | yes | Database URL — Docker sets this itself |
+| `BOT_TOKEN` | no | Bot token from @BotFather — needs `ADMIN_CHAT_ID` too |
+| `ADMIN_CHAT_ID` | no | Id of the group tickets are posted to (negative) |
 | `DASH_SECRET_KEY` | no | Signs session cookies; generated and stored in the database if unset |
 | `DASH_COOKIE_SECURE` | no | `true` when serving over HTTPS |
 | `GEMINI_API_KEY` | no | Turns the AI suggestions on |
 | `SLACK_BOT_TOKEN` | no | Slack channel — needs `SLACK_SIGNING_SECRET` too |
 | `SLACK_SIGNING_SECRET` | no | Proves an incoming event really came from Slack |
+
+**Telegram is optional.** With `BOT_TOKEN` and `ADMIN_CHAT_ID` set, tickets
+appear as threads in your admin group and operators can answer from Telegram.
+Without them the dashboard runs, the website widget takes tickets and everything
+else works — only the Telegram channel is absent. Running the widget alone:
+
+```bash
+docker compose up -d --build dashboard
+```
+
+The `bot` service is Telegram; started without a token it says which variable
+is missing and exits, rather than failing later on an authentication error.
 
 The full list with comments is in [`.env.example`](.env.example).
 

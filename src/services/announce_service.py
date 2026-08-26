@@ -136,10 +136,16 @@ async def announce_ticket(bot: Bot, ticket_id: int) -> bool:
     """
     from src.config import load_settings
 
+    if bot is None:
+        return False
     try:
         settings = load_settings()
-    except Exception as e:  # noqa: BLE001 — an instance with no bot configured
-        logger.debug(f"No Telegram settings, not announcing #{ticket_id}: {e}")
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"Could not read settings, not announcing #{ticket_id}: {e}")
+        return False
+    if not settings.has_telegram:
+        # No admin group on this instance. The ticket is on the board and the
+        # customer has been answered either way.
         return False
 
     async with db_session() as session:

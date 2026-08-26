@@ -346,7 +346,10 @@ async def apply_text(
                 kwargs["reply_to_message_id"] = ticket.header_message_id
         elif ticket.header_message_id is not None:
             kwargs["reply_to_message_id"] = ticket.header_message_id
-        await bot.send_message(**kwargs)
+        # Nothing to mirror into on an instance with no Telegram. The
+        # customer's reply has already gone out on their own channel.
+        if bot is not None and admin_chat_id:
+            await bot.send_message(**kwargs)
     except Exception as e:
         logger.warning(f"Failed to mirror ad-hoc reply to admin thread: {e}")
 
@@ -440,7 +443,10 @@ async def apply(
                 kwargs["reply_to_message_id"] = ticket.header_message_id
         elif ticket.header_message_id is not None:
             kwargs["reply_to_message_id"] = ticket.header_message_id
-        await bot.send_message(**kwargs)
+        # Nothing to mirror into on an instance with no Telegram. The
+        # customer's reply has already gone out on their own channel.
+        if bot is not None and admin_chat_id:
+            await bot.send_message(**kwargs)
     except Exception as e:
         # Mirror failure must NOT break the user-facing send. Just log.
         logger.warning(

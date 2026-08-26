@@ -1,6 +1,7 @@
 """Application configuration utilities."""
 
 from dataclasses import dataclass
+import logging
 import os
 from pathlib import Path
 
@@ -23,16 +24,33 @@ else:
     load_dotenv()
 
 
+logger = logging.getLogger(__name__)
+
+
 @dataclass
 class Settings:
     """Typed container for environment-driven configuration."""
 
-    bot_token: str
-    admin_chat_id: int
     database_url: str
     access_password: str
+    # Telegram is optional, like Gemini. Absent, the dashboard still runs and
+    # the website widget still takes tickets — there is simply no Telegram
+    # channel and no admin group to mirror into. The bot process is the one
+    # thing that cannot start without it.
+    bot_token: str = ""
+    admin_chat_id: int = 0
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-2.5-flash"
+
+    @property
+    def has_telegram(self) -> bool:
+        """Both halves or neither.
+
+        A token with no admin chat can send to customers but has nowhere to
+        show operators a ticket, which is an instance that looks configured
+        and quietly loses half its job.
+        """
+        return bool(self.bot_token and self.admin_chat_id)
 
 
 def _require_env(name: str) -> str:
@@ -47,22 +65,39 @@ def _require_env(name: str) -> str:
 def load_settings() -> Settings:
     """Create a Settings instance with validated environment variables.
 
-    GEMINI_API_KEY is optional — if absent, AI features stay disabled and the bot
-    keeps working as a plain ticket router.
+    Only the database and the first-login password are required. GEMINI_API_KEY
+    absent means AI features stay off; BOT_TOKEN absent means there is no
+    Telegram channel, and an instance serving only the website widget needs
+    neither.
     """
 
-    bot_token = _require_env("BOT_TOKEN")
-    admin_chat_id = int(_require_env("ADMIN_CHAT_ID"))
     database_url = _require_env("DATABASE_URL")
     access_password = _require_env("ACCESS_PASSWORD")
+
+    bot_token = (os.getenv("BOT_TOKEN") or "").strip()
+    raw_chat = (os.getenv("ADMIN_CHAT_ID") or "").strip()
+    try:
+        admin_chat_id = int(raw_chat) if raw_chat else 0
+    except ValueError:
+        # A malformed id is a typo, not a decision to run without Telegram —
+        # but failing to start over it would take the dashboard down too.
+        logger.warning(f"ADMIN_CHAT_ID is not a number ({raw_chat!r}); Telegram is off")
+        admin_chat_id = 0
+
+    if bot_token and not admin_chat_id:
+        logger.warning(
+            "BOT_TOKEN is set but ADMIN_CHAT_ID is not — Telegram stays off. "
+            "Group ids are negative; copy it exactly."
+        )
+
     gemini_api_key = os.getenv("GEMINI_API_KEY") or None
     gemini_model = os.getenv("GEMINI_MODEL") or "gemini-2.5-flash"
 
     return Settings(
-        bot_token=bot_token,
-        admin_chat_id=admin_chat_id,
         database_url=database_url,
         access_password=access_password,
+        bot_token=bot_token,
+        admin_chat_id=admin_chat_id,
         gemini_api_key=gemini_api_key,
         gemini_model=gemini_model,
     )

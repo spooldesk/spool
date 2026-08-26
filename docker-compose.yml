@@ -1,9 +1,14 @@
-# Telegram support bot + dashboard — one image, two services.
+# Spooldesk — one image, two services.
 #
 # Quick start:
 #   1. python scripts/setup.py      # generates .env (or copy .env.example → .env)
 #   2. docker compose up -d --build
 #   3. open http://localhost:8000   # dashboard
+#
+# Using only the website widget, with no Telegram? Start the dashboard alone:
+#   docker compose up -d --build dashboard
+# The bot service is Telegram; without BOT_TOKEN it logs why and exits, and
+# `restart: on-failure` leaves it stopped rather than looping on that message.
 #
 # Both services share one SQLite database on the `data` volume. DATABASE_URL is
 # overridden here to an absolute path inside that volume so data persists across
@@ -11,8 +16,11 @@
 
 services:
   bot:
-    build: .
-    image: spool:latest
+    # The image is built by `dashboard`, which is the service that always
+    # runs. Building here would leave a widget-only install — one that never
+    # starts this service — with no image at all.
+    image: spooldesk:latest
+    depends_on: [dashboard]
     command: python -m src.main
     env_file: .env
     environment:
@@ -20,11 +28,14 @@ services:
     volumes:
       - data:/app/data
       - logs:/app/logs
-    restart: unless-stopped
+    # on-failure, not unless-stopped: with no BOT_TOKEN this process exits
+    # cleanly after saying so once, and `unless-stopped` would restart it into
+    # the same message every few seconds forever.
+    restart: on-failure
 
   dashboard:
-    # Reuses the image built by the `bot` service (same build context).
-    image: spool:latest
+    build: .
+    image: spooldesk:latest
     command: python -m uvicorn src.dashboard.app:app --host 0.0.0.0 --port 8000
     env_file: .env
     environment:
@@ -35,8 +46,6 @@ services:
     volumes:
       - data:/app/data
       - logs:/app/logs
-    depends_on:
-      - bot
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthz').status==200 else 1)"]

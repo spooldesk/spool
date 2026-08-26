@@ -360,7 +360,14 @@ async def _startup() -> None:
         from src.channels import ensure as ensure_channel
         from src.channels.telegram import TelegramChannel
         from src.dashboard.bot_client import get_bot
-        ensure_channel(TelegramChannel(get_bot()))
+
+        # Optional, like Gemini. An instance serving only the website widget
+        # needs no bot token, and should not be told off for not having one.
+        bot = get_bot()
+        if bot is not None:
+            ensure_channel(TelegramChannel(bot))
+        else:
+            logger.info("No BOT_TOKEN — running without a Telegram channel")
         from src.channels.widget import WidgetChannel
         ensure_channel(WidgetChannel())
         # Registered only when it has credentials: an adapter that

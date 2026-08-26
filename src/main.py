@@ -180,6 +180,17 @@ async def main() -> None:
 
     try:
         settings = load_settings()
+        if not settings.has_telegram:
+            # The dashboard runs happily without Telegram; this process *is*
+            # Telegram. Name which half is missing rather than failing on the
+            # first API call with an authentication error.
+            missing = "BOT_TOKEN" if not settings.bot_token else "ADMIN_CHAT_ID"
+            logger.error(
+                f"{missing} is not set, so the bot cannot start. The dashboard "
+                f"does not need it — run the dashboard alone if you are using "
+                f"the website widget only."
+            )
+            return
         bot = Bot(token=settings.bot_token)
 
         # Register Telegram against *this* process's bot. Without it the

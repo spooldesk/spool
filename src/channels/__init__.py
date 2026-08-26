@@ -63,8 +63,15 @@ def get(name: str | None) -> Channel:
         from src.channels.telegram import TelegramChannel
         from src.dashboard.bot_client import get_bot
 
-        register(TelegramChannel(get_bot()))
-        return _registry[key]
+        bot = get_bot()
+        if bot is not None:
+            register(TelegramChannel(bot))
+            return _registry[key]
+        # An instance with no Telegram configured has no Telegram channel, and
+        # says so the same way it would for any other name it does not know.
+        raise LookupError(
+            "Telegram is not configured on this instance (BOT_TOKEN is unset)"
+        )
 
     raise LookupError(f"No adapter registered for channel {key!r}")
 

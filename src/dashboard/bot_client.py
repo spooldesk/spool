@@ -23,11 +23,20 @@ logger = logging.getLogger(__name__)
 _bot: Optional[Bot] = None
 
 
-def get_bot() -> Bot:
-    """Return a process-wide Bot for outgoing sends. Created on first use."""
+def get_bot() -> Optional[Bot]:
+    """A process-wide Bot for outgoing sends, or None on an instance with no
+    Telegram configured.
+
+    None rather than a raise: every caller here is doing something for the
+    operators — mirroring a reply into the admin group, announcing a ticket,
+    telling a blocked user — and none of it should take down the request that
+    triggered it just because this instance has no Telegram.
+    """
     global _bot
     if _bot is None:
         settings = load_settings()
+        if not settings.has_telegram:
+            return None
         _bot = Bot(token=settings.bot_token)
         logger.info("Web admin Bot instance created (send-only, no polling)")
     return _bot
