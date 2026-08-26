@@ -15,7 +15,7 @@
 ![CI](https://github.com/spooldesk/spool/actions/workflows/ci.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-BSL_1.1-blue)
 
-### 🔴 [Live demo → support-bot-demo-he1w.onrender.com](https://support-bot-demo-he1w.onrender.com)
+### 🔴 [Live demo → app.spooldesk.net](https://app.spooldesk.net)
 
 Log in with `admin@local` / `admin`. Runs on a free tier — if it was idle, the first load takes
 **~30–60 s to wake up**. The demo database reseeds itself, so feel free to click, edit and break
@@ -128,7 +128,7 @@ boring infrastructure that one person can deploy and operate.
 
 ## Try the dashboard in 2 minutes
 
-The hosted **[live demo](https://support-bot-demo-he1w.onrender.com)** is the zero-effort option.
+The hosted **[live demo](https://app.spooldesk.net)** is the zero-effort option.
 To run the same demo locally — no Telegram token, no API keys, everything on generated data:
 
 ```bash
