@@ -14,11 +14,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Spooldesk — the open helpdesk your team never leaves Telegram to use</title>
-  <meta name="description" content="Open-source Telegram-native helpdesk. Tickets live as Telegram threads, AI answers what it can before a human is needed, full web dashboard included. Self-host in 5 minutes.">
+  <title>Spooldesk — a full helpdesk your agents can also answer from Telegram</title>
+  <meta name="description" content="Open-source helpdesk. Tickets arrive from a website widget, Slack and Telegram into one queue with a board, SLA clock and templates. Agents work in the dashboard — or answer from Telegram when they are not at a laptop. Self-host in 5 minutes.">
 
-  <meta property="og:title" content="Spooldesk — the helpdesk your team never leaves Telegram to use">
-  <meta property="og:description" content="Tickets as Telegram threads. AI deflection out of the box. Self-host in one container.">
+  <meta property="og:title" content="Spooldesk — a full helpdesk your agents can also answer from Telegram">
+  <meta property="og:description" content="Widget, Slack and Telegram into one queue. Work from the dashboard, or answer from your phone. AI deflection out of the box.">
   <meta property="og:type" content="website">
 
   <link rel="stylesheet" href="style.css">
@@ -64,14 +64,15 @@
   </div>
 
   <h1 class="text-4xl sm:text-6xl font-semibold tracking-tight leading-[1.1]">
-    The helpdesk your team<br class="hidden sm:block">
-    never leaves <span class="text-violet-400">Telegram</span> to use
+    A full helpdesk.<br class="hidden sm:block">
+    Answer from the board — or from <span class="text-violet-400">Telegram</span>.
   </h1>
 
   <p class="mt-6 text-lg text-zinc-400 max-w-2xl mx-auto leading-relaxed">
-    Every ticket is a thread in your Telegram admin group, so agents answer where they
-    already work. AI resolves what it can before a human is needed. A full web dashboard
-    is there when you want metrics — not because the tool forces you into it.
+    Tickets arrive from a widget on your site, from Slack and from Telegram, into one
+    queue with a board, an SLA clock that counts working hours, and templates. Agents
+    work in the dashboard at a desk — and close a ticket from Telegram on their phone
+    when they are not at one. AI answers what it can before either is needed.
   </p>
 
   <div class="mt-9 flex flex-wrap items-center justify-center gap-3">
@@ -102,7 +103,7 @@
       <div class="text-xs text-zinc-500 mt-1">from clone to running</div>
     </div>
     <div class="bg-black px-4 py-5">
-      <div class="text-2xl font-semibold tabular-nums">283</div>
+      <div class="text-2xl font-semibold tabular-nums">541</div>
       <div class="text-xs text-zinc-500 mt-1">automated tests</div>
     </div>
     <div class="bg-black px-4 py-5">
@@ -249,8 +250,13 @@
         <tbody class="align-top">
           <tr class="border-t border-zinc-900">
             <td class="py-4 pr-4 text-zinc-400">Where agents work</td>
-            <td class="py-4 px-4 font-medium">Telegram threads — web optional</td>
-            <td class="py-4 px-4 text-zinc-400">A separate inbox app they must adopt</td>
+            <td class="py-4 px-4 font-medium">The dashboard, or Telegram — their choice, per person</td>
+            <td class="py-4 px-4 text-zinc-400">A separate inbox app, and only that</td>
+          </tr>
+          <tr class="border-t border-zinc-900">
+            <td class="py-4 pr-4 text-zinc-400">Where customers write</td>
+            <td class="py-4 px-4 font-medium">Website widget, Slack, Telegram — one queue</td>
+            <td class="py-4 px-4 text-zinc-400">Many channels, and a plan tier for each</td>
           </tr>
           <tr class="border-t border-zinc-900">
             <td class="py-4 pr-4 text-zinc-400">AI deflection</td>
@@ -276,9 +282,10 @@
       </table>
     </div>
     <p class="mt-5 text-xs text-zinc-600 text-center max-w-2xl mx-auto">
-      Fair warning: those tools are broader products. If you need email, live chat widgets,
-      Instagram and a public knowledge base in one place, they will serve you better.
-      Spooldesk is deliberately narrow — Telegram, done properly.
+      Fair warning: those tools are broader products. If you need email, Instagram,
+      WhatsApp and a public knowledge base in one place today, they will serve you
+      better. Spooldesk covers three channels properly rather than nine partly — and
+      email is the next one being built.
     </p>
   </div>
 </section>
@@ -447,7 +454,7 @@ docker compose up -d --build</code></pre>
         <i class="ti ti-chevron-down text-zinc-500 group-open:rotate-180 transition-transform"></i>
       </summary>
       <p class="mt-3 text-sm text-zinc-400 leading-relaxed">
-        It ships with 283 automated tests covering auth, access control, migrations
+        It ships with 541 automated tests covering auth, access control, migrations
         and the AI safety gates. It is also a young project
         maintained by one person — so evaluate it on the live demo, and open an issue when
         something is off. SQLite fits small and mid-sized teams comfortably; PostgreSQL

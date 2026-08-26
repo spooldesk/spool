@@ -1,9 +1,9 @@
 <h1 align="center">Spooldesk</h1>
 
 <p align="center">
-  <b>The open-source helpdesk your team never leaves Telegram to use.</b><br>
-  Tickets live as Telegram threads. AI answers what it can before a human is needed.<br>
-  Full web dashboard when you want one. Self-host in 5 minutes, one container.
+  <b>A full open-source helpdesk your agents can also answer from Telegram.</b><br>
+  Widget, Slack and Telegram arrive in one queue — board, SLA clock, templates, AI.<br>
+  Work from the dashboard, or close a ticket from your phone. Self-host in 5 minutes.
 </p>
 
 ![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)
@@ -34,13 +34,18 @@ lands on your colleagues' boards too.*
 
 ## Why Spooldesk
 
-Every helpdesk asks your agents to live in *its* inbox. Spooldesk doesn't: a ticket is a
-**thread in your Telegram admin group**, so the team answers where it already works —
-and still gets a real dashboard, metrics and an audit trail.
+Every helpdesk asks your agents to live in *its* inbox, and only there. Spooldesk gives
+them a real one — board, filters, saved views, internal notes, templates, shortcuts —
+and **also makes Telegram a place they can answer from**. At a desk, the dashboard. On a
+phone at 9pm, the ticket is a thread in your Telegram group with the same buttons.
+
+Most helpdesks treat Telegram as a channel a customer writes *to*. Almost none treat it
+as somewhere an agent works *from*.
 
 |  | Spooldesk | Chatwoot / Zendesk / Freshdesk |
 |---|---|---|
-| Where agents work | **Telegram threads** (web optional) | separate inbox app |
+| Where agents work | **dashboard or Telegram**, per person | separate inbox app, and only that |
+| Where customers write | **widget, Slack, Telegram** — one queue | many channels, a plan tier for each |
 | AI deflection | **built in, opt-in, measured** | paid add-on or absent |
 | Deploy | **1 container, 5 min** | Rails/Postgres/Redis stack or SaaS-only |
 | Your data | **your server, SQLite file** | their cloud |
@@ -153,7 +158,7 @@ See [DEPLOY.md](DEPLOY.md) for details.
 
 ```bash
 pip install -r requirements.txt -r requirements-dev.txt
-pytest -q        # 283 tests: auth, RBAC, CSRF, migrations, CSAT, search,
+pytest -q        # 541 tests: auth, RBAC, CSRF, migrations, CSAT, search,
                  # AI deflection gates, working hours, reports, UI i18n
 ```
 
