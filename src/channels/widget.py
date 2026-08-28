@@ -118,7 +118,12 @@ class WidgetChannel:
         # reference and stores the file for us; a browser cannot, so this is
         # the one adapter that owns a store — see src/services/file_store.py.
         files=True,
-        buttons=True,
+        # False. The panel renders a transcript and has nothing to draw a
+        # button with. This said True while `send_text` threw the options
+        # away, which is exactly the combination the capability exists to
+        # prevent: a closing message that asks for a rating and hides every
+        # way of giving one.
+        buttons=False,
         typing=False,
         # Nothing reaches a visitor who has closed the tab. Worth declaring
         # rather than discovering: an SLA that assumes a notification landed

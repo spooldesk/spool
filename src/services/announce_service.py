@@ -117,10 +117,21 @@ async def _thread_for(bot: Bot, chat_id: int, header_message_id: int) -> int | N
         probe = await bot.send_message(
             chat_id=chat_id, reply_to_message_id=header_message_id, text="💬",
         )
-        return probe.message_thread_id
     except Exception as e:  # noqa: BLE001
         logger.warning(f"Could not determine a thread id: {e}")
         return None
+
+    # Taken back out again. In an ordinary group the answer is legitimately
+    # None, so this probe is reached on every single ticket and left a "💬"
+    # sitting under each one — a running tally of a question we asked
+    # ourselves. Best effort: if the delete fails the id is still good, and a
+    # stray emoji is not worth failing an announcement over.
+    try:
+        await bot.delete_message(chat_id=chat_id, message_id=probe.message_id)
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"Left the thread probe in place: {e}")
+
+    return probe.message_thread_id
 
 
 async def announce_ticket(bot: Bot, ticket_id: int) -> bool:

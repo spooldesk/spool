@@ -237,13 +237,24 @@ async def conversation(session: AsyncSession, ticket_id: int) -> list[MessageRec
     that renders a conversation back to the customer — the widget does, an
     email thread does — must never be the thing that leaks an operator's note
     about them.
+
+    The closure marker goes with them. It is a fixed, deliberately
+    unlocalized string that several places match on to recognise a closed
+    ticket, and it was never meant to be read by anyone — which held for as
+    long as Telegram was the only channel, because there the transcript is a
+    record of what was sent. On a channel where the transcript *is* the
+    delivery, an internal marker is a sentence in the customer's chat, in a
+    language they may not have.
     """
+    from src.utils.i18n import CLOSURE_SYSTEM_PREFIX
+
     return list((await session.execute(
         select(MessageRecord)
         .where(
             MessageRecord.ticket_id == ticket_id,
             MessageRecord.is_internal == False,  # noqa: E712 — SQL, not Python
             MessageRecord.deleted_at.is_(None),
+            ~MessageRecord.text.startswith(CLOSURE_SYSTEM_PREFIX),
         )
         .order_by(MessageRecord.id)
         .options(selectinload(MessageRecord.ticket))

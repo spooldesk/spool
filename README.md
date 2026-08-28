@@ -154,11 +154,21 @@ make up      # docker compose: bot + dashboard
 
 See [DEPLOY.md](DEPLOY.md) for details.
 
+## Documentation
+
+| | |
+|---|---|
+| **[DEPLOY.md](DEPLOY.md)** | Getting it running: Docker, TLS, PostgreSQL, backups, and setup for each channel — widget, Telegram, Slack |
+| **[USING.md](USING.md)** | The working day: the board, replying, internal notes, close reasons, keyboard shortcuts |
+| **[FAQ.md](FAQ.md)** | The questions that come before installing, including the ones answered "not yet" |
+| **[CONTRIBUTING.md](CONTRIBUTING.md)** | Local setup and the traps that are not obvious from the code |
+| **[SECURITY.md](SECURITY.md)** | Reporting a vulnerability |
+
 ## Development
 
 ```bash
 pip install -r requirements.txt -r requirements-dev.txt
-pytest -q        # 541 tests: auth, RBAC, CSRF, migrations, CSAT, search,
+pytest -q        # 634 tests: auth, RBAC, CSRF, migrations, CSAT, search,
                  # AI deflection gates, working hours, reports, UI i18n
 ```
 
@@ -193,7 +203,6 @@ Email [boykokuza12@gmail.com](mailto:boykokuza12@gmail.com).
 
 - **Webhooks / REST API** for integrations
 - **Operator ↔ Telegram linking** — assignment notifications to the operator's own account
-- PostgreSQL support for larger installations
 - **Managed cloud** — hosted Spooldesk for teams that don't want to self-host
 
 ## Contributing

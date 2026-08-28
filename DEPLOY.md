@@ -386,6 +386,66 @@ reason to distrust the visitor.
 
 ---
 
+## Telegram
+
+Optional, like everything else here — an instance running only the website
+widget needs none of this. What it adds is a place for operators to answer
+from their phone, and a copy of every ticket in a chat your team already
+watches.
+
+Two values, `BOT_TOKEN` and `ADMIN_CHAT_ID`, and the channel is off unless
+both are set. A token with no chat id is an instance that can message
+customers but has nowhere to show operators a ticket, which looks configured
+and is half-broken; the startup log says so rather than letting you find out.
+
+### The bot
+
+1. Message [@BotFather](https://t.me/BotFather) → `/newbot`, pick a name and a
+   username. Copy the token — `123456:ABC-DEF…` — into `BOT_TOKEN`.
+2. Still in BotFather: `/setprivacy` → **Disable**. This is the step that gets
+   missed. With privacy mode on, a bot in a group only sees messages that
+   start with a command or mention it, so replies typed in a ticket thread
+   never reach the helpdesk and the thread looks ignored.
+
+### The group
+
+Create a group, add your bot, and **make it an administrator**. It needs to
+post, and — if you want the tidy version below — to manage topics.
+
+**A supergroup with Topics turned on is the arrangement to want.** Each
+ticket becomes its own topic: a real thread with a name, that people can mute
+individually and scroll back through months later.
+
+An ordinary group also works. The bot falls back to replying to each ticket's
+header message, so conversations still hang together, but a busy day is one
+long chat rather than a list of threads. Nothing needs configuring to choose
+between them — the bot uses whichever it finds itself in.
+
+To turn on Topics: group **Settings → Topics**. Telegram converts the group
+to a supergroup when you do, which changes its chat id, so read the id
+*after* this step and not before.
+
+### The chat id
+
+Forward any message from the group to [@getmyid_bot](https://t.me/getmyid_bot).
+Group ids are negative and supergroup ids start with `-100`, e.g.
+`-1001234567890`. Copy it into `ADMIN_CHAT_ID` exactly, minus sign included —
+a positive number there is a private chat with a stranger.
+
+### Checking it
+
+Send `/start` to the bot from another account and open a ticket. Within a
+second or two it should appear in the group. If nothing arrives:
+
+- **Nothing at all** — the bot is not in the group, or not an admin.
+- **Tickets appear, replies do not come back** — privacy mode is still on.
+  BotFather → `/setprivacy` → Disable, then **remove the bot from the group
+  and add it again**; the setting only takes effect on re-join.
+- **`chat not found`** in the log — the chat id is wrong, or the group became
+  a supergroup after you copied it.
+
+---
+
 ## Slack
 
 Optional. Lets a client write to you in Slack — a direct message, or a

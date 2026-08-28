@@ -76,17 +76,88 @@ async def send_close_notification(
         + "\n\n"
         + get_text("csat_invite", lang)
     )
+    options = rating_options(ticket_id)
+
+    # Where to send, when the caller did not say. Every caller has the
+    # customer and none of them passed this, so the fallback was "Telegram,
+    # addressed by the routing key" — correct for a Telegram customer, whose
+    # key is their chat id, and undeliverable for everyone else.
+    if channel is None or address is None:
+        resolved_channel, resolved_address = await _reach(user_tg_id)
+        channel = channel or resolved_channel
+        address = address or resolved_address
+
     try:
-        delivery = await get_channel(channel).send_text(
-            address or str(user_tg_id), text, options=rating_options(ticket_id),
+        pipe = get_channel(channel)
+    except LookupError:
+        logger.error(f"CSAT: no channel {channel!r} for ticket #{ticket_id}")
+        return
+
+    # A channel that cannot draw a keyboard still has to keep the question.
+    # See the Channel protocol: dropping the options is worse than an ugly
+    # message, because what gets dropped is the whole point of sending it.
+    body = text if pipe.caps.buttons else _spelled_out(text, options)
+
+    try:
+        delivery = await pipe.send_text(
+            address or str(user_tg_id), body, options=options,
         )
         if not delivery.ok:
             logger.error(
                 f"CSAT: could not ask user {user_tg_id} about ticket #{ticket_id}: "
                 f"{delivery.error_key} {delivery.error_detail or ''}"
             )
+            return
     except Exception as e:
         logger.error(f"CSAT: failed to notify user {user_tg_id} for ticket #{ticket_id}: {e}")
+        return
+
+    await _record(ticket_id, user_tg_id, body)
+
+
+def _spelled_out(text: str, options) -> str:
+    """The choices, written into the message, for channels with no buttons."""
+    labels = [o.label for o in (options or []) if o.label]
+    return f"{text}\n\n{'  ·  '.join(labels)}" if labels else text
+
+
+async def _reach(user_tg_id: int) -> tuple[str | None, str | None]:
+    """Which pipe this customer is on, and their address on it."""
+    from src.channels.identity import address_of, channel_of
+    from src.database.models import User
+
+    try:
+        async with db_session() as session:
+            user = (await session.execute(
+                select(User).where(User.tg_id == user_tg_id)
+            )).scalar_one_or_none()
+            if user is None:
+                return None, None
+            return channel_of(user), address_of(user)
+    except Exception as e:  # noqa: BLE001 — never break a close over this
+        logger.warning(f"CSAT: could not resolve where to reach {user_tg_id}: {e}")
+        return None, None
+
+
+async def _record(ticket_id: int, user_tg_id: int, text: str) -> None:
+    """Put the closing message in the ticket's own transcript.
+
+    Not bookkeeping. On a channel that *is* a transcript — the widget — this
+    is the only way the customer ever sees it, because nothing else writes
+    the row. On Telegram it means what an operator reads back matches what
+    the customer was actually sent.
+    """
+    from src.database.models import Message as MessageRecord
+
+    try:
+        async with db_session() as session:
+            session.add(MessageRecord(
+                ticket_id=ticket_id, sender_type="admin", sender_id=0,
+                text=text,
+            ))
+            await session.commit()
+    except Exception as e:  # noqa: BLE001 — the customer already has it
+        logger.warning(f"CSAT: sent the close notice but did not record it: {e}")
 
 
 async def save_rating(*, ticket_id: int, user_tg_id: int, rating: int) -> str:
