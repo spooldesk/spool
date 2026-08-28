@@ -129,8 +129,10 @@ In a ticket:
 | `Esc` | Back |
 
 **Search** covers ticket id, message text, the author's username and the
-category, and is properly case-insensitive in Cyrillic as well as Latin —
-searching `принтер` finds `Принтер`.
+category, and folds case in Unicode rather than only in ASCII — searching
+`okonomie` for `Okonomie` works in any database, but searching `ökonomie`
+finds `Ökonomie` here and would not in a plain SQL `LIKE`. The same is true
+of every non-Latin alphabet.
 
 ---
 

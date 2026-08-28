@@ -191,6 +191,40 @@ def work_hours_dt(days_ago: float) -> datetime:
     return min(out, NOW - timedelta(minutes=1))
 
 
+
+def _demo_screenshot() -> bytes | None:
+    """A plausible thing for a customer to attach, or None.
+
+    Drawn rather than shipped as a file so nothing in the repository is a
+    picture of anyone's real screen. Pillow only lives in
+    requirements-screenshots.txt — CI runs this seed and deliberately does not
+    install a browser stack, so its absence skips the attachment instead of
+    failing the build.
+    """
+    try:
+        from PIL import Image, ImageDraw
+    except ImportError:
+        return None
+
+    import io
+
+    img = Image.new("RGB", (720, 420), "#f4f4f5")
+    d = ImageDraw.Draw(img)
+    d.rectangle([0, 0, 720, 56], fill="#ffffff")
+    d.rectangle([24, 18, 300, 38], fill="#e4e4e7")
+    d.rectangle([40, 104, 680, 300], fill="#ffffff", outline="#e4e4e7", width=2)
+    for i, y in enumerate((140, 180, 220)):
+        d.rectangle([72, y, 72 + (420 - i * 90), y + 14], fill="#e4e4e7")
+    # The part that makes it read as a bug report rather than a blank page.
+    d.rectangle([72, 252, 400, 276], fill="#fecdd3")
+    d.rectangle([80, 258, 392, 270], fill="#e11d48")
+    d.rectangle([40, 330, 220, 372], fill="#a1a1aa")
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
 async def main() -> None:
     # Fresh start every run.
     for suffix in ("", "-shm", "-wal"):
@@ -515,23 +549,34 @@ async def main() -> None:
         # thing the channel layer bought is invisible.
         from src.channels.identity import create_customer
         from src.channels.widget import NAME as WIDGET_CHANNEL, address_for
+        from src.services import file_store
 
+        # (name, category, customer lines, the answer they got). The reply
+        # matters for the photograph: a panel showing three questions and no
+        # answers is a picture of support not happening.
         WIDGET_VISITORS = [
-            ("Visitor from /pricing", "Billing", [
+            ("Nora Bell", "Billing", [
                 "Does the team plan bill per operator or per mailbox?",
                 "And can we pay yearly?",
-            ]),
-            ("Visitor from /docs", "Access", [
+            ], "Per operator, and yearly is 2 months off. I've put the "
+               "invoice options on your account — have a look and tell me "
+               "which suits."),
+            ("Ivan Petrov", "Access", [
                 "The API key I generated yesterday returns 401 on every call.",
-            ]),
-            ("Visitor from /checkout", "Other", [
+            ], "That key was made before we moved you to the new workspace, "
+               "so it is pointing at the old one. Generate a fresh one under "
+               "Settings → API and the 401 goes away."),
+            ("Marta Kern", "Other", [
                 "Checkout hangs on the payment step \u2014 card works elsewhere.",
                 "Chrome, latest. It says 'gateway timeout' after about 30 seconds.",
-            ]),
+            ], "Thanks for the screenshot \u2014 that timeout is our payment "
+               "provider rate-limiting the card BIN, not your card. I've "
+               "raised the limit for your account; try once more and tell me "
+               "if it still hangs."),
         ]
 
         widget_tickets = 0
-        for name, category, lines in WIDGET_VISITORS:
+        for name, category, lines, answer in WIDGET_VISITORS:
             visitor = await create_customer(
                 session, channel=WIDGET_CHANNEL,
                 address=address_for(f"demo-session-{name}"),
@@ -551,7 +596,59 @@ async def main() -> None:
                     ticket_id=ticket.id, sender_type="user", sender_id=visitor.tg_id,
                     text=line, created_at=opened + timedelta(minutes=i * 3),
                 ))
+            step = len(lines)
+
+            # One conversation carries a screenshot, because "the customer
+            # sent a picture of the problem" is what support actually looks
+            # like and no frame in the repository showed it.
+            shot = _demo_screenshot() if name == "Marta Kern" else None
+            if shot is not None:
+                ref = file_store.put(shot)
+                session.add(Message(
+                    ticket_id=ticket.id, sender_type="user",
+                    sender_id=visitor.tg_id, text="",
+                    file_id=ref, file_type="photo", file_name="checkout.png",
+                    file_size=len(shot), mime_type="image/png",
+                    created_at=opened + timedelta(minutes=step * 3),
+                ))
+                step += 1
+
+            if answer:
+                session.add(Message(
+                    ticket_id=ticket.id, sender_type="admin", sender_id=0,
+                    text=answer,
+                    created_at=opened + timedelta(minutes=step * 3 + 6),
+                ))
             widget_tickets += 1
+
+            # One visitor gets a history, so the panel's message list is a
+            # list rather than a single row, and so the closed state appears
+            # in a frame somewhere.
+            if name == "Marta Kern":
+                earlier = NOW - timedelta(days=6)
+                past = Ticket(
+                    user_id=visitor.id, team_id=None, category="Billing",
+                    status="closed", stage="in_progress", ticket_code="",
+                    telegram_id=visitor.tg_id, created_at=earlier,
+                    closed_at=earlier + timedelta(hours=2),
+                    admin_categories=["Solved"],
+                )
+                session.add(past)
+                await session.flush()
+                past.ticket_code = f"#{past.id}"
+                for offset, (who, line) in enumerate((
+                    ("user", "Can I get a VAT invoice for last month?"),
+                    ("admin", "Sent it to the address on the account just now. "
+                              "Shout if you need the company details changed."),
+                    ("user", "Got it, thank you."),
+                )):
+                    session.add(Message(
+                        ticket_id=past.id, sender_type=who,
+                        sender_id=visitor.tg_id if who == "user" else 0,
+                        text=line,
+                        created_at=earlier + timedelta(minutes=offset * 25),
+                    ))
+                widget_tickets += 1
         await session.flush()
 
         for row in ai_rows:

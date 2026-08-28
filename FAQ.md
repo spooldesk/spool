@@ -157,7 +157,7 @@ Not yet. Widget, Slack and Telegram today.
 Theirs, when the channel tells us — Telegram supplies it and the widget reads
 the browser's. When it does not, they get the instance's default language,
 which is set in Settings and is worth setting deliberately: it is what every
-customer with an unknown language will read. Русский, українська and English
+customer with an unknown language will read. Russian, Ukrainian and English
 ship; the operator dashboard's language is a separate setting, and each
 operator can override it for themselves.
 

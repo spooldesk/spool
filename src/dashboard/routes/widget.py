@@ -660,6 +660,13 @@ async def conversations(
                 "open": ticket.status == "active",
                 "attachment": bool(last.file_id),
             })
+
+    # By when they were last spoken in, not by when they were created. Ticket
+    # ids run in insertion order, which is usually the same thing and was not
+    # here: a conversation that finished last week outranked one from this
+    # morning because its row happened to be written second. The list shows a
+    # relative time against every row, so getting this wrong is visible.
+    out.sort(key=lambda c: c["at"] or "", reverse=True)
     return _json({"conversations": out}, origin)
 
 

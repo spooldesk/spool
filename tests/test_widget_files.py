@@ -14,6 +14,7 @@ import io
 import json
 import os
 import tempfile
+from datetime import datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -359,6 +360,45 @@ async def test_the_conversation_list_is_the_visitors_own(widget_on):
     assert [c_["id"] for c_ in listed["conversations"]] == [mine["ticket"]]
     assert listed["conversations"][0]["title"] == "where is my order"
     assert listed["conversations"][0]["open"] is True
+
+
+async def test_conversations_are_ordered_by_when_they_were_last_spoken_in(widget_on):
+    """Ticket ids run in insertion order, which is usually the same as recency
+    and is not always — a closed conversation written into the database second
+    outranked a live one from this morning. The list prints a relative time on
+    every row, so the wrong order is not subtle."""
+    from src.database.models import Message as MessageRecord, Ticket
+
+    with TestClient(app, base_url="http://testserver") as c:
+        opened = _say(c, "the newer question").json()
+        token = opened["session"]
+
+        # An older conversation whose row is written afterwards: closed last
+        # week, higher id than the live one.
+        async with db_session() as session:
+            live = await session.get(Ticket, opened["ticket"])
+            older = Ticket(
+                user_id=live.user_id, category="Billing", status="closed",
+                stage="in_progress", ticket_code="", telegram_id=live.telegram_id,
+                created_at=datetime.utcnow() - timedelta(days=6),
+            )
+            session.add(older)
+            await session.flush()
+            session.add(MessageRecord(
+                ticket_id=older.id, sender_type="user", sender_id=live.telegram_id,
+                text="last week's question",
+                created_at=datetime.utcnow() - timedelta(days=6),
+            ))
+            await session.commit()
+            older_id = older.id
+
+        listed = c.get("/widget/api/conversations",
+                       headers={"x-spooldesk-session": token}).json()
+
+    ids = [conv["id"] for conv in listed["conversations"]]
+    assert ids == [opened["ticket"], older_id], (
+        "the older conversation was listed first because its row is newer"
+    )
 
 
 async def test_a_stranger_asking_for_a_thread_is_told_nothing(widget_on):
