@@ -64,6 +64,18 @@ class Inbound:
     text: str = ""
     display_name: str | None = None
     language: str | None = None
+    #: Contact details, where the channel has any. On the widget these come
+    #: from a form the visitor filled in or from the site they were logged
+    #: into, and those are not the same claim — see `identity_verified`.
+    email: str | None = None
+    #: The customer's id in the host's own system. Answers the question
+    #: support actually has: which of your users is this?
+    external_id: str | None = None
+    #: True only when the *host's server* signed the identity with a shared
+    #: secret. Anything a page passed unsigned is a stranger's typing, no
+    #: matter how official it looks, and an operator acting on it — resetting
+    #: an account, quoting a balance — is the incident this exists to stop.
+    identity_verified: bool = False
     category: str | None = None
     attachment: Attachment | None = None
     #: Who wrote this, when that is not the same as whose conversation it is.
@@ -121,12 +133,11 @@ async def receive(session: AsyncSession, inbound: Inbound) -> IntakeResult:
         user = await create_customer(
             session, channel=channel, address=inbound.address,
             username=inbound.display_name, language=inbound.language,
+            email=inbound.email, external_id=inbound.external_id,
+            identity_verified=inbound.identity_verified,
         )
-    elif inbound.display_name and not user.username:
-        # Channels learn the name late — a widget visitor types it into the
-        # third message, a mail server puts it in a header we only parse on
-        # reply. Filling a blank is help; overwriting is not.
-        user.username = inbound.display_name
+    else:
+        _adopt_identity(user, inbound)
 
     if not user.is_active:
         # Blocked customers are refused at the door on every channel. Letting
@@ -177,6 +188,31 @@ async def receive(session: AsyncSession, inbound: Inbound) -> IntakeResult:
         ticket_id=ticket.id, message_id=record.id,
         opened_ticket=opened, new_customer=new_customer,
     )
+
+
+def _adopt_identity(user: User, inbound: Inbound) -> None:
+    """Update who we think a returning customer is.
+
+    Channels learn identity late: a widget visitor types their email into the
+    third message, a mail server puts a name in a header we only parse on the
+    reply. So blanks get filled as we learn things.
+
+    Overwriting is a different act, and only a signed identity may do it.
+    Otherwise the sequence is: someone writes in as themselves, an operator
+    starts helping, and a later unsigned message quietly rewrites the name at
+    the top of the ticket to someone else's. Once an identity is proved, no
+    unsigned claim can touch it again — every field it set is non-empty, and
+    only trust unlocks the overwrite.
+    """
+    trusted = bool(inbound.identity_verified)
+    if inbound.display_name and (trusted or not user.username):
+        user.username = inbound.display_name
+    if inbound.email and (trusted or not user.email):
+        user.email = inbound.email
+    if inbound.external_id and (trusted or not user.external_id):
+        user.external_id = inbound.external_id
+    if trusted and not user.identity_verified:
+        user.identity_verified = True
 
 
 async def conversation(session: AsyncSession, ticket_id: int) -> list[MessageRecord]:

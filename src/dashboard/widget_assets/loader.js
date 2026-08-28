@@ -98,6 +98,20 @@
     btn.setAttribute("aria-expanded", "false");
   }
 
+  // Held rather than sent, because the panel does not exist until someone
+  // opens it. A site calls identify() on page load; the frame may not be
+  // built for another ten minutes, or ever.
+  var claimed = null;
+
+  function handOver() {
+    if (!claimed) return;
+    try {
+      panel.contentWindow.postMessage({ spooldesk: "identify", identity: claimed }, BASE);
+    } catch (e) {
+      /* not up yet — it says "ready" when it is, and we try again then */
+    }
+  }
+
   btn.setAttribute("aria-expanded", "false");
   btn.addEventListener("click", function () {
     if (panel.classList.contains("on")) close();
@@ -115,9 +129,53 @@
     // host page, so the origin check is the only thing making that safe.
     if (e.origin !== BASE) return;
     var msg = e.data || {};
+    if (msg.spooldesk === "ready") handOver();
     if (msg.spooldesk === "close") close();
     if (msg.spooldesk === "unread" && !panel.classList.contains("on")) dot.classList.add("on");
   });
+
+  // The public API. Small on purpose: a site should be able to read the
+  // whole thing in the time it takes to decide whether to paste the snippet.
+  //
+  //   Spooldesk.identify({ name, email, userId, hash })
+  //
+  // `hash` is HMAC-SHA256(secret, userId || email), computed on the site's
+  // *server*. Without it the identity still reaches the operator, marked as
+  // claimed rather than verified — which is the honest label for anything a
+  // page can be made to say by opening devtools.
+  var prior = window.Spooldesk;
+  var api = {
+    identify: function (data) {
+      if (!data || typeof data !== "object") return;
+      claimed = claimed || {};
+      if (data.name) claimed.name = data.name;
+      if (data.email) claimed.email = data.email;
+      if (data.userId) claimed.userId = data.userId;
+      if (data.hash) claimed.hash = data.hash;
+      handOver();
+    },
+    open: open,
+    close: close,
+    // Ends the visitor's session on this browser: their next message starts
+    // a new conversation as a new person. What a site calls on log out, and
+    // the reason it matters is a shared computer.
+    reset: function () {
+      claimed = null;
+      try {
+        panel.contentWindow.postMessage({ spooldesk: "reset" }, BASE);
+      } catch (e) { /* nothing loaded, nothing to forget */ }
+    },
+  };
+  // This script is async, so a page that calls identify() straight after the
+  // tag would otherwise throw. A stub collecting calls into `q` is the usual
+  // answer; honour it if one is there.
+  if (prior && prior.q && prior.q.length) {
+    prior.q.forEach(function (call) {
+      var fn = api[call && call[0]];
+      if (fn) fn(call[1]);
+    });
+  }
+  window.Spooldesk = api;
 
   root.appendChild(style);
   root.appendChild(panel);

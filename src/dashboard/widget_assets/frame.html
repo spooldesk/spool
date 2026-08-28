@@ -66,8 +66,12 @@
   .note { color: var(--muted); font-size: 12px; align-self: center;
           text-align: center; padding: 4px 8px; }
 
-  form { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--line);
-         background: var(--bg); flex: 0 0 auto; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+  #composer, #gate {
+    padding: 12px; border-top: 1px solid var(--line); background: var(--bg);
+    flex: 0 0 auto; padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+  #composer { display: flex; gap: 8px; }
+  #composer.off { display: none; }
   textarea {
     flex: 1 1 auto; resize: none; border: 1px solid var(--line); border-radius: 10px;
     padding: 9px 12px; font: inherit; color: inherit; background: var(--bg);
@@ -80,6 +84,32 @@
     font-weight: 600;
   }
   button.send:disabled { opacity: .5; cursor: default; }
+
+  /* The pre-chat form, when an operator has asked for one. Two fields and
+     a way past them: every box in front of a support request is a support
+     request that does not get sent, so this stays as small as it can be
+     while still being worth having. */
+  #gate { display: none; flex-direction: column; gap: 8px; }
+  #gate.on { display: flex; }
+  #gate .lead { font-size: 12px; color: var(--muted); }
+  #gate input {
+    border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px;
+    font: inherit; color: inherit; background: var(--bg); width: 100%;
+  }
+  #gate input:focus { outline: 2px solid var(--brand); outline-offset: -1px;
+                      border-color: transparent; }
+  #gate .row { display: flex; gap: 8px; align-items: center; }
+  #gate .go {
+    flex: 1 1 auto; border: 0; border-radius: 10px; background: var(--brand);
+    color: var(--brand-text); padding: 10px 14px; cursor: pointer; font: inherit;
+    font-weight: 600;
+  }
+  #gate .skip {
+    flex: 0 0 auto; border: 0; background: transparent; color: var(--muted);
+    cursor: pointer; font: inherit; font-size: 13px; padding: 10px 6px;
+    text-decoration: underline;
+  }
+  #gate .err { font-size: 12px; color: #f43f5e; }
 
   /* Screen-reader-only: the live region that announces a reply. Visually
      absent, because the message itself is already on screen. */
@@ -105,6 +135,18 @@
 <div id="log" role="log" aria-live="polite"></div>
 <div class="sr" id="announce" aria-live="polite"></div>
 
+<form id="gate" novalidate>
+  <div class="lead" id="gateLead"></div>
+  <input id="gateName" type="text" maxlength="60" autocomplete="name">
+  <input id="gateEmail" type="email" maxlength="320" autocomplete="email"
+         inputmode="email" spellcheck="false">
+  <div class="err" id="gateErr" role="alert"></div>
+  <div class="row">
+    <button class="go" type="submit" id="gateGo"></button>
+    <button class="skip" type="button" id="gateSkip"></button>
+  </div>
+</form>
+
 <form id="composer">
   <textarea id="text" rows="1" maxlength="4000" autocomplete="off"></textarea>
   <button class="send" id="send" type="submit">→</button>
@@ -126,6 +168,16 @@
   var state = document.getElementById("state");
   var strings = {};
   var seen = {};           // message ids already on screen
+  // What we tell the server about who is typing. Sent with every message
+  // rather than only the first, because a visitor can log in halfway
+  // through a conversation and the host will call identify() then.
+  var identity = {};
+  var composer = document.getElementById("composer");
+  var gate = document.getElementById("gate");
+  var gateName = document.getElementById("gateName");
+  var gateEmail = document.getElementById("gateEmail");
+  var gateErr = document.getElementById("gateErr");
+  var gateLead = document.getElementById("gateLead");
   var timer = null;
   var pollMs = POLL_IDLE;
 
@@ -141,6 +193,67 @@
     }
     if (memory) return memory;
     try { return localStorage.getItem(KEY) || ""; } catch (e) { return ""; }
+  }
+
+  // Mirrors the server's check, and for the same narrow reason: catch a
+  // sentence typed into the email box before it reaches an operator who
+  // will read it as an address. Neither end is claiming the address is real
+  // — that is what the host's signature is for.
+  function emailish(v) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+  }
+
+  function shut() {
+    gate.classList.remove("on");
+    composer.classList.remove("off");
+    box.focus();
+  }
+
+  function ask() {
+    gateLead.textContent = strings.ask_intro || "";
+    gateName.placeholder = strings.ask_name || "Name";
+    gateEmail.placeholder = strings.ask_email || "Email";
+    document.getElementById("gateGo").textContent = strings.ask_start || "Start";
+    document.getElementById("gateSkip").textContent = strings.ask_skip || "Skip";
+    gate.classList.add("on");
+    composer.classList.add("off");
+    gateName.focus();
+  }
+
+  // Called by the host page through the loader. Everything here is a claim
+  // the page is making; `hash` is the only part of it the server can check,
+  // and without one the ticket will say so.
+  function identify(data) {
+    if (!data || typeof data !== "object") return;
+    if (data.name) identity.name = String(data.name).slice(0, 60);
+    if (data.email) identity.email = String(data.email).slice(0, 320);
+    if (data.userId) identity.external_id = String(data.userId).slice(0, 120);
+    if (data.hash) identity.hash = String(data.hash).slice(0, 200);
+    // The site already knows this person. Asking them to type their own
+    // name into a form on their own account page is how a widget gets
+    // described as annoying.
+    if (identity.email || identity.external_id) shut();
+  }
+
+  // What a site calls on log out. The reason it is not optional is a shared
+  // computer: without this the next person to open the bubble is handed the
+  // previous one's conversation, because the session token is in this
+  // browser and the widget has no way to know the human changed.
+  function forget() {
+    memory = null;
+    try { localStorage.removeItem(KEY); } catch (e) { /* nothing stored */ }
+    identity = {};
+    seen = {};
+    log.innerHTML = "";
+    if (strings.greeting) bubble("greet", strings.greeting);
+    if (strings.ask_identity) {
+      gateName.value = "";
+      gateEmail.value = "";
+      gateErr.textContent = "";
+      ask();
+    } else {
+      shut();
+    }
   }
 
   function tell(parent, payload) {
@@ -234,7 +347,14 @@
     fetch(BASE + "/widget/api/message", {
       method: "POST",
       headers: headers,
-      body: JSON.stringify({ text: text, lang: navigator.language || "" }),
+      body: JSON.stringify({
+        text: text,
+        lang: navigator.language || "",
+        name: identity.name || "",
+        email: identity.email || "",
+        external_id: identity.external_id || "",
+        hash: identity.hash || "",
+      }),
     }).then(function (r) {
       if (r.status === 429) throw new Error("slow_down");
       if (!r.ok) throw new Error("failed");
@@ -259,8 +379,33 @@
     });
   });
 
+  gate.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var email = gateEmail.value.trim();
+    if (email && !emailish(email)) {
+      gateErr.textContent = strings.ask_bad_email || "That address doesn't look right.";
+      gateEmail.focus();
+      return;
+    }
+    gateErr.textContent = "";
+    if (gateName.value.trim()) identity.name = gateName.value.trim();
+    if (email) identity.email = email;
+    shut();
+  });
+
+  document.getElementById("gateSkip").addEventListener("click", shut);
+
   window.addEventListener("message", function (e) {
-    if ((e.data || {}).spooldesk === "opened") box.focus();
+    // Only from the page we are embedded in. Anyone can postMessage at a
+    // window they hold a handle to — window.open gives one out — and while
+    // an identity from a stranger is still only a *claim*, and claims are
+    // labelled as such on the ticket, `reset` from a stranger would drop a
+    // visitor's live conversation. The host page is who this API is for.
+    if (e.source !== window.parent) return;
+    var msg = e.data || {};
+    if (msg.spooldesk === "opened") (gate.classList.contains("on") ? gateName : box).focus();
+    if (msg.spooldesk === "identify") identify(msg.identity);
+    if (msg.spooldesk === "reset") forget();
   });
 
   fetch(BASE + "/widget/api/hello").then(function (r) {
@@ -273,6 +418,10 @@
     box.placeholder = info.placeholder || "";
     document.title = info.brand || "Support";
     if (info.greeting) bubble("greet", info.greeting);
+    // Only ever in front of a *first* message. A returning visitor with a
+    // conversation already open being asked their name again would read as
+    // the widget having forgotten them, which it has not.
+    if (info.ask_identity && !token() && !identity.email && !identity.external_id) ask();
   }).catch(function () {
     // Not just cosmetic. An instance that is restarting — or a free host
     // waking from sleep, which is what a public demo usually is — leaves a
@@ -282,6 +431,11 @@
       location.reload();
     }, 4000);
   });
+
+  // The host page may have called identify() before this frame existed —
+  // it is loaded lazily, on the first open. Saying we are here is what lets
+  // the loader hand over whatever it has been holding.
+  tell(window.parent, { spooldesk: "ready" });
 
   // A returning visitor sees their conversation before they type anything.
   if (token()) tick(); else schedule();

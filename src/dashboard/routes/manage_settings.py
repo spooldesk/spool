@@ -305,6 +305,12 @@ async def settings_page(request: Request, sent: str | None = None):
         "widget_enabled": await settings_service.get_widget_enabled(),
         "widget_origins": "\n".join(await settings_service.get_widget_origins()),
         "widget_greeting": await settings_service.get_widget_greeting(),
+        "widget_ask_identity": await settings_service.get_widget_ask_identity(),
+        # The secret itself, not a mask. It is a shared secret: the person
+        # configuring the widget is the person who has to paste it into their
+        # own backend, and hiding it from them only means keeping a second
+        # copy somewhere less safe than this page.
+        "widget_identity_secret": await settings_service.get_widget_identity_secret(),
         # Read from the environment, never written from here: this page shows
         # whether Slack is wired up, not what its secrets are.
         "slack_ready": slack_channel.is_configured(),
@@ -321,6 +327,8 @@ async def settings_save_widget(
     widget_enabled: str = Form("0"),
     widget_origins: str = Form(""),
     widget_greeting: str = Form(""),
+    widget_ask_identity: str = Form("0"),
+    widget_identity_secret: str = Form(""),
 ):
     """Turn the public endpoints on or off, and configure what they say.
 
@@ -331,6 +339,8 @@ async def settings_save_widget(
     await settings_service.set_widget_enabled(widget_enabled == "1", updated_by=0)
     await settings_service.set_widget_origins(widget_origins, updated_by=0)
     await settings_service.set_widget_greeting(widget_greeting, updated_by=0)
+    await settings_service.set_widget_ask_identity(widget_ask_identity == "1", updated_by=0)
+    await settings_service.set_widget_identity_secret(widget_identity_secret, updated_by=0)
     return RedirectResponse("/manage/settings?sent=widget", status_code=303)
 
 

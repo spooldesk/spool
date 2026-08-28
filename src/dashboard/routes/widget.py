@@ -30,7 +30,14 @@ from typing import Any
 from fastapi import APIRouter, Header, Request, Response, status
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 
-from src.channels.widget import NAME as WIDGET, address_for, new_session_token
+from src.channels.widget import (
+    NAME as WIDGET,
+    address_for,
+    identity_subject,
+    looks_like_email,
+    new_session_token,
+    verify_identity,
+)
 from src.dashboard.auth import _client_ip
 from src.database.db import db_session
 from src.services import intake_service, settings_service
@@ -55,6 +62,10 @@ _MESSAGE_WINDOW = 60.0
 #: bomb is not a storage problem.
 _MAX_MESSAGE_CHARS = 4000
 _MAX_NAME_CHARS = 60
+#: Matches the column. Long enough for any real address, short enough that
+#: the field is not a place to store things.
+_MAX_EMAIL_CHARS = 320
+_MAX_EXTERNAL_ID_CHARS = 120
 
 #: In memory, like the login throttle, and honest about what that means: a
 #: restart forgives everyone, and a second instance keeps its own count.
@@ -134,6 +145,45 @@ def _clean(text: str | None, limit: int) -> str:
     return (text or "").strip()[:limit]
 
 
+async def _identity(body: dict[str, Any]) -> tuple[str | None, str | None, str | None, bool]:
+    """Who the page says this visitor is, and whether it can prove it.
+
+    Everything here arrives from a page the visitor can edit, so the only
+    question worth asking is which parts are signed. A site that runs
+
+        hash = hmac_sha256(secret, customer_id)
+
+    on its *server* and passes the result is making a claim its own backend
+    stands behind; a visitor typing an address into the pre-chat form is
+    making one nobody stands behind. Both are useful — most support requests
+    are exactly as honest as they look — but they must not arrive at the
+    ticket page looking the same, so the flag rides along with the values and
+    the page shows the difference.
+
+    Nothing is rejected for being unverified. Refusing an unsigned identity
+    would break the ordinary case (a visitor who is not logged in anywhere)
+    to defend against one that is already visible.
+    """
+    name = _clean(body.get("name"), _MAX_NAME_CHARS) or None
+
+    email = _clean(body.get("email"), _MAX_EMAIL_CHARS).lower() or None
+    if email and not looks_like_email(email):
+        # Dropped rather than stored: an operator who sees something in the
+        # email field will treat it as an email, and "call me on 555-0100"
+        # sitting there is worse than a blank.
+        email = None
+
+    external_id = _clean(body.get("external_id"), _MAX_EXTERNAL_ID_CHARS) or None
+
+    verified = False
+    subject = identity_subject(email, external_id)
+    if subject:
+        secret = await settings_service.get_widget_identity_secret()
+        verified = verify_identity(secret, _clean(body.get("hash"), 200), subject)
+
+    return name, email, external_id, verified
+
+
 async def _transcript(ticket_id: int) -> list[dict[str, Any]]:
     """What the visitor is allowed to see of their own conversation.
 
@@ -210,13 +260,18 @@ async def post_message(
                          status.HTTP_429_TOO_MANY_REQUESTS)
         issued = token = new_session_token()
 
+    name, email, external_id, verified = await _identity(body)
+
     async with db_session() as session:
         result = await intake_service.receive(session, intake_service.Inbound(
             channel=WIDGET,
             address=address_for(token),
             text=text,
-            display_name=_clean(body.get("name"), _MAX_NAME_CHARS) or None,
+            display_name=name,
             language=_clean(body.get("lang"), 8) or None,
+            email=email,
+            external_id=external_id,
+            identity_verified=verified,
         ))
         await session.commit()
 
@@ -307,6 +362,16 @@ async def hello(request: Request) -> JSONResponse:
         "slow": dash_t("wg_slow"),
         "replied": dash_t("wg_replied"),
         "launcher": dash_t("wg_launcher"),
+        # Whether to put a form in front of the first message. The panel is
+        # told rather than deciding: an operator changes this in settings and
+        # it has to take effect on the next page view, not the next release.
+        "ask_identity": await settings_service.get_widget_ask_identity(),
+        "ask_intro": dash_t("wg_ask_intro"),
+        "ask_name": dash_t("wg_ask_name"),
+        "ask_email": dash_t("wg_ask_email"),
+        "ask_start": dash_t("wg_ask_start"),
+        "ask_skip": dash_t("wg_ask_skip"),
+        "ask_bad_email": dash_t("wg_ask_bad_email"),
     }, origin)
 
 

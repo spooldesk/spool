@@ -59,6 +59,22 @@ class User(Base):
         String(255), nullable=True, index=True
     )
     username: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Who they say they are. On Telegram this comes from the account; on the
+    # widget it is typed into a form or handed over by the host page, and the
+    # difference matters — see `identity_verified`.
+    email: Mapped[str | None] = mapped_column(String(320), nullable=True, index=True)
+    # The customer's id in the host's own system, when their page passes one.
+    # Support's most useful question is "which of your users is this", and the
+    # site already knows the answer.
+    external_id: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    # Whether that identity was proved rather than claimed. A widget runs on a
+    # page the visitor controls: anyone can open the console and call
+    # identify({email: "ceo@..."}). Verified means the host's *server* signed
+    # it with a shared secret. An operator resetting access on the strength of
+    # an unverified email is the incident this flag exists to prevent.
+    identity_verified: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
     # Work nickname. Bridges someone's personal Telegram account and the name
     # their organisation knows them by; shown on the ticket header.
     work_username: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)

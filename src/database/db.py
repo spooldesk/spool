@@ -207,6 +207,19 @@ def _migrate_to_new_schema(sync_connection) -> None:
         except Exception:
             pass
 
+    # Who a widget visitor says they are, and whether they proved it.
+    for column, ddl in (
+        ("email", "ALTER TABLE users ADD COLUMN email VARCHAR(320)"),
+        ("external_id", "ALTER TABLE users ADD COLUMN external_id VARCHAR(120)"),
+        ("identity_verified",
+         "ALTER TABLE users ADD COLUMN identity_verified BOOLEAN DEFAULT 0 NOT NULL"),
+    ):
+        if column not in user_columns:
+            try:
+                sync_connection.execute(text(ddl))
+            except Exception:
+                pass
+
     # Remove old columns if they exist (but keep is_active now)
     for old_col in ["is_deleted", "full_name"]:
         if old_col in user_columns:

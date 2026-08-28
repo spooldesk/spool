@@ -1008,6 +1008,13 @@ async def ticket_detail(ticket_id: int) -> dict | None:
         "category": ticket.category,
         "team": team_name,
         "user_label": (f"@{username}" if username else f"id:{u.tg_id}") if u else "—",
+        # Contact details a customer gave us, and whether anyone vouched for
+        # them. The flag travels with the values rather than being looked up
+        # separately, because the one place it must never be missing is the
+        # place the values are displayed.
+        "user_email": (u.email or None) if u else None,
+        "user_external_id": (u.external_id or None) if u else None,
+        "user_identity_verified": bool(u.identity_verified) if u else False,
         "user_tg_id": u.tg_id if u else None,
         "local_user_id": u.local_user_id if u else None,
         "created_at": ticket.created_at,

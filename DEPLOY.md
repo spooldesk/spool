@@ -165,6 +165,80 @@ The full list with comments is in [`.env.example`](.env.example).
 
 ---
 
+## Website widget
+
+A chat bubble on your own site. Off until you switch it on, because it is
+the one part of this product a stranger can reach: **Settings → Website
+widget → Enable**, then paste the line it shows you before `</body>` on
+every page that should have the bubble.
+
+Two settings are worth understanding before you turn it on.
+
+**Sites allowed to embed it.** One origin per line. Empty means any site.
+This is a browser rule, not a lock — anything that is not a browser ignores
+it — so it stops a competitor pasting your widget on their page, and does
+not stop a script. What stands in the way of a script is the rate limiting,
+which is always on.
+
+**Ask for a name and email first.** A two-field form in front of the first
+message. Off by default: every box before a support request is a support
+request that does not get sent. Turn it on if you answer by email, leave it
+off if you answer in the chat.
+
+### Telling the widget who someone is
+
+If your site already knows who is logged in, hand that over and the operator
+sees a person instead of a session id:
+
+```html
+<script>
+  Spooldesk.identify({
+    name: "Ann Fowler",
+    email: "ann@example.com",
+    userId: "cust_7",   // your id for them
+    hash: "…"           // see below
+  });
+</script>
+```
+
+Also available: `Spooldesk.open()`, `Spooldesk.close()`, and
+`Spooldesk.reset()` — call `reset()` when someone logs out, or the next
+person at that computer inherits their conversation.
+
+### Proving it
+
+Anything a page says about a visitor is something the visitor can change in
+devtools. That matters the day someone writes in as your billing manager and
+asks an operator to move an account.
+
+So set an **Identity secret** in Settings, and compute `hash` **on your
+server** — never in the browser, which would publish the secret to everyone:
+
+```python
+import hashlib, hmac
+
+hash = hmac.new(SPOOLDESK_SECRET.encode(), customer_id.encode(),
+                hashlib.sha256).hexdigest()
+```
+
+```javascript
+const hash = require("crypto")
+  .createHmac("sha256", process.env.SPOOLDESK_SECRET)
+  .update(customerId)
+  .digest("hex");
+```
+
+Sign the `userId` if you send one, otherwise the lowercased email — whichever
+identifies the person. The name is not signed, so you can correct a typo in
+someone's name without reissuing anything.
+
+Tickets then say **Verified identity**. Without a signature they say **Says
+they are this person**, which is the honest label and is perfectly fine for
+most support — it is a reason to check before resetting an account, not a
+reason to distrust the visitor.
+
+---
+
 ## Slack
 
 Optional. Lets a client write to you in Slack — a direct message, or a
