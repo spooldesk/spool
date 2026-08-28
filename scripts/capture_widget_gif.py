@@ -157,7 +157,10 @@ def main() -> int:
                 page.screenshot(path=str(f))
                 shots.append((f, hold))
 
-            shot(1200)                   # hold on the home screen
+            # Short. The landing page puts a still of the home screen
+            # right next to this, so a long opening hold is the same
+            # picture twice for anyone who glances rather than watches.
+            shot(600)                    # hold on the home screen
 
             page.evaluate("document.getElementById('ctaHome').click()")
             page.wait_for_timeout(400)
