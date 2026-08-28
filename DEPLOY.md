@@ -188,6 +188,59 @@ location / {
 Do not publish the dashboard on `0.0.0.0` in front of nothing. It has no IP
 allowlist of its own, and the compose file binds it to loopback on purpose.
 
+### PostgreSQL
+
+SQLite is the default, and calling it the default is not an apology. With WAL
+it runs a support desk with a handful of operators without complaining, and it
+makes the entire instance one file to copy.
+
+Two things change that, and neither is "we got bigger":
+
+- you want **more than one dashboard process** — several instances, a rolling
+  deploy;
+- your own operations people would rather **administer a database they already
+  know**, with their existing backups and monitoring pointed at it.
+
+Then add the overlay, which brings its own server:
+
+```bash
+echo "POSTGRES_PASSWORD=$(openssl rand -base64 24)" >> .env
+docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d --build
+```
+
+It stacks with the TLS one:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+               -f docker-compose.postgres.yml up -d --build
+```
+
+Pointing at a server you already run instead — set `DATABASE_URL` and skip the
+overlay:
+
+```
+DATABASE_URL=postgresql+asyncpg://user:password@host:5432/spooldesk
+```
+
+The driver ships in the image; there is nothing extra to install.
+
+**Two limitations, stated plainly.**
+
+There is **no migration between the engines**. Starting with PostgreSQL gives
+an empty helpdesk. Moving an existing SQLite instance across means moving the
+data yourself.
+
+There is **no migration framework** yet. Schema changes have so far been
+additive columns applied to SQLite in place, by code that runs at startup and
+is skipped on PostgreSQL — where `create_all` builds the current schema
+correctly on a fresh database. A PostgreSQL deployment that needs to cross a
+release with a schema change will need Alembic, and that is not written.
+Sitting on SQLite until you actually need the two things above is a
+defensible choice, not a lesser one.
+
+Attachments are unaffected either way: they live on disk, next to where the
+SQLite file would have been. Back them up regardless of engine.
+
 ### Backups
 
 ```bash

@@ -2,6 +2,12 @@ aiogram==3.10.0
 python-dotenv
 SQLAlchemy
 aiosqlite
+# The PostgreSQL driver, installed unconditionally. It is unused on SQLite,
+# and the alternative — an extra install step — turns "point DATABASE_URL at
+# Postgres" into a failure whose message is about drivers. Wheels exist for
+# the Python this pins to (checked: cp312, Linux and Windows), so nothing
+# compiles; see the Dockerfile for why that matters here.
+asyncpg>=0.30
 openpyxl
 google-genai>=1.0.0
 fastapi>=0.115

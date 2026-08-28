@@ -2,7 +2,7 @@
 .DEFAULT_GOAL := help
 
 .PHONY: help setup up down restart build logs logs-bot logs-dash ps shell-bot \
-        prod-up prod-down prod-logs backup
+        prod-up prod-down prod-logs backup pg-up pg-down
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -53,3 +53,14 @@ prod-logs: ## Tail logs including the proxy
 
 backup: ## Archive the database and its attachments together
 	bash scripts/backup.sh
+
+# ---- PostgreSQL ----------------------------------------------------------
+# Only worth it for more than one dashboard process, or an ops team that would
+# rather run the database themselves. Needs POSTGRES_PASSWORD in .env.
+PG := -f docker-compose.yml -f docker-compose.postgres.yml
+
+pg-up: ## Start with PostgreSQL instead of SQLite
+	docker compose $(PG) up -d --build
+
+pg-down: ## Stop the PostgreSQL stack
+	docker compose $(PG) down

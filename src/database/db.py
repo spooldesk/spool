@@ -1,6 +1,7 @@
 """Database session and initialization helpers."""
 
 from contextlib import asynccontextmanager
+from datetime import datetime
 from typing import AsyncIterator
 
 from sqlalchemy import inspect, text
@@ -8,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from src.config import load_settings
 from src.database import models
+from src.database.dialect import is_sqlite
 
 
 # Create an async SQLAlchemy engine using the configured database URL.
@@ -43,9 +45,20 @@ import logging  # noqa: E402
 
 from sqlalchemy import event  # noqa: E402
 
+logger = logging.getLogger(__name__)
+
+
+#: Asked once, about a URL that cannot change while the process runs.
+ON_SQLITE = is_sqlite(settings.database_url)
+
 
 @event.listens_for(engine.sync_engine, "connect")
 def _register_sqlite_functions(dbapi_connection, connection_record) -> None:
+    # PostgreSQL has ILIKE, which folds Unicode correctly on its own, so it
+    # needs no function — and would raise on every connection if this tried.
+    # See src/database/dialect.py for the search expression each engine gets.
+    if not ON_SQLITE:
+        return
     # driver_connection is the aiosqlite.Connection; its create_function is a
     # coroutine that proxies into aiosqlite's worker thread (the raw sqlite3
     # object is thread-bound, so it must NOT be called directly). The connect
@@ -76,16 +89,28 @@ async def db_session() -> AsyncIterator[AsyncSession]:
 async def init_db() -> None:
     """Create database tables if they do not already exist and run migrations.
 
-    Also enables WAL journal mode so the dashboard (separate process, read-only)
-    can read without blocking the bot's writes. Safe to call repeatedly.
+    On SQLite it also enables WAL journal mode, so the dashboard (separate
+    process, read-only) can read without blocking the bot's writes, and runs
+    the in-place column migrations. Both are SQLite-specific: PostgreSQL does
+    the first by default and needs none of the second on a database
+    create_all just built. Safe to call repeatedly on either.
     """
 
     async with engine.begin() as conn:
-        # WAL allows concurrent reads from the dashboard process without locking.
-        # Persistent across opens — set once, sticks until manually changed.
-        await conn.execute(text("PRAGMA journal_mode=WAL"))
+        if ON_SQLITE:
+            # WAL allows concurrent reads from the dashboard process without
+            # locking. Persistent across opens — set once, sticks until
+            # manually changed. PostgreSQL has readers-don't-block-writers as
+            # its normal behaviour and nothing to switch on.
+            await conn.execute(text("PRAGMA journal_mode=WAL"))
         await conn.run_sync(models.Base.metadata.create_all)
-        await conn.run_sync(_migrate_to_new_schema)
+        if ON_SQLITE:
+            # A long list of additive ALTER TABLEs that bring a *legacy
+            # SQLite file* up to the current schema. A PostgreSQL database
+            # has no legacy — create_all above built it correct — so these
+            # are skipped rather than translated. See dialect.py for the
+            # limitation that follows from having no migration framework.
+            await conn.run_sync(_migrate_to_new_schema)
         await conn.run_sync(_init_teams)
         await conn.run_sync(_init_categories)
         await conn.run_sync(_init_close_reasons)
@@ -625,11 +650,15 @@ def _init_teams(sync_connection) -> None:
         if cnt and int(cnt) > 0:
             return  # already has teams (seeded or user-defined) — leave alone
         sync_connection.execute(
-            text("INSERT INTO teams (name, created_at) VALUES (:name, datetime('now'))"),
-            {"name": "General"},
+            text("INSERT INTO teams (name, created_at) VALUES (:name, :now)"),
+            {"name": "General", "now": datetime.utcnow()},
         )
     except Exception:
-        pass  # Teams might already be initialized
+        # Never fatal — an instance that will not start is worse than
+        # one missing its defaults, and the login flow falls back to
+        # the shared password while there are no accounts. But silence
+        # here once hid a whole database engine not working.
+        logger.warning("Could not seed team", exc_info=True)
 
 
 def _init_categories(sync_connection) -> None:
@@ -660,11 +689,16 @@ def _init_categories(sync_connection) -> None:
         for name, emoji, order in defaults:
             sync_connection.execute(
                 text("INSERT INTO ticket_categories (name, emoji, sort_order, is_active, created_at) "
-                     "VALUES (:n, :e, :o, 1, datetime('now'))"),
-                {"n": name, "e": emoji, "o": order},
+                     "VALUES (:n, :e, :o, :active, :now)"),
+                {"n": name, "e": emoji, "o": order, "active": True,
+                 "now": datetime.utcnow()},
             )
     except Exception:
-        pass
+        # Never fatal — an instance that will not start is worse than
+        # one missing its defaults, and the login flow falls back to
+        # the shared password while there are no accounts. But silence
+        # here once hid a whole database engine not working.
+        logger.warning("Could not seed categories", exc_info=True)
 
 
 def _init_admin_user(sync_connection) -> None:
@@ -692,12 +726,17 @@ def _init_admin_user(sync_connection) -> None:
         sync_connection.execute(
             text(
                 "INSERT INTO admin_users (email, password_hash, name, role, is_active, created_at) "
-                "VALUES (:e, :h, :n, 'owner', 1, datetime('now'))"
+                "VALUES (:e, :h, :n, 'owner', :active, :now)"
             ),
-            {"e": "admin@local", "h": pw_hash, "n": "Owner"},
+            {"e": "admin@local", "h": pw_hash, "n": "Owner", "active": True,
+             "now": datetime.utcnow()},
         )
     except Exception:
-        pass
+        # Never fatal — an instance that will not start is worse than
+        # one missing its defaults, and the login flow falls back to
+        # the shared password while there are no accounts. But silence
+        # here once hid a whole database engine not working.
+        logger.warning("Could not seed the first operator account", exc_info=True)
 
 
 def _init_close_reasons(sync_connection) -> None:
@@ -726,8 +765,13 @@ def _init_close_reasons(sync_connection) -> None:
         for name, emoji, order in defaults:
             sync_connection.execute(
                 text("INSERT INTO close_reasons (name, emoji, sort_order, is_active, created_at) "
-                     "VALUES (:n, :e, :o, 1, datetime('now'))"),
-                {"n": name, "e": emoji, "o": order},
+                     "VALUES (:n, :e, :o, :active, :now)"),
+                {"n": name, "e": emoji, "o": order, "active": True,
+                 "now": datetime.utcnow()},
             )
     except Exception:
-        pass
+        # Never fatal — an instance that will not start is worse than
+        # one missing its defaults, and the login flow falls back to
+        # the shared password while there are no accounts. But silence
+        # here once hid a whole database engine not working.
+        logger.warning("Could not seed close reasons", exc_info=True)

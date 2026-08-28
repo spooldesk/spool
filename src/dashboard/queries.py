@@ -453,12 +453,22 @@ def _ticket_filter_conditions(
     return conds
 
 
+def _contains(column, needle: str):
+    """Case-insensitive "contains", in whichever engine this instance runs."""
+    from src.database.db import settings as _db_settings
+    from src.database.dialect import contains_ci
+
+    return contains_ci(column, needle, url=_db_settings.database_url)
+
+
 def _search_condition(q: str):
     """Full-text-ish search: ticket id, message text, author username, category.
 
     Uses the custom ci_contains() SQLite function (registered in db.py) for
     proper Unicode case-insensitive matching — SQLite's own LIKE/lower() only
-    fold ASCII, which would break Cyrillic search entirely.
+    fold ASCII, which would break Cyrillic search entirely. PostgreSQL folds
+    Unicode in ILIKE already; which of the two is used is decided in
+    src/database/dialect.py, not here.
     """
     parts: list = []
 
@@ -474,8 +484,8 @@ def _search_condition(q: str):
             select(User.id).where(
                 User.id == Ticket.user_id,
                 or_(
-                    func.ci_contains(User.username, q_user) == 1,
-                    func.ci_contains(User.work_username, q_user) == 1,
+                    _contains(User.username, q_user),
+                    _contains(User.work_username, q_user),
                 ),
             )
         ))
@@ -484,12 +494,12 @@ def _search_condition(q: str):
     parts.append(exists(
         select(MessageRecord.id).where(
             MessageRecord.ticket_id == Ticket.id,
-            func.ci_contains(MessageRecord.text, q) == 1,
+            _contains(MessageRecord.text, q),
         )
     ))
 
     # Category name
-    parts.append(func.ci_contains(Ticket.category, q) == 1)
+    parts.append(_contains(Ticket.category, q))
 
     return or_(*parts)
 
