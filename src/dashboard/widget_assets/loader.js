@@ -45,7 +45,7 @@
     ".dot{position:absolute;top:12px;right:12px;width:12px;height:12px;",
     "border-radius:6px;background:#f43f5e;border:2px solid #7c5cff;display:none}",
     ".dot.on{display:block}",
-    ".panel{position:fixed;bottom:88px;right:20px;width:380px;height:min(600px,calc(100vh - 120px));",
+    ".panel{position:fixed;bottom:88px;right:20px;width:400px;height:min(680px,calc(100vh - 120px));",
     "border:0;border-radius:16px;box-shadow:0 18px 60px rgba(0,0,0,.35);",
     "background:transparent;display:none;color-scheme:normal}",
     ".panel.on{display:block}",
@@ -74,7 +74,14 @@
   panel.title = "Support chat";
   // Enough to run our own page and no more. Notably absent: allow-top-navigation,
   // which would let a compromised panel redirect the whole host page.
-  panel.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms");
+  //
+  // allow-downloads is here because attachments are fetched with an auth
+  // header and handed to the visitor as a blob, which counts as a
+  // script-initiated download and is blocked without it. The alternative was
+  // putting the session token in a URL so a plain link would work, which
+  // would put a credential in access logs to save this one token.
+  panel.setAttribute("sandbox",
+    "allow-scripts allow-same-origin allow-forms allow-downloads");
   // Loaded lazily so a visitor who never opens it costs one request, not two.
   var loaded = false;
 

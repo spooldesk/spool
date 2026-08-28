@@ -27,8 +27,13 @@ import logging
 import time
 from typing import Any
 
-from fastapi import APIRouter, Header, Request, Response, status
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
+from fastapi import APIRouter, File, Form, Header, Request, Response, UploadFile, status
+from fastapi.responses import (
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    StreamingResponse,
+)
 
 from src.channels.widget import (
     NAME as WIDGET,
@@ -40,7 +45,7 @@ from src.channels.widget import (
 )
 from src.dashboard.auth import _client_ip
 from src.database.db import db_session
-from src.services import intake_service, settings_service
+from src.services import file_store, intake_service, settings_service
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +71,74 @@ _MAX_NAME_CHARS = 60
 #: the field is not a place to store things.
 _MAX_EMAIL_CHARS = 320
 _MAX_EXTERNAL_ID_CHARS = 120
+
+#: Half what an operator may send, because the directions are not
+#: symmetrical: an operator is a known colleague on a machine you control,
+#: and a visitor is a stranger with a disk of ours to fill. Ten megabytes is
+#: a generous screenshot and a small video, which is what support gets.
+_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+#: Read in pieces so the cap is enforced *during* the upload. Checking the
+#: length after reading it all means a stranger decides how much memory this
+#: process uses, and Content-Length is a claim, not a fact.
+_UPLOAD_CHUNK = 64 * 1024
+
+#: Disk is the scarce thing here, so this is stricter than the message limit.
+_UPLOADS_PER_SESSION = 10
+_UPLOAD_WINDOW = 300.0
+
+#: What the browser is allowed to be told a file is. Never the Content-Type
+#: the uploader sent: a stored file that comes back as text/html is stored
+#: XSS on our own origin, and one that comes back as a script is worse. An
+#: extension not on this list is served as a download of unknown bytes.
+_INLINE_TYPES = {
+    "jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
+    "gif": "image/gif", "webp": "image/webp", "avif": "image/avif",
+}
+_DOWNLOAD_TYPES = {
+    "pdf": "application/pdf", "txt": "text/plain; charset=utf-8",
+    "csv": "text/csv; charset=utf-8", "log": "text/plain; charset=utf-8",
+    "json": "application/json", "zip": "application/zip",
+    "doc": "application/msword", "xls": "application/vnd.ms-excel",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "mp4": "video/mp4", "mov": "video/quicktime", "webm": "video/webm",
+    "mp3": "audio/mpeg", "ogg": "audio/ogg", "wav": "audio/wav",
+    "heic": "image/heic", "svg": "image/svg+xml",
+}
+
+
+def _extension(name: str) -> str:
+    _, dot, ext = (name or "").rpartition(".")
+    return ext.lower() if dot and len(ext) <= 8 else ""
+
+
+def _is_image(name: str) -> bool:
+    """Whether this may be shown rather than downloaded.
+
+    SVG is deliberately absent: it is an image that can contain script, and
+    rendering one inline from our own origin would hand a visitor a way to
+    run code on the page an operator is reading.
+    """
+    return _extension(name) in _INLINE_TYPES
+
+
+def _content_type(name: str) -> str:
+    ext = _extension(name)
+    return _INLINE_TYPES.get(ext) or _DOWNLOAD_TYPES.get(ext) or "application/octet-stream"
+
+
+def _safe_filename(name: str) -> str:
+    """A name fit to put in a header and show to an operator.
+
+    Nothing is built out of this — the stored path is a reference this server
+    invented — so the job here is only to keep control characters, quotes and
+    directory separators out of a Content-Disposition header and a ticket
+    page.
+    """
+    name = (name or "").strip().replace("\\", "/").rpartition("/")[2]
+    name = "".join(c for c in name if c.isprintable() and c not in '"\r\n')
+    return name[:120] or "attachment"
 
 #: In memory, like the login throttle, and honest about what that means: a
 #: restart forgives everyone, and a second instance keeps its own count.
@@ -200,6 +273,14 @@ async def _transcript(ticket_id: int) -> list[dict[str, Any]]:
                 "from": "you" if m.sender_type == "user" else "agent",
                 "text": m.text or "",
                 "at": m.created_at.isoformat() if m.created_at else None,
+                # Metadata only. The bytes come from /api/file/{id}, which
+                # checks who is asking; putting a link here that did not
+                # would make the transcript the authorisation.
+                "file": {
+                    "name": _safe_filename(m.file_name or "attachment"),
+                    "size": m.file_size or 0,
+                    "image": _is_image(m.file_name or ""),
+                } if m.file_id else None,
             }
             for m in rows
         ]
@@ -301,6 +382,183 @@ async def post_message(
     return _json(payload, origin)
 
 
+@router.post("/api/upload")
+async def upload(
+    request: Request,
+    file: UploadFile = File(...),
+    text: str = Form(""),
+    lang: str = Form(""),
+    name: str = Form(""),
+    email: str = Form(""),
+    external_id: str = Form(""),
+    hash: str = Form(""),
+    x_spooldesk_session: str | None = Header(default=None),
+) -> JSONResponse:
+    """A visitor attached something.
+
+    Shaped like `post_message` rather than like a separate upload step, and
+    for the same reason that endpoint takes both new and continuing
+    conversations: a file *is* a message. Splitting them would mean a visitor
+    whose first contact is a screenshot has to send an empty text message
+    first to get a ticket, which is the sort of thing that shows up as "the
+    widget did nothing when I dragged a file onto it".
+    """
+    origin = await _allowed_origin(request)
+    if (off := await _off(origin)) is not None:
+        return off
+
+    token = (x_spooldesk_session or "").strip()
+    issued: str | None = None
+    if token:
+        if _too_many(f"u:{address_for(token)}", _UPLOADS_PER_SESSION, _UPLOAD_WINDOW):
+            return _json({"error": "slow_down"}, origin,
+                         status.HTTP_429_TOO_MANY_REQUESTS)
+    else:
+        if _too_many(f"ip:{_client_ip(request)}", _NEW_SESSIONS_PER_IP,
+                     _NEW_SESSION_WINDOW):
+            return _json({"error": "slow_down"}, origin,
+                         status.HTTP_429_TOO_MANY_REQUESTS)
+        issued = token = new_session_token()
+
+    filename = _safe_filename(file.filename or "")
+
+    # Read to the cap and one byte past it. That byte is the whole point: it
+    # is how an oversized upload is refused without first being accepted.
+    chunks: list[bytes] = []
+    size = 0
+    while True:
+        chunk = await file.read(_UPLOAD_CHUNK)
+        if not chunk:
+            break
+        size += len(chunk)
+        if size > _MAX_UPLOAD_BYTES:
+            return _json({"error": "too_large", "limit": _MAX_UPLOAD_BYTES},
+                         origin, status.HTTP_413_REQUEST_ENTITY_TOO_LARGE)
+        chunks.append(chunk)
+    content = b"".join(chunks)
+    if not content:
+        return _json({"error": "empty"}, origin, status.HTTP_400_BAD_REQUEST)
+
+    try:
+        ref = file_store.put(content)
+    except OSError as e:  # noqa: BLE001 — a full or read-only disk
+        logger.error(f"Could not store a widget upload: {e}")
+        return _json({"error": "store_failed"}, origin,
+                     status.HTTP_503_SERVICE_UNAVAILABLE)
+
+    form = {"name": name, "email": email, "external_id": external_id, "hash": hash}
+    who, addr, ext_id, verified = await _identity(form)
+
+    async with db_session() as session:
+        result = await intake_service.receive(session, intake_service.Inbound(
+            channel=WIDGET,
+            address=address_for(token),
+            text=_clean(text, _MAX_MESSAGE_CHARS),
+            display_name=who,
+            language=_clean(lang, 8) or None,
+            email=addr,
+            external_id=ext_id,
+            identity_verified=verified,
+            attachment=intake_service.Attachment(
+                ref=ref,
+                name=filename,
+                mime_type=_content_type(filename),
+                size=size,
+                # What the ticket page reads to decide between a thumbnail and
+                # a paperclip, and it is the same word Telegram photos use so
+                # that page needs no new case.
+                kind="photo" if _is_image(filename) else "document",
+            ),
+        ))
+        await session.commit()
+
+    if result.rejected:
+        file_store.delete(ref)
+        return _json({"error": "rejected"}, origin, status.HTTP_403_FORBIDDEN)
+
+    if result.opened_ticket:
+        await _announce(result.ticket_id)
+
+    logger.info(f"Widget upload ({size} bytes) on ticket #{result.ticket_id}")
+    payload: dict[str, Any] = {
+        "ticket": result.ticket_id,
+        "messages": await _transcript(result.ticket_id),
+    }
+    if issued:
+        payload["session"] = issued
+    return _json(payload, origin)
+
+
+@router.get("/api/file/{message_id}")
+async def file_download(
+    message_id: int,
+    request: Request,
+    x_spooldesk_session: str | None = Header(default=None),
+) -> Response:
+    """One attachment from the visitor's own conversation.
+
+    Authorised by the same bearer token as everything else, which is why the
+    panel fetches this into a blob instead of putting it in an `<img src>`:
+    an `<img>` cannot send a header, and the alternative — a token in the
+    URL — would put a credential in access logs and browser history to save
+    six lines of JavaScript.
+
+    The message has to be *in the visitor's own transcript*, not merely
+    attached to their ticket. Going through the same filter the transcript
+    uses is what keeps a file an operator attached to an internal note from
+    being fetchable by guessing message ids.
+    """
+    origin = await _allowed_origin(request)
+    if (off := await _off(origin)) is not None:
+        return off
+
+    token = (x_spooldesk_session or "").strip()
+    if not token:
+        return _json({"error": "no_session"}, origin, status.HTTP_401_UNAUTHORIZED)
+
+    from src.channels.identity import find_customer
+
+    async with db_session() as session:
+        user = await find_customer(session, channel=WIDGET, address=address_for(token))
+        if user is None:
+            return _json({"error": "no_session"}, origin, status.HTTP_401_UNAUTHORIZED)
+
+        record = None
+        for ticket in await intake_service.tickets_of(session, user.id):
+            for m in await intake_service.conversation(session, ticket.id):
+                if m.id == message_id and m.file_id:
+                    record = m
+                    break
+            if record is not None:
+                break
+
+    if record is None:
+        # The same answer for "not yours" and "not there". Anything else lets
+        # a stranger map which message ids exist.
+        return _json({"error": "not_found"}, origin, status.HTTP_404_NOT_FOUND)
+
+    from src.channels import get as get_channel
+
+    data = await get_channel(WIDGET).fetch_file(record.file_id)
+    if not data:
+        return _json({"error": "unavailable"}, origin,
+                     status.HTTP_502_BAD_GATEWAY)
+
+    import io
+
+    filename = _safe_filename(record.file_name or "attachment")
+    inline = _is_image(filename)
+    response = StreamingResponse(io.BytesIO(data), media_type=_content_type(filename))
+    response.headers["Content-Disposition"] = (
+        f'{"inline" if inline else "attachment"}; filename="{filename}"'
+    )
+    # Without this a browser is free to decide the bytes are HTML no matter
+    # what we said they were, which would undo the allowlist above.
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Cache-Control"] = "private, max-age=300"
+    return _cors(response, origin)
+
+
 @router.get("/api/poll")
 async def poll(
     request: Request,
@@ -333,7 +591,113 @@ async def poll(
 
     if ticket is None:
         return _json({"ticket": None, "messages": []}, origin)
-    return _json({"ticket": ticket.id, "messages": await _transcript(ticket.id)}, origin)
+    return _json({"ticket": ticket.id, "open": True,
+                  "messages": await _transcript(ticket.id)}, origin)
+
+
+async def _visitor(token: str):
+    """The customer behind a session token, or None.
+
+    Every endpoint below needs this and needs to fail the same way when it is
+    missing, so it is one function rather than four copies that could drift.
+    """
+    from src.channels.identity import find_customer
+
+    async with db_session() as session:
+        return await find_customer(session, channel=WIDGET, address=address_for(token))
+
+
+def _title_of(rows: list[Any]) -> str:
+    """What to call a conversation in a list.
+
+    The visitor's own opening line, because that is what they will recognise.
+    Not the category — an operator picks that later, and half of them are
+    still blank when the visitor comes looking for the thread.
+    """
+    for m in rows:
+        if m.sender_type == "user" and (m.text or "").strip():
+            words = " ".join((m.text or "").split())
+            return words[:60] + ("…" if len(words) > 60 else "")
+    return ""
+
+
+@router.get("/api/conversations")
+async def conversations(
+    request: Request,
+    x_spooldesk_session: str | None = Header(default=None),
+) -> JSONResponse:
+    """Everything this visitor has ever asked, newest first."""
+    origin = await _allowed_origin(request)
+    if (off := await _off(origin)) is not None:
+        return off
+
+    token = (x_spooldesk_session or "").strip()
+    if not token:
+        # Not an error. A first-time visitor has no conversations, and making
+        # the panel handle a 401 to learn that would mean showing an error
+        # screen to someone who has done nothing wrong.
+        return _json({"conversations": []}, origin)
+
+    user = await _visitor(token)
+    if user is None:
+        return _json({"conversations": []}, origin)
+
+    from src.dashboard.i18n import t as _dash_t
+
+    out: list[dict[str, Any]] = []
+    async with db_session() as session:
+        for ticket in await intake_service.tickets_of(session, user.id):
+            rows = await intake_service.conversation(session, ticket.id)
+            if not rows:
+                continue
+            last = rows[-1]
+            out.append({
+                "id": ticket.id,
+                "title": _title_of(rows) or _dash_t("wg_conversation"),
+                "preview": " ".join((last.text or "").split())[:90],
+                "from": "you" if last.sender_type == "user" else "agent",
+                "at": last.created_at.isoformat() if last.created_at else None,
+                "open": ticket.status == "active",
+                "attachment": bool(last.file_id),
+            })
+    return _json({"conversations": out}, origin)
+
+
+@router.get("/api/thread/{ticket_id}")
+async def thread(
+    ticket_id: int,
+    request: Request,
+    x_spooldesk_session: str | None = Header(default=None),
+) -> JSONResponse:
+    """One conversation from the list, including closed ones.
+
+    The ownership check is the whole endpoint: ticket ids are small integers,
+    so without it this is a way to read strangers' support conversations by
+    counting.
+    """
+    origin = await _allowed_origin(request)
+    if (off := await _off(origin)) is not None:
+        return off
+
+    token = (x_spooldesk_session or "").strip()
+    if not token:
+        return _json({"error": "no_session"}, origin, status.HTTP_401_UNAUTHORIZED)
+
+    user = await _visitor(token)
+    if user is None:
+        return _json({"error": "no_session"}, origin, status.HTTP_401_UNAUTHORIZED)
+
+    async with db_session() as session:
+        mine = [t for t in await intake_service.tickets_of(session, user.id)
+                if t.id == ticket_id]
+    if not mine:
+        return _json({"error": "not_found"}, origin, status.HTTP_404_NOT_FOUND)
+
+    return _json({
+        "ticket": ticket_id,
+        "open": mine[0].status == "active",
+        "messages": await _transcript(ticket_id),
+    }, origin)
 
 
 @router.get("/api/hello")
@@ -349,7 +713,16 @@ async def hello(request: Request) -> JSONResponse:
 
     from src.dashboard.i18n import t as dash_t
 
+    from src.services import work_hours_service
+
     greeting = await settings_service.get_widget_greeting()
+
+    # Whether anyone is likely to answer soon, from the work-hours config the
+    # instance already keeps. A widget that says "we usually reply in a few
+    # minutes" at 3am is the one thing here that can make a support desk look
+    # worse than having no widget at all.
+    hours = await work_hours_service.get_config()
+    working = (not hours.get("enabled")) or work_hours_service.is_working_now(hours)
     # Every string the panel can ever need, in one response. It has no second
     # chance to ask: the moment it needs the "could not send" line is the
     # moment the network is already failing.
@@ -372,6 +745,27 @@ async def hello(request: Request) -> JSONResponse:
         "ask_start": dash_t("wg_ask_start"),
         "ask_skip": dash_t("wg_ask_skip"),
         "ask_bad_email": dash_t("wg_ask_bad_email"),
+        # The panel asks rather than assuming, so a future instance that
+        # cannot write to its store can turn this off and get a widget with
+        # no paperclip instead of one whose paperclip fails.
+        "files": True,
+        "max_file_bytes": _MAX_UPLOAD_BYTES,
+        "attach": dash_t("wg_attach"),
+        "file_too_large": dash_t("wg_file_too_large"),
+        "file_failed": dash_t("wg_file_failed"),
+        "download": dash_t("wg_download"),
+        "online": working,
+        "subtitle": dash_t("wg_online" if working else "wg_offline_hours"),
+        "conversation": dash_t("wg_conversation"),
+        "nav_home": dash_t("wg_nav_home"),
+        "nav_messages": dash_t("wg_nav_messages"),
+        "contact": dash_t("wg_contact"),
+        "recent": dash_t("wg_recent"),
+        "no_conversations": dash_t("wg_no_conversations"),
+        "closed": dash_t("wg_closed"),
+        "new_chat": dash_t("wg_new_chat"),
+        "back": dash_t("wg_back"),
+        "you": dash_t("wg_you"),
     }, origin)
 
 

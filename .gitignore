@@ -9,6 +9,11 @@
 *.db-shm
 *.db-wal
 support.db
+
+# Whatever customers have attached to a ticket. Real people's screenshots and
+# invoices; the one directory in this project that must never reach a commit.
+data/
+
 *.sqlite
 *.sqlite3
 

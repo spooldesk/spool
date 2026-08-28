@@ -30,6 +30,7 @@ import secrets
 from collections.abc import Sequence
 
 from src.channels.base import Capabilities, Delivery, Option
+from src.services import file_store
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +114,10 @@ class WidgetChannel:
     caps = Capabilities(
         unsend=True,
         unsend_by_row=True,
-        files=False,
+        # We keep the bytes ourselves. Every other channel hands back a
+        # reference and stores the file for us; a browser cannot, so this is
+        # the one adapter that owns a store — see src/services/file_store.py.
+        files=True,
         buttons=True,
         typing=False,
         # Nothing reaches a visitor who has closed the tab. Worth declaring
@@ -133,13 +137,24 @@ class WidgetChannel:
     async def send_file(
         self, address: str, *, filename: str, content: bytes, caption: str | None = None
     ) -> Delivery:
-        # Declared as unsupported in `caps`, so nothing should reach here.
-        # Answering honestly anyway beats a traceback if something does.
-        return Delivery.failed("e_no_files_on_channel")
+        """Keep the bytes; the page will come and ask for them.
+
+        Like `send_text`, nothing is pushed. The difference is that a file has
+        to survive until the visitor next opens the panel, which may be
+        tomorrow, so it goes to disk rather than being handed to an API that
+        would have held it for us.
+        """
+        try:
+            ref = file_store.put(content)
+        except OSError as e:  # noqa: BLE001 — a full or read-only disk
+            logger.error(f"Could not store an attachment for {address}: {e}")
+            return Delivery.failed("e_send_failed", str(e))
+        # No message ref: there is no second copy of this anywhere to address.
+        # The file ref is what `fetch_file` will want back.
+        return Delivery(ok=True, ref=None, file_ref=ref)
 
     async def fetch_file(self, ref: str) -> bytes | None:
-        # Nothing can arrive, so nothing can be fetched. See `caps.files`.
-        return None
+        return file_store.get(ref)
 
     async def unsend(self, address: str, ref: str) -> bool:
         # `delete_for_user` marks the row, and the page stops rendering it on

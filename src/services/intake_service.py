@@ -114,6 +114,21 @@ async def open_ticket_of(session: AsyncSession, user_id: int) -> Ticket | None:
     )).scalars().first()
 
 
+async def tickets_of(session: AsyncSession, user_id: int) -> list[Ticket]:
+    """Every conversation this customer has had, newest first.
+
+    What the widget's own message list is built from. Closed tickets are
+    included on purpose: from the visitor's side a closed ticket is not gone,
+    it is last week's question, and a support widget that hides its own
+    history reads as one that lost it.
+    """
+    return list((await session.execute(
+        select(Ticket)
+        .where(Ticket.user_id == user_id)
+        .order_by(Ticket.id.desc())
+    )).scalars().all())
+
+
 async def receive(session: AsyncSession, inbound: Inbound) -> IntakeResult:
     """Record an inbound message, opening a ticket if there isn't one.
 

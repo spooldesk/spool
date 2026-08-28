@@ -24,14 +24,31 @@ _ASSETS = Path(__file__).resolve().parent.parent / "widget_assets"
 _BASE_MARKER = "__SPOOL_BASE__"
 
 
-@lru_cache(maxsize=1)
+@lru_cache(maxsize=4)
+def _cached(path: Path, _mtime: float) -> str:
+    # The mtime is part of the key and is otherwise unused. In production it
+    # never changes, so this is the read-once cache it was; in development it
+    # means editing the widget no longer needs a restart to be visible. The
+    # cost is one stat() per request, against a mistake that costs ten
+    # minutes of wondering why a change did nothing.
+    return path.read_text(encoding="utf-8")
+
+
+def _read(name: str) -> str:
+    path = _ASSETS / name
+    try:
+        stamp = path.stat().st_mtime
+    except OSError:
+        stamp = 0.0
+    return _cached(path, stamp)
+
+
 def _loader_template() -> str:
-    return (_ASSETS / "loader.js").read_text(encoding="utf-8")
+    return _read("loader.js")
 
 
-@lru_cache(maxsize=1)
 def _frame_template() -> str:
-    return (_ASSETS / "frame.html").read_text(encoding="utf-8")
+    return _read("frame.html")
 
 
 def loader_js(base_url: str) -> str:

@@ -145,6 +145,7 @@ has no IP allowlist of its own.
 | `ADMIN_CHAT_ID` | no | Id of the group tickets are posted to (negative) |
 | `DASH_SECRET_KEY` | no | Signs session cookies; generated and stored in the database if unset |
 | `DASH_COOKIE_SECURE` | no | `true` when serving over HTTPS |
+| `ATTACHMENTS_DIR` | no | Where widget attachments are kept (default `./data/attachments`) |
 | `GEMINI_API_KEY` | no | Turns the AI suggestions on |
 | `SLACK_BOT_TOKEN` | no | Slack channel — needs `SLACK_SIGNING_SECRET` too |
 | `SLACK_SIGNING_SECRET` | no | Proves an incoming event really came from Slack |
@@ -184,6 +185,24 @@ which is always on.
 message. Off by default: every box before a support request is a support
 request that does not get sent. Turn it on if you answer by email, leave it
 off if you answer in the chat.
+
+### Attachments
+
+Both directions, up to 10 MB per file. Visitors can click the paperclip,
+drag a file onto the panel, or paste a screenshot straight into the box —
+which is how most support attachments actually arrive. Images appear inline
+in the conversation and on the ticket page; everything else is a download.
+
+This is the one channel that stores its own files. Telegram hands back a
+`file_id` and keeps the bytes; a browser cannot, so they go to
+`ATTACHMENTS_DIR` — by default `./data/attachments`, which in Docker is on
+the same volume as the database. **Back it up with the database, not
+separately.** They are two halves of one record: a restored database whose
+attachments are missing is a helpdesk full of dead paperclips.
+
+Nothing is served under the Content-Type the uploader claimed, and files are
+fetched with the visitor's session token rather than from a guessable URL —
+so an attachment is only ever readable by the conversation it belongs to.
 
 ### Telling the widget who someone is
 

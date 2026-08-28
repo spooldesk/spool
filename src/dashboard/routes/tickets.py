@@ -700,6 +700,9 @@ async def ticket_reply(
     if has_file:
         from sqlalchemy import select
         from sqlalchemy.orm import selectinload
+        from aiogram.types import BufferedInputFile
+
+        from src.channels import DEFAULT as CHANNEL_DEFAULT
         from src.database.models import Message as MessageRecord, Ticket
 
         if len(files) > _MAX_UPLOAD_FILES:
@@ -769,7 +772,14 @@ async def ticket_reply(
                     try:
                         if not file_id:
                             raise ValueError("no reusable id to mirror with")
-                        kwargs = {"chat_id": settings.admin_chat_id, "document": file_id,
+                        # Only Telegram can be handed a reference. Every other
+                        # channel's is meaningless there — the widget's is a
+                        # key into our own store — so those get the bytes.
+                        document = (
+                            file_id if channel.name == CHANNEL_DEFAULT
+                            else BufferedInputFile(content, filename=name)
+                        )
+                        kwargs = {"chat_id": settings.admin_chat_id, "document": document,
                                   "caption": f'{tr("src_web_dashboard")} 📎 {name}' + (f"\n{caption}" if caption else "")}
                         if ticket.thread_id is not None:
                             kwargs["message_thread_id"] = ticket.thread_id
