@@ -27,11 +27,14 @@ python scripts/setup.py
 docker compose up -d --build
 
 # 3. Open the dashboard
-#    http://<your-server>:8000
+#    http://localhost:8000
 ```
 
 That is the whole thing. The bot starts accepting messages and the dashboard
-is on port `8000`.
+is on `8000` — **on loopback only**. On your own machine that changes
+nothing. On a server it means the dashboard is not reachable from the
+internet until you put TLS in front of it, which is the next section and is
+one command.
 
 ### First sign-in
 
@@ -97,7 +100,7 @@ python scripts/setup.py            # or cp .env.example .env and fill it in
 
 # 3. Start — TWO processes, in separate terminals or under systemd:
 python -m src.main                                   # the bot
-python -m uvicorn src.dashboard.app:app --port 8000  # the dashboard
+python -m uvicorn src.dashboard.app:app --port 8000 --no-proxy-headers  # the dashboard
 ```
 
 They share one SQLite file in WAL mode: the bot writes, the dashboard reads and
@@ -110,28 +113,98 @@ until you actually send something.
 
 ---
 
-## HTTPS in production
+## On a server, with a domain
 
-Dashboard authentication is a signed cookie, so it belongs behind TLS. With a
-proxy in front (nginx, Caddy, Cloudflare) set this in `.env`:
+Dashboard sign-in is a signed cookie and the widget is embedded in other
+people's pages; both need TLS. There is an overlay that adds it.
 
+Point an A record at the server first — Let's Encrypt checks DNS before
+issuing, and failed attempts count against a rate limit — then:
+
+```bash
+echo "SPOOLDESK_DOMAIN=help.yoursite.com" >> .env
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
-DASH_COOKIE_SECURE=true
-```
 
-An nginx location block:
+That is it. The certificate is obtained on first start and renewed without
+being asked. What the overlay changes:
+
+- **Caddy** on 80 and 443, with automatic HTTPS. Nothing to schedule, nothing
+  that expires quietly in ninety days.
+- **`DASH_COOKIE_SECURE=true`**, so the session cookie stops travelling over
+  plain HTTP.
+- **`TRUSTED_PROXY_HOPS=1`**, which is the setting that makes the rate limits
+  work. Read the next section before changing it.
+- **Log rotation and memory limits**, because the first thing that fills the
+  smallest VPS is a log nobody reads.
+
+`make prod-up`, `make prod-logs` and `make prod-down` are the same commands
+with less typing.
+
+### Counting the proxies in front of you
+
+`TRUSTED_PROXY_HOPS` has to match reality, and getting it wrong is quiet.
+
+`X-Forwarded-For` is a header anyone can send. Proxies **append** to it, so
+behind one proxy it reads `<whatever the client sent>, <what your proxy
+saw>` — and only the last entry means anything. Set it to the number of
+proxies you actually have:
+
+| In front of Spooldesk | Value |
+|---|---|
+| Nothing (direct, or local) | leave unset — the header is ignored |
+| The overlay's Caddy | `1` (set for you) |
+| Cloudflare **and** Caddy | `2` |
+
+Too low and everyone behind the proxy is counted as one visitor, so the
+first person to hit a limit locks out the rest. Too high, or set with nothing
+in front, and a stranger picks their own identity by sending a header — the
+login throttle and the widget's per-address limits then do nothing at all.
+
+### If you already run nginx
+
+Keep it; skip the overlay and use the base compose, which listens on
+`127.0.0.1:8000`. Set `DASH_COOKIE_SECURE=true` and `TRUSTED_PROXY_HOPS=1` in
+`.env` yourself.
+
+Start uvicorn with **`--no-proxy-headers`** if you run it by hand. Uvicorn
+has its own `X-Forwarded-For` handling, on by default, which trusts anything
+arriving from `127.0.0.1` — including, on that setup, a client's own forged
+header. Two layers reading the same header disagree; the compose files pass
+this flag for you.
 
 ```nginx
 location / {
     proxy_pass http://127.0.0.1:8000;
     proxy_set_header Host $host;
+    # Replaces rather than appends: nginx's $remote_addr is the only entry
+    # that ends up here, which is what TRUSTED_PROXY_HOPS=1 expects.
     proxy_set_header X-Forwarded-For $remote_addr;
     proxy_set_header X-Forwarded-Proto $scheme;
+    client_max_body_size 110M;   # operator replies may carry ten files
 }
 ```
 
-Do not bind the dashboard to `0.0.0.0` without something in front of it — it
-has no IP allowlist of its own.
+Do not publish the dashboard on `0.0.0.0` in front of nothing. It has no IP
+allowlist of its own, and the compose file binds it to loopback on purpose.
+
+### Backups
+
+```bash
+make backup      # → ./backups/spooldesk-2026-08-28-1430.tar.gz
+```
+
+One archive with the database and its attachments, taken at one instant. The
+two are halves of one record: restore a database without its attachments and
+every paperclip in every past ticket is dead.
+
+The database is copied with SQLite's online-backup API, not with `cp`. In WAL
+mode — which this runs in, so the dashboard can read while the bot writes —
+the file on disk is not a complete database by itself, and copying it at the
+wrong moment restores into a missing hour.
+
+Copy the archive somewhere else. The disk holding the only copy is the disk
+that fails.
 
 ---
 
@@ -145,6 +218,8 @@ has no IP allowlist of its own.
 | `ADMIN_CHAT_ID` | no | Id of the group tickets are posted to (negative) |
 | `DASH_SECRET_KEY` | no | Signs session cookies; generated and stored in the database if unset |
 | `DASH_COOKIE_SECURE` | no | `true` when serving over HTTPS |
+| `SPOOLDESK_DOMAIN` | no | The domain the production overlay gets a certificate for |
+| `TRUSTED_PROXY_HOPS` | no | How many proxies are in front (default 0 = ignore `X-Forwarded-For`) |
 | `ATTACHMENTS_DIR` | no | Where widget attachments are kept (default `./data/attachments`) |
 | `GEMINI_API_KEY` | no | Turns the AI suggestions on |
 | `SLACK_BOT_TOKEN` | no | Slack channel — needs `SLACK_SIGNING_SECRET` too |

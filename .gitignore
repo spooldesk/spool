@@ -14,6 +14,9 @@ support.db
 # invoices; the one directory in this project that must never reach a commit.
 data/
 
+# What `make backup` writes. Customer data in a tarball; same rule as data/.
+backups/
+
 *.sqlite
 *.sqlite3
 

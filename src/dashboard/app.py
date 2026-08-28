@@ -30,6 +30,7 @@ from src.dashboard.auth import (
     verify_shared_password,
 )
 from src.dashboard.csrf import CSRFMiddleware, csrf_context, csrf_protect
+from src.dashboard.proxy import ProxyHeaders
 from src.dashboard.routes import admin_users as admin_users_routes
 from src.dashboard.routes import ai as ai_routes
 from src.dashboard.routes import broadcast as broadcast_routes
@@ -92,6 +93,12 @@ except Exception:
     TEMPLATES.env.globals["g_asset_v"] = "1"
 
 app = FastAPI(title="Spooldesk", docs_url=None, redoc_url=None)
+# Outermost, because everything below it — CSRF, the rate limits, the base URL
+# the embed snippet is built from — reads a client address and a scheme that
+# this is responsible for having corrected first. Uvicorn's own version of
+# this is switched off (`--no-proxy-headers`); two of them disagreeing is how
+# the widget's per-address limit quietly stopped working.
+app.add_middleware(ProxyHeaders)
 # CSRF: issues the token cookie and exposes it to templates. Validation happens
 # per-route via the csrf_protect dependency on authenticated routers + /login.
 app.add_middleware(CSRFMiddleware)

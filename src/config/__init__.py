@@ -41,6 +41,17 @@ class Settings:
     admin_chat_id: int = 0
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-2.5-flash"
+    #: How many reverse proxies sit in front of this process.
+    #:
+    #: Zero — the default — means X-Forwarded-For is ignored entirely, which
+    #: is correct for anything reachable directly: the header is then just a
+    #: string a stranger chose, and believing it hands them a new identity per
+    #: request for every limit keyed on an address.
+    #:
+    #: Behind one proxy, set 1. Proxies *append* rather than replace, so the
+    #: trustworthy entry is the Nth from the right — the one your own proxy
+    #: wrote — and everything to the left of it is whatever the client sent.
+    trusted_proxy_hops: int = 0
 
     @property
     def has_telegram(self) -> bool:
@@ -74,6 +85,14 @@ def load_settings() -> Settings:
     database_url = _require_env("DATABASE_URL")
     access_password = _require_env("ACCESS_PASSWORD")
 
+    try:
+        hops = max(0, int((os.getenv("TRUSTED_PROXY_HOPS") or "0").strip() or 0))
+    except ValueError:
+        # A typo here would otherwise fail open, and failing open on this
+        # setting means the rate limits quietly stop working.
+        logger.warning("TRUSTED_PROXY_HOPS is not a number; assuming no proxy")
+        hops = 0
+
     bot_token = (os.getenv("BOT_TOKEN") or "").strip()
     raw_chat = (os.getenv("ADMIN_CHAT_ID") or "").strip()
     try:
@@ -100,4 +119,5 @@ def load_settings() -> Settings:
         admin_chat_id=admin_chat_id,
         gemini_api_key=gemini_api_key,
         gemini_model=gemini_model,
+        trusted_proxy_hops=hops,
     )
