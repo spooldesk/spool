@@ -15,7 +15,10 @@ python scripts/run_demo_dashboard.py            # http://localhost:8010
 
 Log in with `admin@local` / whatever you set as `ACCESS_PASSWORD`.
 
-**Python 3.13.** Not 3.14 — some dependencies do not have wheels for it yet.
+**Python 3.12** — the version the container ships and CI runs.
+Not newer: aiogram 3.10 pins aiohttp to 3.9, and aiohttp 3.9 publishes no
+Linux wheel above 3.12, so a newer Python silently switches to compiling it
+from source and breaks the moment the base image moves.
 
 The dashboard and the bot are two processes over one SQLite file in WAL mode:
 the bot writes, the dashboard reads and manages. You can run either alone. The

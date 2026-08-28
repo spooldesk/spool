@@ -9,6 +9,7 @@ services:
     startCommand: python scripts/seed_demo_data.py && python scripts/run_demo_dashboard.py
     envVars:
       - key: PYTHON_VERSION
-        value: 3.13.4
+        # Matches the Dockerfile: see the note there for why not newer.
+        value: 3.12.7
       - key: DASH_COOKIE_SECURE
         value: "true"

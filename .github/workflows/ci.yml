@@ -13,7 +13,9 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          # The version the Dockerfile ships. Testing on a newer one than
+          # production runs is how a green CI sits next to a broken deploy.
+          python-version: "3.12"
           cache: pip
 
       - name: Install dependencies
@@ -32,3 +34,33 @@ jobs:
           assert tickets > 0, "demo seed produced no tickets"
           print(f"demo seed OK: {tickets} tickets")
           EOF
+
+  # The image is what actually ships, and until now nothing built it before a
+  # deploy did. A dependency that loses its wheel breaks here now, on a pull
+  # request, instead of on the production host.
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the container
+        run: docker build -t spooldesk:ci .
+
+      - name: It starts and answers
+        run: |
+          docker run -d --name ci-dash \
+            -e DATABASE_URL="sqlite+aiosqlite:////tmp/ci.db" \
+            -e ACCESS_PASSWORD="ci-password" \
+            -p 8000:8000 spooldesk:ci \
+            python -m uvicorn src.dashboard.app:app --host 0.0.0.0 --port 8000
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8000/healthz > /dev/null; then
+              echo "dashboard is up"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "dashboard never answered"; docker logs ci-dash; exit 1
+
+      - name: No Telegram was needed for any of that
+        run: docker logs ci-dash 2>&1 | grep -q "without a Telegram channel"

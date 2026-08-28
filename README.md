@@ -6,7 +6,7 @@
   Work from the dashboard, or close a ticket from your phone. Self-host in 5 minutes.
 </p>
 
-![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![aiogram](https://img.shields.io/badge/aiogram-3.x-2CA5E0?logo=telegram&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white)
 ![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0_async-D71F00)
@@ -123,7 +123,7 @@ boring infrastructure that one person can deploy and operate.
 
 | Layer | Tech |
 |---|---|
-| Bot | Python 3.13, aiogram 3, aiohttp |
+| Bot | Python 3.12, aiogram 3, aiohttp |
 | Web | FastAPI, Jinja2, Tailwind, Chart.js, Tabler icons |
 | Data | SQLAlchemy 2.0 (async), SQLite + WAL, openpyxl (Excel export) |
 | AI | Google Gemini via `google-genai` |

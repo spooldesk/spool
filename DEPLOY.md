@@ -82,12 +82,13 @@ old container against a newer database, or the reverse, does not corrupt it.
 
 ## Route 2 — by hand, without Docker
 
-Needs **Python 3.13**. Not 3.14: some dependencies have no wheels for it yet
+Needs **Python 3.12**. Not newer: aiogram pins aiohttp to 3.9, which
+publishes no Linux wheel past 3.12, so anything above compiles from source
 and would fall back to a fragile source build.
 
 ```bash
 # 1. Virtualenv and dependencies
-python3.13 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
@@ -105,7 +106,7 @@ until you actually send something.
 
 > On Windows the `tzdata` package is required for time zones; it is already in
 > `requirements.txt`. On Linux it comes from the system, and the Docker image
-> installs it explicitly because `python:3.13-slim` ships without it.
+> installs it explicitly because `python:3.12-slim` ships without it.
 
 ---
 
