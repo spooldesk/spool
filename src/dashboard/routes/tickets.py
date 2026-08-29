@@ -40,7 +40,12 @@ def _parse_date(value: str | None) -> Optional[datetime]:
 
 # Anything wider than this cannot reach SQLite: binding it raises OverflowError
 # from the driver, which surfaces as a 500 rather than as a rejected parameter.
-_SQLITE_MAX_INT = 2 ** 63 - 1
+#
+# The bound is the column's, not the engine's. These filters are compared
+# against `Integer` columns — admin ids, team ids — which PostgreSQL stores in
+# 32 bits, so a value between 2^31 and 2^63 used to pass this check and be
+# refused by the driver instead.
+_MAX_ROW_ID = 2 ** 31 - 1
 
 
 def _parse_int(value: str | None) -> Optional[int]:
@@ -51,7 +56,7 @@ def _parse_int(value: str | None) -> Optional[int]:
         parsed = int(value)
     except (TypeError, ValueError):
         return None
-    if not -_SQLITE_MAX_INT <= parsed <= _SQLITE_MAX_INT:
+    if not -_MAX_ROW_ID <= parsed <= _MAX_ROW_ID:
         return None
     return parsed
 

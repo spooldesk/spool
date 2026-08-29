@@ -176,6 +176,9 @@ SQLITE_ONLY = {
 BOOLEAN_COLUMNS = (
     "is_internal", "is_active", "is_archived", "is_verified",
     "is_published", "notification_sent", "success", "shadow",
+    # Nullable, and the one I missed on the first sweep — which is how a
+    # single column produced most of a CI run's failures.
+    "accepted",
 )
 
 

@@ -163,7 +163,7 @@ async def report_summary(date_from: datetime, date_to: datetime) -> dict:
         deflect_offered, deflect_accepted = (await session.execute(text("""
             SELECT
                 SUM(CASE WHEN success = true THEN 1 ELSE 0 END),
-                SUM(CASE WHEN accepted = 1 THEN 1 ELSE 0 END)
+                SUM(CASE WHEN accepted = true THEN 1 ELSE 0 END)
             FROM ai_calls
             WHERE use_case = 'deflect' AND created_at >= :df AND created_at < :dt
         """), params)).one()
@@ -192,7 +192,11 @@ async def report_by_operator(date_from: datetime, date_to: datetime) -> list[dic
     """
     params = {"df": date_from, "dt": date_to}
     async with db_session() as session:
+        # The aggregates are named in a subquery and filtered outside it:
+        # PostgreSQL will not let HAVING refer to a SELECT alias, and writing
+        # each CASE twice is how two copies drift apart.
         rows = (await session.execute(text(f"""
+            SELECT * FROM (
             SELECT
                 a.id,
                 COALESCE(NULLIF(a.name, ''), a.email)          AS label,
@@ -211,7 +215,8 @@ async def report_by_operator(date_from: datetime, date_to: datetime) -> list[dic
             FROM admin_users a
             LEFT JOIN tickets t ON t.assigned_admin_id = a.id
             GROUP BY a.id
-            HAVING closed_cnt > 0 OR active_now > 0
+            ) per_operator
+            WHERE closed_cnt > 0 OR active_now > 0
             ORDER BY closed_cnt DESC, label ASC
         """), params)).all()
 
@@ -232,6 +237,7 @@ async def report_by_team(date_from: datetime, date_to: datetime) -> list[dict]:
     params = {"df": date_from, "dt": date_to}
     async with db_session() as session:
         rows = (await session.execute(text("""
+            SELECT * FROM (
             SELECT
                 tm.id,
                 tm.name,
@@ -244,8 +250,9 @@ async def report_by_team(date_from: datetime, date_to: datetime) -> list[dict]:
             FROM teams tm
             LEFT JOIN tickets t ON t.team_id = tm.id
             GROUP BY tm.id
-            HAVING created_cnt > 0 OR closed_cnt > 0
-            ORDER BY created_cnt DESC, tm.name ASC
+            ) per_team
+            WHERE created_cnt > 0 OR closed_cnt > 0
+            ORDER BY created_cnt DESC, name ASC
         """), params)).all()
 
     return [{
@@ -294,7 +301,7 @@ async def ai_savings(date_from: datetime, date_to: datetime) -> dict:
         # easiest way to produce a number nobody believes.
         assisted = (await session.execute(text("""
             SELECT COUNT(*) FROM ai_calls
-            WHERE accepted = 1 AND use_case != 'deflect'
+            WHERE accepted = true AND use_case != 'deflect'
               AND created_at >= :df AND created_at < :dt
         """), params)).scalar_one()
 

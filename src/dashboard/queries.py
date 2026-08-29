@@ -975,8 +975,32 @@ async def messages_after(ticket_id: int, after_id: int = 0) -> dict | None:
     }
 
 
+#: The widest value a row id can hold. Primary keys are declared `Integer`,
+#: which is 32 bits in PostgreSQL — so this is not "a big number", it is the
+#: real limit of the column being searched. Anything past it cannot name a
+#: row, and handing it to the driver produces a 500 rather than a miss.
+#:
+#: Telegram ids are deliberately not held to this: they live in `BigInteger`
+#: and routinely exceed it. See ROW_ID_MAX's use — filters over admin and
+#: team ids only.
+ROW_ID_MAX = 2 ** 31 - 1
+
+
+def is_row_id(value) -> bool:
+    """Whether this could name a row at all."""
+    try:
+        return -ROW_ID_MAX <= int(value) <= ROW_ID_MAX
+    except (TypeError, ValueError):
+        return False
+
+
 async def ticket_detail(ticket_id: int) -> dict | None:
     """Full ticket card: header, all messages, closure info. Returns None if not found."""
+    if not is_row_id(ticket_id):
+        # Wider than the column. Not found, rather than a 500 from
+        # inside the driver.
+        return None
+
     async with db_session() as session:
         ticket = (await session.execute(
             select(Ticket)
@@ -1114,8 +1138,8 @@ async def ai_overview() -> dict:
                 use_case,
                 COUNT(*) AS total,
                 SUM(CASE WHEN success = true THEN 1 ELSE 0 END) AS successful,
-                SUM(CASE WHEN accepted = 1 THEN 1 ELSE 0 END) AS accepted,
-                SUM(CASE WHEN accepted = 0 THEN 1 ELSE 0 END) AS rejected,
+                SUM(CASE WHEN accepted = true THEN 1 ELSE 0 END) AS accepted,
+                SUM(CASE WHEN accepted = false THEN 1 ELSE 0 END) AS rejected,
                 SUM(tokens_in) AS tokens_in_total,
                 SUM(tokens_out) AS tokens_out_total,
                 AVG(latency_ms) AS avg_latency
@@ -1129,7 +1153,7 @@ async def ai_overview() -> dict:
                 COUNT(*) AS total,
                 SUM(tokens_in) AS ti, SUM(tokens_out) AS to_,
                 SUM(CASE WHEN success = true THEN 1 ELSE 0 END) AS ok,
-                SUM(CASE WHEN accepted = 1 THEN 1 ELSE 0 END) AS acc,
+                SUM(CASE WHEN accepted = true THEN 1 ELSE 0 END) AS acc,
                 SUM(CASE WHEN accepted IS NOT NULL THEN 1 ELSE 0 END) AS decided
             FROM ai_calls
         """))).one()
@@ -1417,6 +1441,11 @@ async def users_with_ticket_stats(
 
 async def user_detail(user_db_id: int) -> dict | None:
     """Full per-user card: profile, all tickets, full category breakdown."""
+    if not is_row_id(user_db_id):
+        # Wider than the column. Not found, rather than a 500 from
+        # inside the driver.
+        return None
+
     async with db_session() as session:
         user = (await session.execute(
             select(User).where(User.id == user_db_id)
@@ -1646,7 +1675,7 @@ async def ai_vs_human_csat() -> dict:
             FROM (
               SELECT t.csat_rating,
                      EXISTS (SELECT 1 FROM ai_calls a
-                              WHERE a.ticket_id = t.id AND a.accepted = 1) AS touched
+                              WHERE a.ticket_id = t.id AND a.accepted = true) AS touched
               FROM tickets t
               WHERE t.csat_rating IS NOT NULL
             )
@@ -1682,7 +1711,7 @@ async def ai_csat_by_category() -> list[dict]:
             FROM (
               SELECT t.category, t.csat_rating,
                      EXISTS (SELECT 1 FROM ai_calls a
-                              WHERE a.ticket_id = t.id AND a.accepted = 1) AS touched
+                              WHERE a.ticket_id = t.id AND a.accepted = true) AS touched
               FROM tickets t
               WHERE t.csat_rating IS NOT NULL
             )
