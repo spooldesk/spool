@@ -164,5 +164,39 @@ jobs:
             docker compose -f docker-compose.yml -f docker-compose.prod.yml \
             -f docker-compose.postgres.yml config --quiet
 
-      - name: The backup script is valid shell
-        run: bash -n scripts/backup.sh
+      - name: The backup scripts are valid shell
+        run: |
+          bash -n scripts/backup.sh
+          bash -n scripts/backup_schedule.sh
+      - name: A backup refuses to run against PostgreSQL
+        # It snapshots SQLite with SQLite's own API. Pointed at PostgreSQL it
+        # would archive an empty database it created itself, and the archive
+        # would look fine right up until the day somebody restored it.
+        run: |
+          echo "DATABASE_URL=postgresql+asyncpg://u:p@postgres/spooldesk" > .env
+          if bash scripts/backup.sh /tmp/should-not-appear; then
+            echo "it produced a backup of a database it cannot read" >&2
+            exit 1
+          fi
+          if [ -e /tmp/should-not-appear ]; then
+            echo "it wrote something anyway" >&2
+            exit 1
+          fi
+          echo "refused, as it should"
+
+      - name: The schedule installs, shows and removes itself
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq cron > /dev/null
+          bash scripts/backup_schedule.sh 04:15
+          if ! bash scripts/backup_schedule.sh --show | grep -q "^15 4 "; then
+            echo "the entry is not at the time it was given" >&2
+            exit 1
+          fi
+          bash scripts/backup_schedule.sh 05:20
+          if [ "$(crontab -l | grep -c spooldesk-backup)" -ne 1 ]; then
+            echo "installing twice left more than one entry" >&2
+            exit 1
+          fi
+          bash scripts/backup_schedule.sh --remove
+          bash scripts/backup_schedule.sh --show | grep -q "No Spooldesk backup"

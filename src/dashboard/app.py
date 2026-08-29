@@ -41,6 +41,7 @@ from src.dashboard.routes import manage_templates as manage_templates_routes
 from src.dashboard.routes import overview as overview_routes
 from src.dashboard.routes import preferences as preferences_routes
 from src.dashboard.routes import reports as reports_routes
+from src.dashboard.routes import help as help_routes
 from src.dashboard.routes import slack as slack_routes
 from src.dashboard.routes import templates_page as templates_routes
 from src.dashboard.routes import tickets as tickets_routes
@@ -324,6 +325,12 @@ app.include_router(widget_routes.router)
 # same sense, but protected differently: exactly one caller is legitimate and
 # it proves that with a signature over the raw body. See routes/slack.py.
 app.include_router(slack_routes.router)
+
+# The help centre, read by customers rather than operators. Public like the
+# widget's endpoints and for the same reason — a person looking for an answer
+# has not signed in to anything — but plainer: server-rendered HTML, no token,
+# no session, nothing to forge. Published articles only; see routes/help.py.
+app.include_router(help_routes.router)
 
 
 # Root now lands on the management side (tickets), not analytics

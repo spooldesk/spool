@@ -89,11 +89,11 @@ CONVERSATIONS = {
     ),
     "Access": (
         [
-            "Lost access to 1Password, it asks for a Secret Key I don't have",
+            "Locked out of the password manager, it wants a recovery key I don't have",
             "The confirmation code hasn't arrived by email for half an hour",
             "My Google account got locked after a password change",
             "Can't sign in to my work Telegram, the code never arrives",
-            "1Password won't sync between my devices",
+            "The password manager won't sync between my devices",
         ],
         [
             "Sent the Emergency Kit in a DM — it has the Secret Key, restore access with it.",

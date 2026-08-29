@@ -15,10 +15,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Spooldesk — a full helpdesk your agents can also answer from Telegram</title>
-  <meta name="description" content="Open-source helpdesk. Tickets arrive from a website widget, Slack and Telegram into one queue with a board, SLA clock and templates. Agents work in the dashboard — or answer from Telegram when they are not at a laptop. Self-host in 5 minutes.">
+  <meta name="description" content="Open-source helpdesk. Tickets arrive from a website widget, email, Slack and Telegram into one queue with a board, SLA clock, a help centre and templates. Agents work in the dashboard — or answer from Telegram when they are not at a laptop. Self-host in 5 minutes.">
 
   <meta property="og:title" content="Spooldesk — a full helpdesk your agents can also answer from Telegram">
-  <meta property="og:description" content="Widget, Slack and Telegram into one queue. Work from the dashboard, or answer from your phone. AI deflection out of the box.">
+  <meta property="og:description" content="Widget, email, Slack and Telegram into one queue. Work from the dashboard, or answer from your phone. AI deflection out of the box.">
   <meta property="og:type" content="website">
 
   <link rel="stylesheet" href="style.css">
@@ -69,10 +69,11 @@
   </h1>
 
   <p class="mt-6 text-lg text-zinc-400 max-w-2xl mx-auto leading-relaxed">
-    Tickets arrive from a widget on your site, from Slack and from Telegram, into one
-    queue with a board, an SLA clock that counts working hours, and templates. Agents
-    work in the dashboard at a desk — and close a ticket from Telegram on their phone
-    when they are not at one. AI answers what it can before either is needed.
+    Tickets arrive from a widget on your site, from email, from Slack and from Telegram,
+    into one queue with a board, an SLA clock that counts working hours, and templates.
+    Agents work in the dashboard at a desk — and close a ticket from Telegram on their
+    phone when they are not at one. A help centre and an AI answer what they can before
+    either is needed.
   </p>
 
   <div class="mt-9 flex flex-wrap items-center justify-center gap-3">
@@ -106,7 +107,7 @@
       <!-- A floor, not a count. The exact number was 541 here for months
            and was 639 by the time I noticed; a figure that only ever
            grows should be written so that growing keeps it true. -->
-      <div class="text-2xl font-semibold tabular-nums">640+</div>
+      <div class="text-2xl font-semibold tabular-nums">770+</div>
       <div class="text-xs text-zinc-500 mt-1">automated tests</div>
     </div>
     <div class="bg-black px-4 py-5">
@@ -239,8 +240,8 @@
   <div class="mt-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
     <div class="rounded-xl border border-zinc-900 p-5">
       <i class="ti ti-ticket text-violet-400" style="font-size:18px"></i>
-      <h3 class="mt-3 font-medium">Widget, Telegram and Slack</h3>
-      <p class="mt-1.5 text-sm text-zinc-400">Three ways in, one queue out. Attachments both directions on all of them, full history per ticket, verification and blocking.</p>
+      <h3 class="mt-3 font-medium">Widget, email, Telegram and Slack</h3>
+      <p class="mt-1.5 text-sm text-zinc-400">Four ways in, one queue out. Attachments both directions on all of them, full history per ticket, verification and blocking.</p>
     </div>
     <div class="rounded-xl border border-zinc-900 p-5">
       <i class="ti ti-sparkles text-violet-400" style="font-size:18px"></i>
@@ -248,9 +249,14 @@
       <p class="mt-1.5 text-sm text-zinc-400">Reply drafts from your knowledge base for agents, plus opt-in self-service answers for users. Accept rate tracked per use case.</p>
     </div>
     <div class="rounded-xl border border-zinc-900 p-5">
+      <i class="ti ti-book text-violet-400" style="font-size:18px"></i>
+      <h3 class="mt-3 font-medium">Help centre</h3>
+      <p class="mt-1.5 text-sm text-zinc-400">Write articles once. Customers search them in the widget, and each one gets its own page you can link from a reply. The dashboard counts which articles actually prevented a ticket.</p>
+    </div>
+    <div class="rounded-xl border border-zinc-900 p-5">
       <i class="ti ti-star text-violet-400" style="font-size:18px"></i>
       <h3 class="mt-3 font-medium">CSAT</h3>
-      <p class="mt-1.5 text-sm text-zinc-400">Users rate support 1–5 right in Telegram after a ticket closes. Immutable score, surfaced as a dashboard KPI.</p>
+      <p class="mt-1.5 text-sm text-zinc-400">Customers rate support 1–5 the moment a ticket closes — tappable in Telegram, the widget and Slack. Immutable score, surfaced as a dashboard KPI.</p>
     </div>
     <div class="rounded-xl border border-zinc-900 p-5">
       <i class="ti ti-user-check text-violet-400" style="font-size:18px"></i>
@@ -280,7 +286,7 @@
     <div class="rounded-xl border border-zinc-900 p-5">
       <i class="ti ti-shield-lock text-violet-400" style="font-size:18px"></i>
       <h3 class="mt-3 font-medium">Your data, your server</h3>
-      <p class="mt-1.5 text-sm text-zinc-400">A single SQLite file you can back up with <code class="text-zinc-500">cp</code>. Secrets scrubbed before anything reaches an LLM.</p>
+      <p class="mt-1.5 text-sm text-zinc-400">One SQLite file and one folder of attachments. <code class="text-zinc-500">make backup</code> archives both at the same instant, on a nightly schedule. Secrets scrubbed before anything reaches an LLM.</p>
     </div>
   </div>
 </section>
@@ -306,7 +312,7 @@
           </tr>
           <tr class="border-t border-zinc-900">
             <td class="py-4 pr-4 text-zinc-400">Where customers write</td>
-            <td class="py-4 px-4 font-medium">Website widget, Slack, Telegram — one queue</td>
+            <td class="py-4 px-4 font-medium">Website widget, email, Slack, Telegram — one queue</td>
             <td class="py-4 px-4 text-zinc-400">Many channels, and a plan tier for each</td>
           </tr>
           <tr class="border-t border-zinc-900">
@@ -315,14 +321,19 @@
             <td class="py-4 px-4 text-zinc-400">Paid add-on or absent</td>
           </tr>
           <tr class="border-t border-zinc-900">
+            <td class="py-4 pr-4 text-zinc-400">Help centre</td>
+            <td class="py-4 px-4 font-medium">Included — searchable in the widget, and a public page per article</td>
+            <td class="py-4 px-4 text-zinc-400">Included, often on a higher tier</td>
+          </tr>
+          <tr class="border-t border-zinc-900">
             <td class="py-4 pr-4 text-zinc-400">Deployment</td>
             <td class="py-4 px-4 font-medium">One container, SQLite, 5 minutes</td>
             <td class="py-4 px-4 text-zinc-400">Rails/Postgres/Redis stack — or SaaS only</td>
           </tr>
           <tr class="border-t border-zinc-900">
-            <td class="py-4 pr-4 text-zinc-400">Cost of a 5-person team</td>
-            <td class="py-4 px-4 font-medium">$0 self-hosted, unlimited operators</td>
-            <td class="py-4 px-4 text-zinc-400">Typically $75–250 / month</td>
+            <td class="py-4 pr-4 text-zinc-400">How the price grows</td>
+            <td class="py-4 px-4 font-medium">It doesn&rsquo;t. Free self-hosted, unlimited operators; managed is a flat fee</td>
+            <td class="py-4 px-4 text-zinc-400">Per agent, per month — a sixth agent costs the same as the first</td>
           </tr>
           <tr class="border-t border-zinc-900">
             <td class="py-4 pr-4 text-zinc-400">Where your data lives</td>
@@ -333,10 +344,12 @@
       </table>
     </div>
     <p class="mt-5 text-xs text-zinc-600 text-center max-w-2xl mx-auto">
-      Fair warning: those tools are broader products. If you need email, Instagram,
-      WhatsApp and a public knowledge base in one place today, they will serve you
-      better. Spooldesk covers three channels properly rather than nine partly — and
-      email is the next one being built.
+      Fair warning: those are broader, older products with far larger teams behind
+      them. If you need Instagram, WhatsApp, voice and a marketplace of integrations
+      in one place today, they will serve you better — Spooldesk covers four channels
+      properly rather than nine partly. Their prices are deliberately not quoted here:
+      they change, and a stale number in a comparison table is worse than no number.
+      Check their pricing pages against ours.
     </p>
   </div>
 </section>
@@ -368,14 +381,14 @@ docker compose up -d --build</code></pre>
 <section id="pricing" class="border-y border-zinc-900 bg-zinc-950/50">
   <div class="max-w-4xl mx-auto px-5 py-16">
     <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight text-center">Pricing</h2>
-    <p class="mt-3 text-zinc-400 text-center">Self-hosting is free and always will be.</p>
+    <p class="mt-3 text-zinc-400 text-center">Self-hosting is free and always will be. Pay only if you would rather not run it.</p>
 
-    <div class="mt-10 grid grid-cols-1 md:grid-cols-2 gap-5">
+    <div class="mt-10 grid grid-cols-1 md:grid-cols-3 gap-5">
 
       <!-- Self-hosted -->
-      <div class="rounded-2xl border border-violet-500/40 bg-black p-7 relative">
+      <div class="rounded-2xl border border-zinc-800 bg-black p-7 relative">
         <div class="absolute -top-3 left-7 px-2.5 py-0.5 rounded-full text-[11px] font-medium
-                    bg-violet-600 text-white">Available now</div>
+                    bg-zinc-800 border border-zinc-700 text-zinc-300">Available now</div>
         <h3 class="text-lg font-medium">Self-hosted</h3>
         <div class="mt-3 flex items-baseline gap-1.5">
           <span class="text-4xl font-semibold">$0</span>
@@ -389,10 +402,42 @@ docker compose up -d --build</code></pre>
           <li class="flex gap-2.5"><i class="ti ti-check text-violet-400 mt-0.5" style="font-size:15px"></i> Full source, no telemetry</li>
           <li class="flex gap-2.5"><i class="ti ti-check text-violet-400 mt-0.5" style="font-size:15px"></i> Community support via GitHub issues</li>
         </ul>
+        <!-- Secondary, so the eye lands on the card with a person behind it.
+             Still an obvious button: self-hosting is the honest default and
+             the reason anyone trusts the rest of the page. -->
         <a href="https://github.com/spooldesk/spool" target="_blank" rel="noopener"
            class="mt-7 flex items-center justify-center gap-2 w-full py-2.5 rounded-xl font-medium
-                  bg-violet-600 hover:bg-violet-500 transition-colors">
+                  bg-zinc-800 border border-zinc-700 hover:bg-zinc-700 transition-colors">
           <i class="ti ti-brand-github" style="font-size:16px"></i> Get started
+        </a>
+      </div>
+
+      <!-- Managed -->
+      <div class="rounded-2xl border border-violet-500/40 bg-black p-7 relative">
+        <div class="absolute -top-3 left-7 px-2.5 py-0.5 rounded-full text-[11px] font-medium
+                    bg-violet-600 text-white">Available now</div>
+        <h3 class="text-lg font-medium">Managed</h3>
+        <div class="mt-3 flex items-baseline gap-1.5">
+          <span class="text-4xl font-semibold">$249</span>
+          <span class="text-zinc-500 text-sm">/ month</span>
+        </div>
+        <p class="mt-2 text-sm text-zinc-400">
+          Your own server, run for you. Flat fee &mdash; not per agent.
+        </p>
+        <ul class="mt-6 space-y-2.5 text-sm">
+          <li class="flex gap-2.5"><i class="ti ti-check text-violet-400 mt-0.5" style="font-size:15px"></i> Everything in Self-hosted, on a server of your own</li>
+          <li class="flex gap-2.5"><i class="ti ti-check text-violet-400 mt-0.5" style="font-size:15px"></i> Up to 5 agents &middot; $349 up to 15</li>
+          <li class="flex gap-2.5"><i class="ti ti-check text-violet-400 mt-0.5" style="font-size:15px"></i> Nightly backups, kept 14 days</li>
+          <li class="flex gap-2.5"><i class="ti ti-check text-violet-400 mt-0.5" style="font-size:15px"></i> HTTPS that renews itself; updates applied for you</li>
+          <li class="flex gap-2.5"><i class="ti ti-check text-violet-400 mt-0.5" style="font-size:15px"></i> Reply within two working days</li>
+        </ul>
+        <p class="mt-5 text-xs text-zinc-500">
+          Plus $300 once to set it up: your channels connected, your team walked through it.
+        </p>
+        <a href="mailto:hello@spooldesk.net?subject=Spooldesk%20Managed"
+           class="mt-5 flex items-center justify-center gap-2 w-full py-2.5 rounded-xl font-medium
+                  bg-violet-600 hover:bg-violet-500 transition-colors">
+          <i class="ti ti-mail" style="font-size:16px"></i> Talk to us
         </a>
       </div>
 
@@ -402,10 +447,12 @@ docker compose up -d --build</code></pre>
                     bg-zinc-800 border border-zinc-700 text-zinc-300">Coming soon</div>
         <h3 class="text-lg font-medium">Cloud</h3>
         <div class="mt-3 flex items-baseline gap-1.5">
-          <span class="text-4xl font-semibold text-zinc-500">$29</span>
-          <span class="text-zinc-600 text-sm">/ month, indicative</span>
+          <span class="text-4xl font-semibold text-zinc-500">Soon</span>
         </div>
-        <p class="mt-2 text-sm text-zinc-400">We host it. You just add your bot token.</p>
+        <p class="mt-2 text-sm text-zinc-400">
+          Sign up and start, no server anywhere. Not open yet &mdash; the waitlist
+          helps set the price.
+        </p>
         <ul class="mt-6 space-y-2.5 text-sm text-zinc-400">
           <li class="flex gap-2.5"><i class="ti ti-check text-zinc-600 mt-0.5" style="font-size:15px"></i> Everything in Self-hosted</li>
           <li class="flex gap-2.5"><i class="ti ti-check text-zinc-600 mt-0.5" style="font-size:15px"></i> Your own isolated instance and database</li>
@@ -428,7 +475,7 @@ docker compose up -d --build</code></pre>
             </button>
           </div>
           <p id="waitlist-msg" class="text-xs text-zinc-600">
-            Get an email when Cloud opens. Pricing isn't final — waitlist members help set it.
+            One email when Cloud opens. Nothing else, ever.
           </p>
         </form>
       </div>
@@ -437,7 +484,7 @@ docker compose up -d --build</code></pre>
     <p class="mt-8 text-center text-sm text-zinc-500">
       Running Spooldesk for your own clients as part of IT services is fine and free.
       Reselling it as a hosted service needs a commercial licence —
-      <a href="mailto:boykokuza12@gmail.com" class="text-violet-400 hover:text-violet-300">just ask</a>.
+      <a href="mailto:hello@spooldesk.net" class="text-violet-400 hover:text-violet-300">just ask</a>.
     </p>
   </div>
 </section>
@@ -581,7 +628,7 @@ docker compose up -d --build</code></pre>
        class="hover:text-zinc-300 transition-colors">BSL 1.1</a>
     <a href="https://github.com/spooldesk/spool" target="_blank" rel="noopener"
        class="hover:text-zinc-300 transition-colors">GitHub</a>
-    <a href="mailto:boykokuza12@gmail.com" class="hover:text-zinc-300 transition-colors">Contact</a>
+    <a href="mailto:hello@spooldesk.net" class="hover:text-zinc-300 transition-colors">Contact</a>
     <span class="ml-auto text-zinc-700">© 2026 Kostiantyn Boiko</span>
   </div>
 </footer>
@@ -602,7 +649,7 @@ docker compose up -d --build</code></pre>
 
     if (!FORM_ENDPOINT) {
       window.location.href =
-        'mailto:boykokuza12@gmail.com?subject=' + encodeURIComponent('Spooldesk Cloud waitlist') +
+        'mailto:hello@spooldesk.net?subject=' + encodeURIComponent('Spooldesk Cloud waitlist') +
         '&body=' + encodeURIComponent('Please add me to the Spooldesk Cloud waitlist: ' + email);
       msg.textContent = 'Opening your email client…';
       msg.className = 'text-xs text-zinc-400';
@@ -621,7 +668,7 @@ docker compose up -d --build</code></pre>
       msg.className = 'text-xs text-emerald-400';
     } catch {
       msg.innerHTML =
-        'Could not submit — email <a class="text-violet-400" href="mailto:boykokuza12@gmail.com">boykokuza12@gmail.com</a> instead.';
+        'Could not submit — email <a class="text-violet-400" href="mailto:hello@spooldesk.net">hello@spooldesk.net</a> instead.';
       msg.className = 'text-xs text-amber-400';
     }
   });

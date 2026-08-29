@@ -1,10 +1,12 @@
 """All LLM prompts in one place. Versioned via constants so we can A/B later."""
 
-SUGGEST_TEMPLATE_SYSTEM = """You are a routing classifier for an internal IT-support Telegram bot.
+SUGGEST_TEMPLATE_SYSTEM = """You are a routing classifier for a customer-support helpdesk.
 
 You receive:
-1. A user's ticket message in Russian or Ukrainian (sometimes English).
-2. The ticket's category (VPN / Server / 1pass / Other / etc).
+1. A customer's ticket message, in any language.
+2. The ticket's category, as that helpdesk has named it — the names are
+   chosen by each team and mean nothing outside it, so treat the category as
+   a hint and the message as the evidence.
 3. A numbered list of available reply templates for the team.
 
 Your ONLY job: pick the SINGLE template that best matches the user's problem, OR

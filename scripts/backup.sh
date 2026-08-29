@@ -30,10 +30,26 @@
 set -euo pipefail
 
 DEST="${1:-./backups}"
+#: Archives older than this are deleted after a successful run. A daily
+#: backup with no retention is a disk that fills up quietly and then takes
+#: the helpdesk down with it.
+KEEP_DAYS="${BACKUP_KEEP_DAYS:-14}"
 STAMP="$(date +%Y-%m-%d-%H%M)"
 ARCHIVE="$DEST/spooldesk-$STAMP.tar.gz"
 
 cd "$(dirname "$0")/.."
+
+# This script snapshots SQLite with SQLite's own backup API. Pointed at a
+# PostgreSQL instance it would connect sqlite3 to a path that does not exist,
+# create an empty database and archive that — a backup that restores into
+# nothing, discovered on the day it is needed. Refuse instead.
+if grep -qE '^DATABASE_URL=.*(postgres|postgresql)' .env 2>/dev/null; then
+	echo "This instance runs on PostgreSQL, and this script backs up SQLite." >&2
+	echo "Use pg_dump against the database container instead:" >&2
+	echo "  docker compose exec -T postgres pg_dump -U spooldesk spooldesk | gzip > db.sql.gz" >&2
+	echo "Attachments still live in the dashboard container under /app/data/attachments." >&2
+	exit 1
+fi
 
 if ! docker compose ps --status running --services 2>/dev/null | grep -qx dashboard; then
 	echo "The dashboard container is not running; nothing to back up from." >&2
@@ -69,6 +85,13 @@ rm -f /tmp/support.db
 
 SIZE="$(du -h "$ARCHIVE" | cut -f1)"
 echo "Wrote $ARCHIVE ($SIZE)"
+
+# Only after the new archive exists. Deleting first would mean a failed run
+# leaves fewer backups than it found.
+if [ "$KEEP_DAYS" -gt 0 ] 2>/dev/null; then
+	REMOVED="$(find "$DEST" -maxdepth 1 -name 'spooldesk-*.tar.gz' -mtime "+$KEEP_DAYS" -print -delete 2>/dev/null | wc -l | tr -d ' ')"
+	[ "$REMOVED" -gt 0 ] && echo "Removed $REMOVED archive(s) older than $KEEP_DAYS days."
+fi
 echo
 echo "This is not a backup until it is somewhere else. Copy it off this"
 echo "machine — the disk holding the only copy is the disk that fails."

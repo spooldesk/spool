@@ -49,6 +49,11 @@ KEY_DEFAULT_LANGUAGE = "default_language"        # fallback / pre-pick language 
 KEY_ADMIN_NO_TAG = "admin_no_tag_usernames"      # JSON list: usernames never @-tagged in lists
 KEY_DASH_SECRET = "dash_secret_key"              # stable secret for signing dashboard session cookies
 KEY_DASH_LANGUAGE = "dash_language"              # operator dashboard UI language (en/ru)
+# Whether published articles are also served as pages on the open web. The
+# widget can read them either way; this decides whether they have a URL an
+# operator can paste into a reply and a search engine can index. Off means
+# the help centre exists only inside the chat panel.
+KEY_HELP_PUBLIC = "help_public"                  # "1" / "0"
 
 
 # ==================== Defaults ====================
@@ -57,7 +62,7 @@ _DEFAULTS: dict[str, str] = {
     KEY_CATEGORY_ADMIN_TAGS: json.dumps({}),  # no per-category tag rules out of the box
     KEY_AI_ENABLED: "1",                  # AI suggestions on by default (if key present)
     KEY_AI_DEFLECTION: "0",               # deflection is opt-in — enable from AI config
-    KEY_AI_BLACKLIST: json.dumps([]),     # empty: 1Pass opened up; nothing blocked
+    KEY_AI_BLACKLIST: json.dumps([]),     # empty: nothing withheld from the AI by default
     # Gemini 2.5 Flash list price at the time of writing. Deliberately not
     # hidden in code: prices move, and a stale one quietly inflates the result.
     KEY_AI_PRICE_IN: "0.30",
@@ -73,6 +78,10 @@ _DEFAULTS: dict[str, str] = {
     KEY_ENABLED_LANGUAGES: json.dumps(["ru", "uk", "en"]),  # all three by default
     KEY_DEFAULT_LANGUAGE: "uk",           # matches i18n.DEFAULT_LANGUAGE
     KEY_ADMIN_NO_TAG: json.dumps([]),     # nobody excluded from @-tagging by default
+    # On, because "published" already means a customer may read it, and an
+    # article nobody can link to does not deflect the ticket it was written
+    # to prevent. Turn it off for an instance whose articles are internal.
+    KEY_HELP_PUBLIC: "1",
 }
 
 
@@ -211,6 +220,17 @@ async def get_brand_name() -> str:
 
 async def set_brand_name(name: str, *, updated_by: int) -> None:
     await set_value(KEY_BRAND_NAME, (name or "").strip(), updated_by=updated_by)
+
+
+# ---- Help centre ----
+
+async def get_help_public() -> bool:
+    """Whether the help centre answers on the open web, not just in the widget."""
+    return (await get_value(KEY_HELP_PUBLIC)) == "1"
+
+
+async def set_help_public(enabled: bool, *, updated_by: int) -> None:
+    await set_value(KEY_HELP_PUBLIC, "1" if enabled else "0", updated_by=updated_by)
 
 
 # ---- Team redirect (configurable per-team routing to another bot) ----

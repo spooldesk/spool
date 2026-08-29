@@ -19,7 +19,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from src.dashboard.i18n import t as tr
 from src.database.db import db_session
-from src.services import article_service
+from src.services import article_service, settings_service
 
 router = APIRouter()
 
@@ -53,6 +53,7 @@ async def articles_list(request: Request, q: str = "", sent: str | None = None):
     rows = await article_service.for_operator(q=q)
     return templates.TemplateResponse(request, "articles_manage.html", {
         "active_page": "articles",
+        "help_public": await settings_service.get_help_public(),
         "items": [_row(a) for a in rows],
         "q": q,
         "published_count": sum(1 for a in rows if a.is_published),
@@ -119,6 +120,18 @@ async def article_save(
     )
     return RedirectResponse(
         f"/manage/articles?sent=saved#a{article_id}", status_code=303)
+
+
+@router.post("/manage/articles/public")
+async def articles_set_public(public: str = Form("0")):
+    """Whether published articles also have a page on the open web.
+
+    Lives here rather than on the settings screen because it is the publish
+    switch one scope wider, and somebody wondering who can read an article is
+    already looking at this list.
+    """
+    await settings_service.set_help_public(public == "1", updated_by=0)
+    return RedirectResponse("/manage/articles?sent=saved", status_code=303)
 
 
 @router.post("/manage/articles/{article_id}/publish")

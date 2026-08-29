@@ -2,7 +2,7 @@
 .DEFAULT_GOAL := help
 
 .PHONY: help setup up down restart build logs logs-bot logs-dash ps shell-bot \
-        prod-up prod-down prod-logs backup pg-up pg-down
+        prod-up prod-down prod-logs backup backup-daily backup-status pg-up pg-down
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -53,6 +53,12 @@ prod-logs: ## Tail logs including the proxy
 
 backup: ## Archive the database and its attachments together
 	bash scripts/backup.sh
+
+backup-daily: ## Run that archive every night (cron; pass AT=04:15 to change the time)
+	bash scripts/backup_schedule.sh $(AT)
+
+backup-status: ## Show whether a nightly backup is scheduled
+	bash scripts/backup_schedule.sh --show
 
 # ---- PostgreSQL ----------------------------------------------------------
 # Only worth it for more than one dashboard process, or an ops team that would

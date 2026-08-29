@@ -363,7 +363,8 @@ async def tickets_export_xlsx(
 ):
     """Excel export of tickets matching the same filters as /tickets.
 
-    Sensitive (1Pass-class) custom_reason is masked as in the dashboard.
+    A custom_reason from a sensitive category is masked here exactly as it
+    is in the dashboard — an export is not a way around that.
     Bodies of messages are NOT included — only headers / counts / metadata.
     """
     from openpyxl import Workbook

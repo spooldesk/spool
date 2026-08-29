@@ -19,12 +19,18 @@ TEMPLATES = ROOT / "src" / "dashboard" / "templates"
 STATIC = ROOT / "src" / "dashboard" / "static"
 
 # Prefixes worth policing: layout and sizing utilities where a missing class is
-# invisible in code review but obvious on screen. Colour and typography classes
-# are generated in bulk and rarely missing.
+# invisible in code review but obvious on screen. Plain colour classes are left
+# out because they really are generated in bulk.
 WATCHED = re.compile(
     r"^(gap|gap-x|gap-y|max-w|min-w|max-h|min-h|w|h|space-x|space-y|"
     r"grid-cols|col-span|inset|top|bottom|left|right|z)-"
 )
+
+# ...but a colour with an opacity modifier is not generated in bulk. Tailwind
+# emits `bg-emerald-500/10` only because some template asked for it, so the
+# neighbouring `/25` that nobody has used yet does not exist and renders as
+# no background at all. That is how a panel ships with its tint missing.
+WATCHED_ALPHA = re.compile(r"^(bg|border|text|from|via|to|ring|divide)-[a-z]+-\d+/\d+$")
 
 # Not Tailwind: defined by hand in app.css or used as JavaScript hooks.
 OURS = {
@@ -38,13 +44,21 @@ def _stylesheet() -> str:
             + (STATIC / "app.css").read_text(encoding="utf-8"))
 
 
+#: A Jinja expression inside a class attribute, and whatever it renders to.
+_JINJA = re.compile(r"\{\{.*?\}\}|\{%.*?%\}", re.S)
+
+
 def _class_tokens(html: str):
-    """Static class tokens only — anything Jinja builds at render time is out
-    of reach of a source-level check."""
-    for attr in re.findall(r'class="([^"]*)"', html):
-        if "{{" in attr or "{%" in attr:
-            continue
-        for token in attr.split():
+    """Every literal class token, including the ones sitting next to Jinja.
+
+    Skipping any attribute containing `{{` or `{%` used to be the rule here,
+    and it excused exactly the attributes where this bug hides: a conditional
+    class list is written once and only ever seen in one of its branches. So
+    the Jinja is cut out and the literal tokens around it are still checked.
+    What a tag renders to is still out of reach, and still not checked.
+    """
+    for attr in re.findall(r'class="([^"]*)"', html, re.S):
+        for token in _JINJA.sub(" ", attr).split():
             yield token
 
 
@@ -69,7 +83,7 @@ def test_watched_classes_are_in_the_build(template):
 
     for token in _class_tokens((TEMPLATES / template).read_text(encoding="utf-8")):
         base = token.split(":")[-1]           # strip hover:, md:, dark: …
-        if base in OURS or not WATCHED.match(base):
+        if base in OURS or not (WATCHED.match(base) or WATCHED_ALPHA.match(base)):
             continue
         if f".{_escaped(token)}" not in css and f".{_escaped(base)}" not in css:
             missing.add(token)

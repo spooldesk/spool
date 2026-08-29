@@ -1,0 +1,19 @@
+{% extends "_help_base.html" %}
+
+{% block title %}{{ a.title }} · {{ brand }}{% endblock %}
+{% block description %}{{ a.summary or a.title }}{% endblock %}
+
+{% block content %}
+  <a class="back" href="/help">&larr; All articles</a>
+
+  <h1>{{ a.title }}</h1>
+  {% if a.category %}<div class="meta">{{ a.category }}</div>{% endif %}
+
+  {#
+    Autoescaped, and that is the point. The body is prose an operator typed,
+    and an operator is one paste away from carrying a customer's HTML into
+    it. The widget renders the same field with textContent for the same
+    reason; `white-space: pre-wrap` is what keeps the line breaks they wrote.
+  #}
+  <div class="doc">{{ a.body }}</div>
+{% endblock %}
