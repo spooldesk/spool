@@ -1,0 +1,99 @@
+{% extends "app_base.html" %}
+{% block title %}{{ T.articles }}{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl">
+  <div class="flex items-start justify-between gap-4 mb-6">
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight mb-1">{{ T.m_articles_title }}</h1>
+      <p class="text-sm text-zinc-500">{{ T.m_articles_hint }}</p>
+    </div>
+    <a href="/manage/articles/new"
+       class="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand-600
+              hover:bg-brand-500 text-white text-sm font-medium whitespace-nowrap">
+      <i class="ti ti-plus" style="font-size:14px" aria-hidden="true"></i> {{ T.m_article_new }}
+    </a>
+  </div>
+
+  {% if flash_sent %}
+    <div class="mb-4 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm">
+      {% if flash_sent == 'published' %}{{ T.m_article_published }}
+      {% elif flash_sent == 'hidden' %}{{ T.m_article_hidden }}
+      {% elif flash_sent == 'deleted' %}{{ T.m_article_deleted }}
+      {% else %}{{ T.saved }}{% endif %}
+    </div>
+  {% endif %}
+
+  {# The count is the honest headline: an operator wants to know how much of
+     this a customer can actually reach, not how much exists. #}
+  <div class="flex items-center gap-3 mb-4">
+    <form method="get" action="/manage/articles" class="flex-1">
+      <input name="q" value="{{ q }}" placeholder="{{ T.search }}"
+             class="w-full px-3 py-2 rounded-lg bg-black border border-zinc-800 text-sm
+                    focus:border-brand-500 focus:outline-none text-zinc-100 placeholder:text-zinc-600">
+    </form>
+    <span class="text-xs text-zinc-500 whitespace-nowrap">
+      {{ T.m_articles_live }}: <span class="text-zinc-300 tabular-nums">{{ published_count }}</span>
+    </span>
+  </div>
+
+  {% if not items %}
+    <div class="bg-zinc-950 border border-zinc-900 rounded-xl px-5 py-10 text-center">
+      <p class="text-sm text-zinc-400">{{ T.m_articles_empty }}</p>
+      <p class="text-xs text-zinc-600 mt-2">{{ T.m_articles_empty_hint }}</p>
+    </div>
+  {% else %}
+    <div class="bg-zinc-950 border border-zinc-900 rounded-xl overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-zinc-950/80 border-b border-zinc-900">
+          <tr class="text-left text-xs uppercase tracking-wide text-zinc-500">
+            <th class="px-4 py-3">{{ T.m_article }}</th>
+            <th class="px-4 py-3 text-center">{{ T.status }}</th>
+            <th class="px-4 py-3 text-right">{{ T.m_article_views }}</th>
+            <th class="px-4 py-3 text-right">{{ T.actions }}</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-zinc-900">
+          {% for a in items %}
+            <tr id="a{{ a.id }}" class="hover:bg-zinc-900/50 {% if not a.is_published %}opacity-60{% endif %}">
+              <td class="px-4 py-3">
+                <a href="/manage/articles/{{ a.id }}/edit" class="text-zinc-100 hover:text-brand-400 font-medium">{{ a.title }}</a>
+                {% if a.summary %}<div class="text-xs text-zinc-500 mt-0.5">{{ a.summary }}</div>{% endif %}
+                <div class="text-xs text-zinc-600 mt-1 font-mono">/{{ a.slug }}{% if a.category %} · {{ a.category }}{% endif %}</div>
+              </td>
+              <td class="px-4 py-3 text-center">
+                {% if a.is_published %}
+                  <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs
+                               bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">{{ T.m_article_live }}</span>
+                {% else %}
+                  <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs
+                               bg-zinc-800 border border-zinc-700 text-zinc-400">{{ T.m_article_draft }}</span>
+                {% endif %}
+              </td>
+              <td class="px-4 py-3 text-right tabular-nums text-zinc-400">{{ a.views }}</td>
+              <td class="px-4 py-3">
+                <div class="flex items-center justify-end gap-2">
+                  <form method="post" action="/manage/articles/{{ a.id }}/publish">
+                    <input type="hidden" name="publish" value="{{ '0' if a.is_published else '1' }}">
+                    <button class="px-2.5 py-1 rounded-lg border border-zinc-800 text-xs
+                                   text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900">
+                      {{ T.m_article_hide if a.is_published else T.m_article_publish }}
+                    </button>
+                  </form>
+                  <form method="post" action="/manage/articles/{{ a.id }}/delete"
+                        onsubmit="return confirm('{{ T.m_article_delete_confirm }}')">
+                    <button class="px-2.5 py-1 rounded-lg border border-zinc-800 text-xs
+                                   text-zinc-500 hover:text-red-400 hover:border-red-500/40">
+                      {{ T.delete }}
+                    </button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

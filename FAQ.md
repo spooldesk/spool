@@ -136,6 +136,12 @@ Yes. The brand name shown to customers is a setting, and there are no
 No seat limit in the software. The practical ceiling on SQLite is set by
 write concurrency, and a team of a few operators is nowhere near it.
 
+**Is there a knowledge base?**
+Yes — articles you write in the dashboard, which customers search in the
+widget's Help tab. Self-service, so the questions that have a written answer
+stop arriving as tickets. It is deliberately plain text: an article is
+rendered exactly as typed, which is also why it cannot carry anything else.
+
 **Is there an API?**
 Not yet — webhooks and a REST API are on the roadmap. Today the integration
 points are the channels themselves and the database.

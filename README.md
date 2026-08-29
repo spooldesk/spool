@@ -77,6 +77,14 @@ One Telegram bot replaced that — and grew into a full support platform.
 - Verification, blocking, personal↔work account linking; customers in uk / ru / en
 - **CSAT**: closing asks the customer to rate 1–5 — answerable in Telegram today; the score is immutable and surfaces on the dashboard
 
+**📚 Help centre**
+- Articles customers search for themselves, in the widget — the questions with
+  a written answer stop arriving as tickets
+- Draft and published are separate states, and the Help tab stays hidden until
+  something is published
+- A read count per article, which is the only honest answer to "was writing
+  that worth it"
+
 **🤖 AI assistant (Google Gemini)**
 - Searches the internal knowledge base and suggests a solution for a new ticket
 - Suggests the best canned reply template for typical scenarios
@@ -108,9 +116,9 @@ One Telegram bot replaced that — and grew into a full support platform.
 
 **What your customers see** — one script tag on your own site:
 
-| | | |
-|---|---|---|
-| ![Widget home](demo_screenshots/13_widget_home.png) *Opens where they left off* | ![Widget messages](demo_screenshots/14_widget_messages.png) *Their own history, not just this tab* | ![Widget chat](demo_screenshots/15_widget_chat.png) *Screenshots, both directions* |
+| | | | |
+|---|---|---|---|
+| ![Widget home](demo_screenshots/13_widget_home.png) *Opens where they left off* | ![Widget help](demo_screenshots/16_widget_help.png) *Articles they can search before asking* | ![Widget messages](demo_screenshots/14_widget_messages.png) *Their own history, not just this tab* | ![Widget chat](demo_screenshots/15_widget_chat.png) *Screenshots, both directions* |
 
 **What your team sees:**
 

@@ -101,6 +101,7 @@ def _shoot_widget(browser, base: str, out) -> list[str]:
             ("13_widget_home.png", "home"),
             ("14_widget_messages.png", "list"),
             ("15_widget_chat.png", "chat"),
+            ("16_widget_help.png", "help"),
         ):
             page.goto(f"{base}/widget/frame")
             page.wait_for_load_state("networkidle")
@@ -109,6 +110,8 @@ def _shoot_widget(browser, base: str, out) -> list[str]:
             # would rather than by forcing state it would never be in.
             if view == "home":
                 page.evaluate("document.getElementById('tabHome').click()")
+            elif view == "help":
+                page.evaluate("document.getElementById('tabHelp').click()")
             elif view == "list":
                 page.evaluate("document.getElementById('tabList').click()")
             else:

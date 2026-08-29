@@ -223,6 +223,31 @@
   }
   #gate .err { font-size: 12px; color: var(--danger); }
 
+  /* ---- help ---- */
+  .search { padding: 14px 16px 10px; flex: 0 0 auto; }
+  .search input {
+    width: 100%; border: 1px solid var(--line); border-radius: 12px;
+    padding: 10px 12px; font: inherit; color: inherit; background: var(--bg);
+  }
+  .search input:focus { outline: 2px solid var(--brand); outline-offset: -1px;
+                        border-color: transparent; }
+  .art {
+    display: block; width: 100%; text-align: left; cursor: pointer;
+    padding: 13px 16px; border: 0; border-bottom: 1px solid var(--line);
+    background: transparent;
+  }
+  .art:hover { background: var(--hover); }
+  .art .t { font-weight: 600; font-size: 14px; }
+  .art .s { font-size: 13px; color: var(--muted); margin-top: 2px;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* An article body is prose a person wrote in a textarea, rendered as text.
+     Never innerHTML: it is written by an operator, but an operator who has
+     been handed a paragraph by a customer and pasted it. */
+  .doc { padding: 16px; }
+  .doc h3 { margin: 0 0 10px; font-size: 17px; }
+  .doc .text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; }
+  .doc .after { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--line); }
+
   /* ---- bottom navigation ---- */
   #tabs { display: flex; border-top: 1px solid var(--line); background: var(--bg);
           flex: 0 0 auto; padding-bottom: env(safe-area-inset-bottom); }
@@ -387,6 +412,29 @@
     </form>
   </section>
 
+  <!-- ============================ help ============================= -->
+  <section class="view" id="v-help">
+    <div class="bar">
+      <button type="button" class="icon" id="helpBack" aria-label="Back" style="display:none">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M15 18l-6-6 6-6"/>
+        </svg>
+      </button>
+      <span class="title" id="helpTitle">Help</span>
+      <button type="button" class="icon right" data-close aria-label="Close">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M18 6 6 18M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+    <div class="search" id="helpSearchWrap">
+      <input id="helpQ" type="search" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="scroll" id="helpBody"></div>
+  </section>
+
   <nav id="tabs">
     <button type="button" data-view="home" id="tabHome">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -394,6 +442,14 @@
         <path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>
       </svg>
       <span id="tabHomeLabel">Home</span>
+    </button>
+    <button type="button" data-view="help" id="tabHelp" style="display:none">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="9"/>
+        <path d="M9.6 9a2.5 2.5 0 1 1 3.2 3c-.6.3-.8.7-.8 1.3v.4M12 17h.01"/>
+      </svg>
+      <span id="tabHelpLabel">Help</span>
     </button>
     <button type="button" data-view="list" id="tabList">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -475,15 +531,17 @@
 
   function show(name) {
     view = name;
-    ["home", "list", "chat"].forEach(function (v) {
+    ["home", "help", "list", "chat"].forEach(function (v) {
       document.getElementById("v-" + v).classList.toggle("on", v === name);
     });
     document.getElementById("tabHome").classList.toggle("on", name === "home");
+    document.getElementById("tabHelp").classList.toggle("on", name === "help");
     document.getElementById("tabList").classList.toggle("on", name === "list");
     // The chat has its own back button and needs every pixel it can get for
     // the keyboard; the tab bar would be a third row of chrome.
     tabs.classList.toggle("off", name === "chat");
     if (name === "home" || name === "list") loadConversations();
+    if (name === "help") askHelp(document.getElementById("helpQ").value);
     if (name === "chat") box.focus();
   }
 
@@ -493,6 +551,11 @@
     });
   });
   document.getElementById("tabHome").addEventListener("click", function () { show("home"); });
+  document.getElementById("tabHelp").addEventListener("click", function () {
+    document.getElementById("helpBack").style.display = "none";
+    document.getElementById("helpSearchWrap").style.display = "";
+    show("help");
+  });
   document.getElementById("tabList").addEventListener("click", function () { show("list"); });
   document.getElementById("back").addEventListener("click", function () { show("list"); });
   document.getElementById("ctaHome").addEventListener("click", openActive);
@@ -801,6 +864,107 @@
     if (strings.ask_identity && !token() && !identity.email && !identity.external_id) ask();
     if (token()) tick();
   }
+
+  // ---------------------------------------------------------------- help
+
+  var helpTimer = null;
+
+  function askHelp(query) {
+    var body = document.getElementById("helpBody");
+    fetch(BASE + "/widget/api/help?q=" + encodeURIComponent(query || ""))
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        body.replaceChildren();
+        var found = (data && data.articles) || [];
+        if (!found.length) {
+          var none = document.createElement("div");
+          none.className = "empty";
+          none.textContent = query
+            ? (strings.help_no_hits || "No articles match that.")
+            : (strings.help_none || "Nothing here yet");
+          body.appendChild(none);
+        }
+        found.forEach(function (a) {
+          var row = document.createElement("button");
+          row.type = "button";
+          row.className = "art";
+          var t = document.createElement("div");
+          t.className = "t";
+          t.textContent = a.title;
+          row.appendChild(t);
+          if (a.summary) {
+            var sm = document.createElement("div");
+            sm.className = "s";
+            sm.textContent = a.summary;
+            row.appendChild(sm);
+          }
+          row.addEventListener("click", function () { openArticle(a.slug); });
+          body.appendChild(row);
+        });
+        // The way out of a help centre that did not help. Without it the
+        // only exit is a tab bar, and someone who has just failed to find
+        // an answer should not have to go looking for the way to ask.
+        var ask = document.createElement("button");
+        ask.type = "button";
+        ask.className = "art";
+        ask.style.borderBottom = "0";
+        ask.style.color = "var(--brand)";
+        ask.textContent = strings.help_still || "Still stuck? Message us";
+        ask.addEventListener("click", openActive);
+        body.appendChild(ask);
+      })
+      .catch(function () { /* offline; the next keystroke tries again */ });
+  }
+
+  function openArticle(slug) {
+    var body = document.getElementById("helpBody");
+    document.getElementById("helpSearchWrap").style.display = "none";
+    document.getElementById("helpBack").style.display = "";
+    fetch(BASE + "/widget/api/help/" + encodeURIComponent(slug))
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (a) {
+        body.replaceChildren();
+        if (!a) return;
+        var doc = document.createElement("div");
+        doc.className = "doc";
+        var h = document.createElement("h3");
+        h.textContent = a.title;
+        var text = document.createElement("div");
+        text.className = "text";
+        // textContent, not innerHTML. The body is prose an operator typed,
+        // and an operator is one paste away from carrying a customer's HTML
+        // into it.
+        text.textContent = a.body;
+        var after = document.createElement("div");
+        after.className = "after";
+        var ask = document.createElement("button");
+        ask.type = "button";
+        ask.className = "cta";
+        ask.textContent = strings.help_still || "Still stuck? Message us";
+        ask.addEventListener("click", openActive);
+        after.appendChild(ask);
+        doc.appendChild(h);
+        doc.appendChild(text);
+        doc.appendChild(after);
+        body.appendChild(doc);
+        body.scrollTop = 0;
+      })
+      .catch(function () { /* offline */ });
+  }
+
+  document.getElementById("helpBack").addEventListener("click", function () {
+    document.getElementById("helpBack").style.display = "none";
+    document.getElementById("helpSearchWrap").style.display = "";
+    askHelp(document.getElementById("helpQ").value);
+  });
+
+  document.getElementById("helpQ").addEventListener("input", function (e) {
+    // Debounced: one request per pause, not per keystroke. The endpoint's
+    // rate limit is generous enough for typing, and this is why.
+    if (helpTimer) clearTimeout(helpTimer);
+    var value = e.target.value;
+    helpTimer = setTimeout(function () { askHelp(value); }, 250);
+  });
 
   // ---------------------------------------------------------------- poll
 
@@ -1117,6 +1281,11 @@
     document.getElementById("attachBtn").title = info.attach || "";
     document.getElementById("listTitle").textContent = info.nav_messages || "Messages";
     document.getElementById("tabHomeLabel").textContent = info.nav_home || "Home";
+    document.getElementById("tabHelpLabel").textContent = info.nav_help || "Help";
+    document.getElementById("helpTitle").textContent = info.nav_help || "Help";
+    document.getElementById("helpQ").placeholder = info.help_search || "";
+    // Only when there is something to find. See the comment on the endpoint.
+    document.getElementById("tabHelp").style.display = info.help ? "" : "none";
     document.getElementById("tabListLabel").textContent = info.nav_messages || "Messages";
     document.getElementById("ctaHomeLabel").textContent = info.contact || "Contact support";
     document.getElementById("ctaListLabel").textContent = info.contact || "Contact support";

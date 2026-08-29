@@ -45,7 +45,12 @@ from src.channels.widget import (
 )
 from src.dashboard.auth import _client_ip
 from src.database.db import db_session
-from src.services import file_store, intake_service, settings_service
+from src.services import (
+    article_service,
+    file_store,
+    intake_service,
+    settings_service,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +91,13 @@ _UPLOAD_CHUNK = 64 * 1024
 #: Disk is the scarce thing here, so this is stricter than the message limit.
 _UPLOADS_PER_SESSION = 10
 _UPLOAD_WINDOW = 300.0
+
+#: Help is public documentation, so it is meant to be read freely — this is
+#: not access control, it is a ceiling on how fast one address can make the
+#: database answer. Generous, because a visitor typing into a search box
+#: fires one of these per keystroke pause.
+_HELP_PER_IP = 90
+_HELP_WINDOW = 60.0
 
 #: What the browser is allowed to be told a file is. Never the Content-Type
 #: the uploader sent: a stored file that comes back as text/html is stored
@@ -707,6 +719,67 @@ async def thread(
     }, origin)
 
 
+@router.get("/api/help")
+async def help_articles(
+    request: Request,
+    q: str = "",
+) -> JSONResponse:
+    """Published articles, searched or listed.
+
+    The only endpoint here that answers without a session, because a visitor
+    reading documentation has not started a conversation and should not have
+    to in order to find out whether they need one.
+    """
+    origin = await _allowed_origin(request)
+    if (off := await _off(origin)) is not None:
+        return off
+
+    if _too_many(f"h:{_client_ip(request)}", _HELP_PER_IP, _HELP_WINDOW):
+        return _json({"error": "slow_down"}, origin,
+                     status.HTTP_429_TOO_MANY_REQUESTS)
+
+    query = _clean(q, 120)
+    found = (await article_service.search(query) if query
+             else await article_service.published())
+    return _json({
+        "query": query,
+        "articles": [
+            {"slug": a.slug, "title": a.title, "summary": a.summary}
+            for a in found
+        ],
+    }, origin)
+
+
+@router.get("/api/help/{slug}")
+async def help_article(slug: str, request: Request) -> JSONResponse:
+    """One article, and the fact that somebody read it.
+
+    Addressed by slug rather than id. An id would let anyone walk the table
+    by counting, and would say how many drafts there are by how many numbers
+    answer 404 — which is not a secret worth much, and is free not to leak.
+    """
+    origin = await _allowed_origin(request)
+    if (off := await _off(origin)) is not None:
+        return off
+
+    if _too_many(f"h:{_client_ip(request)}", _HELP_PER_IP, _HELP_WINDOW):
+        return _json({"error": "slow_down"}, origin,
+                     status.HTTP_429_TOO_MANY_REQUESTS)
+
+    article = await article_service.read(_clean(slug, 120))
+    if article is None:
+        # Unpublished and non-existent answer identically. An article being
+        # written is not something a stranger should be able to detect.
+        return _json({"error": "not_found"}, origin, status.HTTP_404_NOT_FOUND)
+
+    return _json({
+        "slug": article.slug,
+        "title": article.title,
+        "summary": article.summary,
+        "body": article.body,
+    }, origin)
+
+
 @router.get("/api/hello")
 async def hello(request: Request) -> JSONResponse:
     """What the bubble needs before anyone has said anything.
@@ -773,6 +846,16 @@ async def hello(request: Request) -> JSONResponse:
         "new_chat": dash_t("wg_new_chat"),
         "back": dash_t("wg_back"),
         "you": dash_t("wg_you"),
+        # Whether to draw the Help tab at all. A tab leading to an empty
+        # search box does not read as "nothing written yet", it reads as
+        # "the search is broken", so it stays away until there is something
+        # to find.
+        "help": await article_service.count_published() > 0,
+        "nav_help": dash_t("wg_nav_help"),
+        "help_search": dash_t("wg_help_search"),
+        "help_none": dash_t("wg_help_none"),
+        "help_no_hits": dash_t("wg_help_no_hits"),
+        "help_still": dash_t("wg_help_still"),
     }, origin)
 
 

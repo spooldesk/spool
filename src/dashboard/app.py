@@ -36,6 +36,7 @@ from src.dashboard.routes import ai as ai_routes
 from src.dashboard.routes import broadcast as broadcast_routes
 from src.dashboard.routes import manage_ai as manage_ai_routes
 from src.dashboard.routes import manage_settings as manage_settings_routes
+from src.dashboard.routes import manage_articles as manage_articles_routes
 from src.dashboard.routes import manage_templates as manage_templates_routes
 from src.dashboard.routes import overview as overview_routes
 from src.dashboard.routes import preferences as preferences_routes
@@ -302,6 +303,9 @@ app.include_router(reports_routes.router, dependencies=_ADMIN_UP)
 # Broadcast reaches every user at once and cannot be undone — admin+ only.
 app.include_router(broadcast_routes.router, dependencies=_ADMIN_UP)
 app.include_router(manage_templates_routes.router, dependencies=_ADMIN_UP)
+# Everything a customer can read is written behind this router, so it sits
+# with the other admin-and-up pages rather than with the operator ones.
+app.include_router(manage_articles_routes.router, dependencies=_ADMIN_UP)
 app.include_router(manage_settings_routes.router, dependencies=_ADMIN_UP)
 app.include_router(manage_ai_routes.router, dependencies=_ADMIN_UP)
 app.include_router(admin_users_routes.router, dependencies=_OWNER_ONLY)

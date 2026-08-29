@@ -376,6 +376,52 @@ class ReplyTemplate(Base):
     team: Mapped["Team"] = relationship(back_populates="templates")
 
 
+class Article(Base):
+    """A help article, written for customers rather than for operators.
+
+    The one table in this schema whose rows are meant to be read by people
+    who have not signed in, which is what `is_published` is for: an article
+    is invisible until somebody decides it is finished. There is no draft
+    that is "nearly public".
+
+    Not team-scoped, unlike templates. A customer arriving at a help centre
+    has no team, and asking them to pick one before searching would be
+    exposing an internal structure as a navigation aid.
+    """
+
+    __tablename__ = "articles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    #: Stable, human-readable, and unique: it goes in a URL a customer may
+    #: bookmark or an operator may paste into a reply, so renaming the title
+    #: must not break the link.
+    slug: Mapped[str] = mapped_column(String(120), unique=True, nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    #: A sentence for the search results list. Kept separate from the body
+    #: rather than truncating it, because the first line of an article is
+    #: usually context and the useful summary is written on purpose.
+    summary: Mapped[str] = mapped_column(String(300), default="", nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    #: Reuses the ticket categories, so a help centre and a queue agree about
+    #: what the subjects are. Stored as a name, like Ticket.category, because
+    #: renaming a category should not silently re-file old articles.
+    category: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    is_published: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, index=True
+    )
+    #: How many times a customer opened it. The only number here that says
+    #: whether writing it was worth the afternoon.
+    view_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_by: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
+
+
 class SavedView(Base):
     """A filter set an operator named and kept.
 

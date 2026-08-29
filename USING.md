@@ -88,6 +88,32 @@ zero. Worth knowing before reading that number as the whole picture.
 
 ---
 
+## The help centre
+
+Articles customers read for themselves, in the widget's Help tab. Written in
+**Help centre** in the sidebar.
+
+Nothing is visible until you publish it — there is no half-published state,
+and the list says which is which. The Help tab does not appear in the widget
+at all until at least one article is published, because an empty search box
+reads as a broken search rather than as an empty shelf.
+
+Two things worth knowing while writing:
+
+**The summary is worth writing.** It is what somebody reads in the search
+results, and a truncated first line is usually the sentence that sets up the
+answer rather than the answer.
+
+**A published article's URL is frozen.** Editing the title of a draft renames
+its link; editing a published one does not, because that link may be in a
+customer's bookmarks or in a reply a colleague sent last month.
+
+The **Reads** column is the only evidence you will get about whether writing
+one was worth the afternoon. An article nobody opens is either badly titled
+or answering a question nobody has.
+
+---
+
 ## Working faster
 
 **Saved views** are a set of filters with a name — "my unassigned", "billing

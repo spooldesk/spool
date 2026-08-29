@@ -554,6 +554,42 @@ async def main() -> None:
         # (name, category, customer lines, the answer they got). The reply
         # matters for the photograph: a panel showing three questions and no
         # answers is a picture of support not happening.
+        HELP_ARTICLES = [
+            ("How do I get a refund?", "how-do-i-get-a-refund",
+             "Refunds reach the original card in about five working days.",
+             "Open Billing in your account and choose the payment you want "
+             "refunded.\n\nRefunds go back to the card that paid and take "
+             "about five working days to appear. If that card has expired we "
+             "can send it elsewhere, but we have to verify you first.\n\n"
+             "Longer than that? Message us with the order number.",
+             "Billing", True),
+            ("Checkout says gateway timeout", "checkout-gateway-timeout",
+             "Usually the card issuer rate-limiting, not a declined card.",
+             "A timeout at the payment step almost always means your bank has "
+             "rate-limited the card rather than declined it.\n\nWait ten "
+             "minutes and try once more. If it happens again, tell us the last "
+             "four digits and we will raise the limit on our side.",
+             "Other", True),
+            ("Changing the email on your account", "changing-your-email",
+             "You can do this yourself; we only step in if you are locked out.",
+             "Settings \u2192 Account \u2192 Email. We send a confirmation link "
+             "to the new address, and the old one keeps working until you click "
+             "it.\n\nIf you no longer have access to the old address, message "
+             "us and we will verify you another way.",
+             "Access", True),
+            ("Turning on two-factor authentication", "two-factor-authentication",
+             "Any authenticator app works. Keep the recovery codes.",
+             "Settings \u2192 Security \u2192 Two-factor. Scan the code with any "
+             "authenticator app.\n\nSave the recovery codes somewhere that is "
+             "not the same phone. Losing both the phone and the codes means we "
+             "have to verify you from scratch, which is slow on purpose.",
+             "Access", True),
+            ("Pricing changes for the team plan", "pricing-changes-team-plan",
+             "Not announced yet \u2014 draft.",
+             "Draft. Do not publish until legal have read it.",
+             "Billing", False),
+        ]
+
         WIDGET_VISITORS = [
             ("Nora Bell", "Billing", [
                 "Does the team plan bill per operator or per mailbox?",
@@ -650,6 +686,19 @@ async def main() -> None:
                     ))
                 widget_tickets += 1
         await session.flush()
+
+        # A help centre, so the widget's third tab exists in the demo and in
+        # the screenshots. One draft among them: the difference between what
+        # is written and what is published is the point of the feature.
+        from src.database.models import Article
+
+        for order, (title, slug, summary, body, category, live) in enumerate(HELP_ARTICLES):
+            session.add(Article(
+                slug=slug, title=title, summary=summary, body=body,
+                category=category, is_published=live, sort_order=order,
+                view_count=random.randint(4, 90) if live else 0,
+                created_at=NOW - timedelta(days=random.randint(10, 60)),
+            ))
 
         for row in ai_rows:
             session.add(row)
