@@ -1357,10 +1357,12 @@ async def users_with_ticket_stats(
     must still be listed — that is exactly the person an operator is looking
     for when they need to assign a team.
 
-    Default order is most recent activity. SQLite sorts NULLs last under DESC,
-    so people who have never written sink to the bottom on their own; the id
-    tiebreak then puts the newest registrations first, which is the useful
-    order when the list is filtered down to those very people.
+    Default order is most recent activity, with people who have never written
+    last — said explicitly rather than relied upon. SQLite happens to sort
+    NULLs last under DESC and PostgreSQL sorts them first, so the behaviour
+    this list was built around was an accident of the engine. The id tiebreak
+    then puts the newest registrations first, which is the useful order when
+    the list is filtered down to those very people.
 
     `unassigned_only` narrows to users with no team; `team_id` to one team.
     """
@@ -1373,7 +1375,10 @@ async def users_with_ticket_stats(
 
     order_col = USER_SORTS.get(sort, USER_SORTS[DEFAULT_USER_SORT])
     order_dir = "ASC" if str(direction).lower() == "asc" else "DESC"
-    order_sql = f"{order_col}{order_dir}, u.id DESC"
+    # NULLS LAST in both directions: "has never written" belongs at the
+    # bottom whichever way the column is sorted, and the engines disagree
+    # about where a NULL goes by default.
+    order_sql = f"{order_col}{order_dir} NULLS LAST, u.id DESC"
 
     async with db_session() as session:
         # One round-trip: aggregate tickets per user
