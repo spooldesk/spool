@@ -156,11 +156,14 @@ points are the channels themselves and the database.
 No, by choice. One active ticket per customer; writing again continues it.
 Their history is visible to them in the widget and to you in the dashboard.
 
-**Can widget customers rate the support they got?**
-Yes — the rating buttons appear in the panel and a tap records it, the same
-as in Telegram. Slack still gets the question as text with no way to click,
-so those conversations are absent from the CSAT figure rather than counted
-as bad ones.
+**Can customers rate the support they got on every channel?**
+On the three that can draw a button — Telegram, the widget and Slack — yes,
+and a tap records it. Email gets the choices written into the message,
+because there is nothing in an email to click, so email conversations are
+absent from the CSAT figure rather than counted as bad ones.
+
+Slack needs its Interactivity request URL set for this; DEPLOY.md has the
+step. Without it the buttons appear and a tap fails.
 
 **Email as a channel?**
 Yes. Point it at a mailbox you already have — IMAP in, SMTP out, no third

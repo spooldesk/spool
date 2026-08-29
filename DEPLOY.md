@@ -523,12 +523,16 @@ right up until somebody forged an event at it.
    Slack verifies it immediately, so the instance has to be running and
    reachable first. Then subscribe the bot to `message.im` and
    `message.channels`.
-7. Invite the app into whichever channels it should watch.
+7. **Interactivity & Shortcuts** → on, request URL
+   `https://your-host/slack/interactive`. This is what makes the rating
+   buttons work; without it a customer taps a star and Slack shows them a red
+   failure, which looks like a broken product rather than a missing setting.
+8. Invite the app into whichever channels it should watch.
 
-The request URL is also shown on the Settings page once the credentials are
-in place, filled in with the host that served the page — that is the one to
-copy, because the commonest setup failure is pointing Slack at the wrong
-host.
+Both request URLs are also shown on the Settings page once the credentials
+are in place, filled in with the host that served the page — those are the
+ones to copy, because the commonest setup failure is pointing Slack at the
+wrong host.
 
 **What arrives where.** A direct message is one person, so they become the
 customer. A shared channel is a room: the room is the customer, one ticket

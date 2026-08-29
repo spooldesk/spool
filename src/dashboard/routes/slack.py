@@ -24,8 +24,10 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import logging
 import time
+import urllib.parse
 from collections import OrderedDict
 
 from fastapi import APIRouter, Request, Response, status
@@ -154,6 +156,107 @@ def _is_ours(event: dict) -> bool:
     Missing either one is an infinite loop with a bill attached.
     """
     return bool(event.get("bot_id")) or event.get("subtype") == "bot_message"
+
+
+@router.post("/interactive")
+async def interactive(request: Request) -> Response:
+    """Somebody clicked a button we sent into Slack.
+
+    Slack posts these as a form field holding URL-encoded JSON, not as a JSON
+    body — a detail with no reason behind it that costs an afternoon the
+    first time.
+
+    The signature is the security boundary here, not the payload: it proves
+    Slack sent this. What the payload then has to prove is that the button
+    belongs to the conversation it claims, which is what the channel check
+    below is for — otherwise anybody in any Slack channel the app is in could
+    rate somebody else's ticket by replaying a value.
+    """
+    raw = await request.body()
+    if not _signature_ok(
+        raw,
+        request.headers.get("X-Slack-Request-Timestamp", ""),
+        request.headers.get("X-Slack-Signature", ""),
+    ):
+        return Response(status_code=status.HTTP_401_UNAUTHORIZED)
+
+    form = urllib.parse.parse_qs(raw.decode("utf-8", "replace"))
+    try:
+        body = json.loads((form.get("payload") or ["{}"])[0])
+    except json.JSONDecodeError:
+        return Response(status_code=status.HTTP_400_BAD_REQUEST)
+
+    actions = body.get("actions") or []
+    if not actions:
+        # A shortcut, a modal, a view submission — none of which this
+        # instance sends, so none of which it has to answer.
+        return Response(status_code=status.HTTP_200_OK)
+
+    action = actions[0]
+    payload = (action.get("value") or action.get("action_id") or "").strip()
+    conversation = ((body.get("channel") or {}).get("id") or "").strip()
+    message_ts = (
+        (body.get("message") or {}).get("ts")
+        or (body.get("container") or {}).get("message_ts")
+        or ""
+    ).strip()
+
+    if not (payload and conversation and message_ts):
+        return Response(status_code=status.HTTP_200_OK)
+
+    await _apply_slack_choice(conversation, message_ts, payload)
+    # Always 200, and quickly. Slack shows the user a red warning on anything
+    # else, and "your rating was refused" is not a useful thing to tell
+    # somebody who clicked a star.
+    return Response(status_code=status.HTTP_200_OK)
+
+
+async def _apply_slack_choice(conversation: str, message_ts: str, payload: str) -> None:
+    """Honour a click, if the message and the conversation agree about whose
+    it is."""
+    from sqlalchemy import select
+
+    from src.channels.identity import address_of
+    from src.database.db import db_session
+    from src.database.models import Message as MessageRecord, Ticket, User
+    from src.services import choice_service
+
+    try:
+        async with db_session() as session:
+            row = (await session.execute(
+                select(MessageRecord)
+                .where(MessageRecord.channel_ref == message_ts)
+                .order_by(MessageRecord.id.desc())
+            )).scalars().first()
+            if row is None or not row.options:
+                # Already answered, or a message from before this existed.
+                return
+
+            ticket = await session.get(Ticket, row.ticket_id)
+            customer = await session.get(User, ticket.user_id) if ticket else None
+            if customer is None:
+                return
+
+            if address_of(customer) != conversation:
+                # The button was clicked somewhere other than the conversation
+                # it belongs to. Slack's signature proves the request is real,
+                # not that the person is entitled to this ticket.
+                logger.warning(
+                    f"Slack choice rejected: message #{row.id} belongs to "
+                    f"another conversation"
+                )
+                return
+
+            outcome = await choice_service.apply(
+                session, message_id=row.id, payload=payload,
+                user_tg_id=customer.tg_id,
+            )
+            await session.commit()
+
+        if outcome.ok:
+            logger.info(f"Slack choice honoured on ticket #{ticket.id}")
+    except Exception as e:  # noqa: BLE001 — never fail a Slack callback
+        logger.error(f"Could not apply a Slack choice: {e}", exc_info=True)
 
 
 @router.post("/events")

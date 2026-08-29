@@ -77,7 +77,7 @@ One Telegram bot replaced that — and grew into a full support platform.
 - The channel is a fact about a ticket, not a separate inbox to check: one board, one search, one set of reports
 - **Attachments both directions on all of them** — drag a file in, or paste a screenshot straight into the box
 - Verification, blocking, personal↔work account linking; customers in uk / ru / en
-- **CSAT**: closing asks the customer to rate 1–5, tappable in the widget and in Telegram; the score is immutable and surfaces on the dashboard
+- **CSAT**: closing asks the customer to rate 1–5 — tappable in Telegram, the widget and Slack; the score is immutable and surfaces on the dashboard
 
 **📚 Help centre**
 - Articles customers search for themselves, in the widget — the questions with

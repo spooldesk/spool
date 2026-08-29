@@ -315,6 +315,10 @@ async def settings_page(request: Request, sent: str | None = None):
         # whether Slack is wired up, not what its secrets are.
         "slack_ready": slack_channel.is_configured(),
         "slack_url": f'{str(request.base_url).rstrip("/")}/slack/events',
+        # Built from the request for the same reason as the events URL: the
+        # commonest setup failure is pointing Slack at the wrong host, and
+        # buttons that do nothing look like a bug in the product.
+        "slack_interactive_url": f'{str(request.base_url).rstrip("/")}/slack/interactive',
         "widget_snippet": (
             f'<script src="{str(request.base_url).rstrip("/")}/widget/embed.js" async></script>'
         ),

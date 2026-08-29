@@ -335,6 +335,15 @@
                    text-zinc-300 font-mono overflow-x-auto whitespace-nowrap">{{ slack_url }}</code>
       <p class="text-xs text-zinc-500 mt-1">{{ T.sl_url_hint }}</p>
 
+      {# The second URL, and the one people forget. Without it the rating
+         buttons appear and a tap fails, which reads as a broken product
+         rather than a setting nobody filled in. #}
+      <div class="text-xs text-zinc-500 mt-3 mb-1">{{ T.sl_interactive_url }}</div>
+      <code class="block px-3 py-2 rounded-lg bg-black border border-zinc-800 text-xs
+                   text-zinc-300 font-mono overflow-x-auto"
+            style="white-space:nowrap">{{ slack_interactive_url }}</code>
+      <p class="text-xs text-zinc-500 mt-1">{{ T.sl_interactive_hint }}</p>
+
       <div class="text-xs text-zinc-500 mt-3 mb-1">{{ T.sl_scopes }}</div>
       <code class="block px-3 py-2 rounded-lg bg-black border border-zinc-800 text-xs
                    text-zinc-300 font-mono overflow-x-auto whitespace-nowrap"

@@ -81,10 +81,9 @@ Closing tells the customer, on whatever channel they wrote from, and asks
 them to rate it 1–5. The score is immutable and shows up on the dashboard;
 nobody is asked twice.
 
-Widget customers can tap the rating too. Slack customers get the question
-in words and cannot answer it by clicking, so their scores are missing from
-the figure rather than counted as bad ones — worth knowing if most of your
-volume is there.
+The rating is tappable on every channel that can draw a button: Telegram,
+the widget, and Slack. Email gets the choices written into the text, because
+there is nothing in an email to click.
 
 ---
 
