@@ -9,9 +9,9 @@ does on its own. [DEPLOY.md](DEPLOY.md) covers getting it running;
 ## What a ticket is
 
 One conversation with one customer, on whichever channel they wrote from.
-The widget, Slack and Telegram all arrive in the same queue and are answered
-the same way — the channel is a fact about a ticket, not a separate inbox to
-check.
+The widget, email, Slack and Telegram all arrive in the same queue and are
+answered the same way — the channel is a fact about a ticket, not a separate
+inbox to check.
 
 A customer has **one active ticket at a time**. Writing again continues it
 rather than opening a second one; a new ticket starts once the old one is

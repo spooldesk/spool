@@ -72,6 +72,8 @@ One Telegram bot replaced that — and grew into a full support platform.
 - **Website widget** — one script tag; visitors write from the page they are on and come back later to a conversation that is still there
 - **Telegram** — a bot, with each ticket its own forum topic in your admin group
 - **Slack** — a client's DM or a channel shared with their whole team
+- **Email** — a mailbox you already have; IMAP in, SMTP out, quoted history
+  trimmed and autoresponders ignored
 - The channel is a fact about a ticket, not a separate inbox to check: one board, one search, one set of reports
 - **Attachments both directions on all of them** — drag a file in, or paste a screenshot straight into the box
 - Verification, blocking, personal↔work account linking; customers in uk / ru / en

@@ -157,7 +157,9 @@ CSAT figure is built from Telegram ratings, and widget conversations are
 absent from it rather than counted as bad ones.
 
 **Email as a channel?**
-Not yet. Widget, Slack and Telegram today.
+Yes. Point it at a mailbox you already have — IMAP in, SMTP out, no third
+party and no DNS changes. Quoted history is trimmed out of replies, and
+autoresponders are recognised and ignored rather than answered.
 
 **What language do customers see?**
 Theirs, when the channel tells us — Telegram supplies it and the widget reads

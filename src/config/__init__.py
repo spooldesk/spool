@@ -53,6 +53,38 @@ class Settings:
     #: wrote — and everything to the left of it is whatever the client sent.
     trusted_proxy_hops: int = 0
 
+    # ---- Email channel --------------------------------------------------
+    #: The support mailbox: the From address, and usually the login too.
+    email_address: str = ""
+    email_password: str = ""
+    email_imap_host: str = ""
+    email_imap_port: int = 993
+    email_smtp_host: str = ""
+    email_smtp_port: int = 587
+    #: When the login differs from the address, which some hosts insist on.
+    email_login: str = ""
+    #: What a customer sees in their inbox next to the message.
+    email_from_name: str = "Support"
+    email_subject: str = "Re: your support request"
+
+    @property
+    def has_email(self) -> bool:
+        """All four load-bearing parts, or none of it.
+
+        Half a mailbox is the failure worth designing against: SMTP without
+        IMAP answers mail nobody can send it, and IMAP without SMTP collects
+        tickets it cannot reply to. Both look configured from the outside.
+        """
+        return bool(
+            self.email_address and self.email_password
+            and self.email_imap_host and self.email_smtp_host
+        )
+
+    @property
+    def email_user(self) -> str:
+        """What to log in as. The address, unless the host wants otherwise."""
+        return self.email_login or self.email_address
+
     @property
     def has_telegram(self) -> bool:
         """Both halves or neither.
@@ -109,6 +141,27 @@ def load_settings() -> Settings:
             "Group ids are negative; copy it exactly."
         )
 
+    def _port(name: str, fallback: int) -> int:
+        raw = (os.getenv(name) or "").strip()
+        try:
+            return int(raw) if raw else fallback
+        except ValueError:
+            logger.warning(f"{name} is not a number ({raw!r}); using {fallback}")
+            return fallback
+
+    email_address = (os.getenv("EMAIL_ADDRESS") or "").strip()
+    email_password = os.getenv("EMAIL_PASSWORD") or ""
+    email_imap_host = (os.getenv("EMAIL_IMAP_HOST") or "").strip()
+    email_smtp_host = (os.getenv("EMAIL_SMTP_HOST") or "").strip()
+
+    # Said once, at load, rather than discovered when the first customer
+    # writes in and nothing happens.
+    if email_address and not (email_password and email_imap_host and email_smtp_host):
+        logger.warning(
+            "EMAIL_ADDRESS is set but the mailbox is incomplete — email stays "
+            "off. It needs EMAIL_PASSWORD, EMAIL_IMAP_HOST and EMAIL_SMTP_HOST."
+        )
+
     gemini_api_key = os.getenv("GEMINI_API_KEY") or None
     gemini_model = os.getenv("GEMINI_MODEL") or "gemini-2.5-flash"
 
@@ -120,4 +173,13 @@ def load_settings() -> Settings:
         gemini_api_key=gemini_api_key,
         gemini_model=gemini_model,
         trusted_proxy_hops=hops,
+        email_address=email_address,
+        email_password=email_password,
+        email_imap_host=email_imap_host,
+        email_imap_port=_port("EMAIL_IMAP_PORT", 993),
+        email_smtp_host=email_smtp_host,
+        email_smtp_port=_port("EMAIL_SMTP_PORT", 587),
+        email_login=(os.getenv("EMAIL_LOGIN") or "").strip(),
+        email_from_name=(os.getenv("EMAIL_FROM_NAME") or "Support").strip(),
+        email_subject=(os.getenv("EMAIL_SUBJECT") or "Re: your support request").strip(),
     )

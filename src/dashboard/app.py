@@ -388,10 +388,29 @@ async def _startup() -> None:
         from src.channels.slack import SlackChannel, is_configured
         if is_configured():
             ensure_channel(SlackChannel())
+        from src.channels.email import EmailChannel, is_configured as mail_ready
+        if mail_ready():
+            ensure_channel(EmailChannel())
     except Exception as e:
         # A missing token should not stop the dashboard from serving pages;
         # the reply box will report the failure when someone actually sends.
         logger.warning(f"Telegram channel unavailable in this process: {e}")
+
+    # The mailbox is polled from here rather than from the bot, because the
+    # bot needs a Telegram token and an instance may not have one. A helpdesk
+    # on the widget and email alone is a supported configuration; a mail loop
+    # in a process that might never start would quietly make it not one.
+    try:
+        from src.channels.email import is_configured as mail_ready
+        if mail_ready():
+            import asyncio
+
+            from src.services import email_ingest
+            app.state.mail_task = asyncio.create_task(email_ingest.poll_loop())
+        else:
+            logger.info("No mailbox configured — running without an email channel")
+    except Exception as e:  # noqa: BLE001 — never block startup over this
+        logger.warning(f"Could not start mailbox polling: {e}")
 
     # Expose brand_name as a Jinja2 global so every template can reference
     # {{ g_brand_name }} without each route having to pass it explicitly.

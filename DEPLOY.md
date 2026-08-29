@@ -275,6 +275,10 @@ that fails.
 | `TRUSTED_PROXY_HOPS` | no | How many proxies are in front (default 0 = ignore `X-Forwarded-For`) |
 | `ATTACHMENTS_DIR` | no | Where widget attachments are kept (default `./data/attachments`) |
 | `GEMINI_API_KEY` | no | Turns the AI suggestions on |
+| `EMAIL_ADDRESS` | no | Support mailbox — needs the three below too |
+| `EMAIL_PASSWORD` | no | Mailbox password, ideally an app password |
+| `EMAIL_IMAP_HOST` | no | Where incoming mail is read from |
+| `EMAIL_SMTP_HOST` | no | Where replies are sent through |
 | `SLACK_BOT_TOKEN` | no | Slack channel — needs `SLACK_SIGNING_SECRET` too |
 | `SLACK_SIGNING_SECRET` | no | Proves an incoming event really came from Slack |
 
@@ -443,6 +447,59 @@ second or two it should appear in the group. If nothing arrives:
   and add it again**; the setting only takes effect on re-join.
 - **`chat not found`** in the log — the chat id is wrong, or the group became
   a supergroup after you copied it.
+
+---
+
+## Email
+
+A mailbox you already have becomes a channel. Nothing is registered with a
+third party, no DNS record changes, and no inbound webhook to expose: the
+dashboard reads the inbox over IMAP once a minute and replies over SMTP.
+
+Four variables, all required together:
+
+```
+EMAIL_ADDRESS=support@yoursite.com
+EMAIL_PASSWORD=an-app-password
+EMAIL_IMAP_HOST=imap.yoursite.com
+EMAIL_SMTP_HOST=smtp.yoursite.com
+```
+
+Ports default to 993 for IMAP and 587 for SMTP; set `EMAIL_SMTP_PORT=465` if
+your host wants implicit TLS. `EMAIL_LOGIN` covers the hosts whose username
+is not the address.
+
+**Use an app password, not the account password.** Gmail and most others
+require one for IMAP anyway, and it means the credential sitting in `.env`
+can be revoked without changing anybody's login.
+
+### What arrives, and what does not
+
+An email becomes a ticket, its sender becomes a customer identified by their
+address, and attachments are kept — a mail server will not hand the same MIME
+part over twice, so they are stored the same way the widget's are and
+included in the backup archive.
+
+Replies continue the conversation the same way every channel here works: by
+who sent them, not by threading headers. So a customer writing again lands on
+their open ticket, and a reply to a conversation you closed last month opens
+a new one.
+
+**Quoted history is trimmed.** Without it the third message in a thread is
+four screens of your own words with "yes, thanks" on top. The trimming is a
+heuristic, so the untrimmed original is kept alongside it.
+
+**Machines do not get tickets.** Out-of-office replies, mailing lists,
+bounces and copies of your own outgoing mail are all recognised and skipped.
+This is not tidiness: without it, an autoresponder and a helpdesk will write
+to each other until somebody notices.
+
+### What it cannot do
+
+There is no unsend — a message is on someone else's server the moment it is
+accepted, so the delete button is not offered on email tickets rather than
+offered and lying. The CSAT rating is spelled into the closing message as
+text, because email has no buttons, and cannot be answered by clicking.
 
 ---
 
