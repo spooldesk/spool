@@ -1,0 +1,73 @@
+# TLS, and the small number of things a reverse proxy in front of a helpdesk
+# has to get right.
+#
+# Caddy rather than nginx + certbot for one reason: certificates. This is a
+# product people self-host, and "run certbot, add a cron job, remember to
+# reload nginx" is three steps that each fail silently ninety days later.
+# Caddy obtains and renews on its own, and the only thing to configure is the
+# domain.
+#
+#   echo "SPOOLDESK_DOMAIN=help.yoursite.com" >> .env
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Certificates live on the `caddy_data` volume. Keep it: losing it means
+# asking Let's Encrypt for everything again, and they rate-limit that.
+
+{$SPOOLDESK_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+
+	# Framing is refused everywhere except the widget, whose entire job is to
+	# run inside someone else's page. A blanket X-Frame-Options would break
+	# the one feature that must be embeddable — and the widget is not left
+	# unprotected by its absence: which sites may embed it is chosen per
+	# instance in Settings, and enforced by the frame-ancestors header the
+	# application sets on that route.
+	@app not path /widget/*
+	header @app X-Frame-Options DENY
+
+	# Two uploaders, two limits, and `handle` rather than two `request_body`
+	# directives because handle blocks are mutually exclusive: the first
+	# matching one runs and the rest do not. Written as bare directives the
+	# ordering between them is Caddy's to decide, and the wrong answer is a
+	# silent 413 on operator replies.
+	#
+	# Operator replies are behind a login and may carry ten files, which the
+	# application caps at 100 MB in total. Everything else includes the
+	# widget's upload endpoint, open to the internet and capped at 10 MB a
+	# file — 12 covers that plus multipart overhead and nothing more.
+	@operator path /tickets/*
+	handle @operator {
+		request_body {
+			max_size 110MB
+		}
+		reverse_proxy dashboard:8000
+	}
+
+	handle {
+		request_body {
+			max_size 12MB
+		}
+		reverse_proxy dashboard:8000
+	}
+
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 10MB
+			roll_keep 5
+		}
+	}
+}
+
+# Caddy appends the client address to X-Forwarded-For rather than replacing
+# it, so whatever the client sent is still in there to the left of it.
+# TRUSTED_PROXY_HOPS=1, set in docker-compose.prod.yml, is what tells the
+# application to read the last entry — the one written here — and ignore the
+# rest. The two settings are one decision: putting anything else in front
+# (Cloudflare, a load balancer) means raising both.

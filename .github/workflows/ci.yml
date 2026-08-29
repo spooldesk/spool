@@ -35,6 +35,44 @@ jobs:
           print(f"demo seed OK: {tickets} tickets")
           EOF
 
+  # The same tests, on the other engine. SQLite and PostgreSQL differ in a
+  # handful of places — case-insensitive search, the in-place migrations, the
+  # WAL pragma — and those are supposed to be the only ones. A claim like that
+  # is worth exactly as much as a job that checks it.
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: spooldesk_test
+          POSTGRES_USER: spooldesk
+          POSTGRES_PASSWORD: ci-not-a-secret
+        ports:
+          - 5432:5432
+        # Without this the steps start while the server is still coming up,
+        # and the failure looks like a bug in the application.
+        options: >-
+          --health-cmd "pg_isready -U spooldesk -d spooldesk_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run the suite against PostgreSQL
+        env:
+          TEST_DATABASE_URL: postgresql+asyncpg://spooldesk:ci-not-a-secret@localhost:5432/spooldesk_test
+        run: pytest -q
+
   # The image is what actually ships, and until now nothing built it before a
   # deploy did. A dependency that loses its wheel breaks here now, on a pull
   # request, instead of on the production host.
@@ -52,7 +90,8 @@ jobs:
             -e DATABASE_URL="sqlite+aiosqlite:////tmp/ci.db" \
             -e ACCESS_PASSWORD="ci-password" \
             -p 8000:8000 spooldesk:ci \
-            python -m uvicorn src.dashboard.app:app --host 0.0.0.0 --port 8000
+            python -m uvicorn src.dashboard.app:app --host 0.0.0.0 --port 8000 \
+            --no-proxy-headers
           for i in $(seq 1 30); do
             if curl -fsS http://localhost:8000/healthz > /dev/null; then
               echo "dashboard is up"
@@ -64,3 +103,66 @@ jobs:
 
       - name: No Telegram was needed for any of that
         run: docker logs ci-dash 2>&1 | grep -q "without a Telegram channel"
+
+  # The files that only run in production, checked somewhere other than
+  # production. A Caddyfile with a typo in it fails at the moment a server
+  # gets its first certificate, which is the worst moment available.
+  deployment:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: The Caddyfile parses
+        run: |
+          docker run --rm \
+            -e SPOOLDESK_DOMAIN=help.example.com \
+            -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
+
+      # Both compose files declare `env_file: .env`, and compose refuses to
+      # merge without it. The file is gitignored, so CI has to make one — and
+      # copying the example is the useful way to do it, because a broken
+      # .env.example then fails here too.
+      - name: An environment to merge against
+        run: cp .env.example .env
+
+      - name: The production overlay merges
+        run: |
+          SPOOLDESK_DOMAIN=help.example.com \
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml config \
+            > /tmp/merged.yml
+
+      - name: And it does not expose the dashboard directly
+        # The overlay's whole premise. If this ever publishes on 0.0.0.0 the
+        # dashboard is reachable over plain HTTP next to the TLS one, and
+        # nobody would notice because both work.
+        run: |
+          python3 - <<'PY'
+          import yaml
+          cfg = yaml.safe_load(open("/tmp/merged.yml"))
+          dash = cfg["services"]["dashboard"]
+          for port in dash.get("ports", []):
+              host = port.get("host_ip", "0.0.0.0")
+              assert host in ("127.0.0.1", "::1"), (
+                  f"dashboard is published on {host}, which the TLS proxy "
+                  f"was supposed to be the only way in"
+              )
+          assert dash["environment"]["TRUSTED_PROXY_HOPS"] == "1", (
+              "the proxy is in front but the app was not told, so every "
+              "rate limit keyed on an address counts everyone as one visitor"
+          )
+          assert dash["environment"]["DASH_COOKIE_SECURE"] == "true"
+          print("production overlay looks right")
+          PY
+
+      - name: The PostgreSQL overlay merges, alone and with the rest
+        run: |
+          POSTGRES_PASSWORD=ci-not-a-secret \
+            docker compose -f docker-compose.yml -f docker-compose.postgres.yml \
+            config --quiet
+          POSTGRES_PASSWORD=ci-not-a-secret SPOOLDESK_DOMAIN=help.example.com \
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+            -f docker-compose.postgres.yml config --quiet
+
+      - name: The backup script is valid shell
+        run: bash -n scripts/backup.sh

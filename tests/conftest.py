@@ -14,7 +14,15 @@ from pathlib import Path
 # --- environment first (before importing src anywhere) ---
 _TMPDIR = Path(tempfile.mkdtemp(prefix="supbot_tests_"))
 os.environ["TESTING"] = "1"  # db.py switches to NullPool
-os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{(_TMPDIR / 'test.db').as_posix()}"
+# SQLite unless something says otherwise. CI runs this same suite a second
+# time with TEST_DATABASE_URL pointing at a PostgreSQL service, which is what
+# makes "supports PostgreSQL" a fact rather than an intention — the engine
+# differences live in src/database/dialect.py and nothing but running the
+# tests on both proves they are all of them.
+os.environ["DATABASE_URL"] = (
+    os.environ.get("TEST_DATABASE_URL")
+    or f"sqlite+aiosqlite:///{(_TMPDIR / 'test.db').as_posix()}"
+)
 os.environ["BOT_TOKEN"] = "1000000:TEST-not-a-real-token"
 os.environ["ADMIN_CHAT_ID"] = "-1001000000000"
 os.environ["ACCESS_PASSWORD"] = "test-password-123"

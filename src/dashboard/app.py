@@ -30,11 +30,13 @@ from src.dashboard.auth import (
     verify_shared_password,
 )
 from src.dashboard.csrf import CSRFMiddleware, csrf_context, csrf_protect
+from src.dashboard.proxy import ProxyHeaders
 from src.dashboard.routes import admin_users as admin_users_routes
 from src.dashboard.routes import ai as ai_routes
 from src.dashboard.routes import broadcast as broadcast_routes
 from src.dashboard.routes import manage_ai as manage_ai_routes
 from src.dashboard.routes import manage_settings as manage_settings_routes
+from src.dashboard.routes import manage_articles as manage_articles_routes
 from src.dashboard.routes import manage_templates as manage_templates_routes
 from src.dashboard.routes import overview as overview_routes
 from src.dashboard.routes import preferences as preferences_routes
@@ -92,6 +94,12 @@ except Exception:
     TEMPLATES.env.globals["g_asset_v"] = "1"
 
 app = FastAPI(title="Spooldesk", docs_url=None, redoc_url=None)
+# Outermost, because everything below it — CSRF, the rate limits, the base URL
+# the embed snippet is built from — reads a client address and a scheme that
+# this is responsible for having corrected first. Uvicorn's own version of
+# this is switched off (`--no-proxy-headers`); two of them disagreeing is how
+# the widget's per-address limit quietly stopped working.
+app.add_middleware(ProxyHeaders)
 # CSRF: issues the token cookie and exposes it to templates. Validation happens
 # per-route via the csrf_protect dependency on authenticated routers + /login.
 app.add_middleware(CSRFMiddleware)
@@ -295,6 +303,9 @@ app.include_router(reports_routes.router, dependencies=_ADMIN_UP)
 # Broadcast reaches every user at once and cannot be undone — admin+ only.
 app.include_router(broadcast_routes.router, dependencies=_ADMIN_UP)
 app.include_router(manage_templates_routes.router, dependencies=_ADMIN_UP)
+# Everything a customer can read is written behind this router, so it sits
+# with the other admin-and-up pages rather than with the operator ones.
+app.include_router(manage_articles_routes.router, dependencies=_ADMIN_UP)
 app.include_router(manage_settings_routes.router, dependencies=_ADMIN_UP)
 app.include_router(manage_ai_routes.router, dependencies=_ADMIN_UP)
 app.include_router(admin_users_routes.router, dependencies=_OWNER_ONLY)
@@ -377,10 +388,29 @@ async def _startup() -> None:
         from src.channels.slack import SlackChannel, is_configured
         if is_configured():
             ensure_channel(SlackChannel())
+        from src.channels.email import EmailChannel, is_configured as mail_ready
+        if mail_ready():
+            ensure_channel(EmailChannel())
     except Exception as e:
         # A missing token should not stop the dashboard from serving pages;
         # the reply box will report the failure when someone actually sends.
         logger.warning(f"Telegram channel unavailable in this process: {e}")
+
+    # The mailbox is polled from here rather than from the bot, because the
+    # bot needs a Telegram token and an instance may not have one. A helpdesk
+    # on the widget and email alone is a supported configuration; a mail loop
+    # in a process that might never start would quietly make it not one.
+    try:
+        from src.channels.email import is_configured as mail_ready
+        if mail_ready():
+            import asyncio
+
+            from src.services import email_ingest
+            app.state.mail_task = asyncio.create_task(email_ingest.poll_loop())
+        else:
+            logger.info("No mailbox configured — running without an email channel")
+    except Exception as e:  # noqa: BLE001 — never block startup over this
+        logger.warning(f"Could not start mailbox polling: {e}")
 
     # Expose brand_name as a Jinja2 global so every template can reference
     # {{ g_brand_name }} without each route having to pass it explicitly.

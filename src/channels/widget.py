@@ -24,11 +24,13 @@ in the clear lets anyone who reads it walk into strangers' conversations.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import logging
 import secrets
 from collections.abc import Sequence
 
 from src.channels.base import Capabilities, Delivery, Option
+from src.services import file_store
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +56,57 @@ def address_for(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
+#: What the host signs, and what it must not be. The signature covers the
+#: identifier only — never the display name — because the name is decoration
+#: and the identifier is the thing an operator would act on. Signing both
+#: would mean a site could not correct a typo in someone's name without
+#: re-issuing the signature, and would tempt them to stop signing at all.
+def identity_subject(email: str | None, external_id: str | None) -> str:
+    """The one string a signature is over.
+
+    The host's own id wins when there is one: it is stable, and an email
+    address changes. A site that passes both signs the id.
+    """
+    return (external_id or "").strip() or (email or "").strip().lower()
+
+
+def sign_identity(secret: str, subject: str) -> str:
+    """The signature a host's *server* computes. Never their browser.
+
+    Published in the setup instructions as the one line a customer adds to
+    their backend. If this is ever computed in page JavaScript the secret is
+    in the page, and the whole mechanism becomes an elaborate way of
+    believing whatever a visitor says.
+    """
+    return hmac.new(secret.encode(), subject.encode(), hashlib.sha256).hexdigest()
+
+
+def verify_identity(secret: str, claimed: str | None, subject: str) -> bool:
+    """Whether `claimed` really is this instance's signature over `subject`.
+
+    Fails closed on every missing piece. No secret means no host has agreed
+    to vouch for anyone, and answering True there would turn "we are not
+    using this feature" into "everyone is verified".
+    """
+    if not secret or not claimed or not subject:
+        return False
+    return hmac.compare_digest(sign_identity(secret, subject), claimed.strip())
+
+
+def looks_like_email(value: str) -> bool:
+    """A shape check, not a validity check, and the distinction is the point.
+
+    Nothing here is confirming the address belongs to anyone — that is what
+    the signature is for. This only keeps a paragraph of prose out of a field
+    an operator will read as an address and possibly click.
+    """
+    value = (value or "").strip()
+    if not value or len(value) > 320 or any(c.isspace() for c in value):
+        return False
+    local, sep, domain = value.rpartition("@")
+    return bool(sep and local and "." in domain and not domain.startswith("."))
+
+
 class WidgetChannel:
     """Delivery by transcript. The page asks; there is nothing to push."""
 
@@ -61,7 +114,19 @@ class WidgetChannel:
     caps = Capabilities(
         unsend=True,
         unsend_by_row=True,
-        files=False,
+        # We keep the bytes ourselves. Every other channel hands back a
+        # reference and stores the file for us; a browser cannot, so this is
+        # the one adapter that owns a store — see src/services/file_store.py.
+        files=True,
+        # True, and this time the panel really can. The choices are stored on
+        # the message that offered them (Message.options) and the panel draws
+        # them from the transcript, which is the only memory a channel like
+        # this has — Telegram keeps a keyboard attached to a message and
+        # remembers which button was which; a list of rows does not.
+        #
+        # It said True once before while `send_text` silently dropped the
+        # options, which is the combination this flag exists to prevent: a
+        # message asking for a rating with every way of giving one hidden.
         buttons=True,
         typing=False,
         # Nothing reaches a visitor who has closed the tab. Worth declaring
@@ -81,13 +146,24 @@ class WidgetChannel:
     async def send_file(
         self, address: str, *, filename: str, content: bytes, caption: str | None = None
     ) -> Delivery:
-        # Declared as unsupported in `caps`, so nothing should reach here.
-        # Answering honestly anyway beats a traceback if something does.
-        return Delivery.failed("e_no_files_on_channel")
+        """Keep the bytes; the page will come and ask for them.
+
+        Like `send_text`, nothing is pushed. The difference is that a file has
+        to survive until the visitor next opens the panel, which may be
+        tomorrow, so it goes to disk rather than being handed to an API that
+        would have held it for us.
+        """
+        try:
+            ref = file_store.put(content)
+        except OSError as e:  # noqa: BLE001 — a full or read-only disk
+            logger.error(f"Could not store an attachment for {address}: {e}")
+            return Delivery.failed("e_send_failed", str(e))
+        # No message ref: there is no second copy of this anywhere to address.
+        # The file ref is what `fetch_file` will want back.
+        return Delivery(ok=True, ref=None, file_ref=ref)
 
     async def fetch_file(self, ref: str) -> bytes | None:
-        # Nothing can arrive, so nothing can be fetched. See `caps.files`.
-        return None
+        return file_store.get(ref)
 
     async def unsend(self, address: str, ref: str) -> bool:
         # `delete_for_user` marks the row, and the page stops rendering it on

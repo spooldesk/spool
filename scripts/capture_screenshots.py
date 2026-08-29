@@ -45,6 +45,90 @@ SHOTS = [
     ("12_login.png",              "/login",           "dark",  760),
 ]
 
+# The panel's real size on a desktop, from the loader's own stylesheet. Shot
+# at the size it is actually used at rather than a convenient one — a widget
+# photographed at 1440px wide is a photograph of something nobody has.
+WIDGET_VIEWPORT = {"width": 400, "height": 680}
+
+#: One of the visitors scripts/seed_demo_data.py creates. Their session token
+#: is the string their address was hashed from, so the panel can be handed one
+#: and will find the conversation already waiting.
+DEMO_VISITOR = "demo-session-Marta Kern"
+
+
+def _enable_widget(db) -> None:
+    """Turn the widget on in the demo database.
+
+    It is off until someone chooses it, which is right for a real instance and
+    unhelpful for a camera: the endpoints answer 404 and the panel is a blank
+    page. Written straight to the settings table because the alternative is
+    booting the whole application twice.
+    """
+    import sqlite3
+
+    con = sqlite3.connect(db)
+    try:
+        con.execute(
+            "INSERT INTO app_settings (key, value, updated_at) "
+            "VALUES ('widget_enabled', '1', datetime('now')) "
+            "ON CONFLICT(key) DO UPDATE SET value = '1'"
+        )
+        con.commit()
+    finally:
+        con.close()
+
+
+def _shoot_widget(browser, base: str, out) -> list[str]:
+    """The three screens a visitor sees, in the order they meet them."""
+    # Dark, explicitly. The panel follows prefers-color-scheme, and a
+    # headless browser defaults to light — so these came out as three bright
+    # slabs on a landing page that is black, which reads as a screenshot of
+    # somebody else's product. The dashboard shots pick their theme the same
+    # way, through localStorage; this one has no setting to pick, only the
+    # visitor's own preference, so the camera has to state it.
+    page = browser.new_page(viewport=WIDGET_VIEWPORT, device_scale_factor=2,
+                            color_scheme="dark")
+    written: list[str] = []
+    try:
+        # The token has to be on the origin before the panel loads, or it
+        # starts as a first-time visitor and there is nothing to photograph.
+        page.goto(f"{base}/widget/frame")
+        page.evaluate(
+            "t => localStorage.setItem('spooldesk.session', t)", DEMO_VISITOR
+        )
+
+        for name, view in (
+            ("13_widget_home.png", "home"),
+            ("14_widget_messages.png", "list"),
+            ("15_widget_chat.png", "chat"),
+            ("16_widget_help.png", "help"),
+        ):
+            page.goto(f"{base}/widget/frame")
+            page.wait_for_load_state("networkidle")
+            # The panel decides its own opening view from whether there is a
+            # session, so each frame is reached by clicking the way a visitor
+            # would rather than by forcing state it would never be in.
+            if view == "home":
+                page.evaluate("document.getElementById('tabHome').click()")
+            elif view == "help":
+                page.evaluate("document.getElementById('tabHelp').click()")
+            elif view == "list":
+                page.evaluate("document.getElementById('tabList').click()")
+            else:
+                page.evaluate("document.getElementById('tabList').click()")
+                page.wait_for_timeout(400)
+                page.evaluate("document.querySelector('#convos .convo').click()")
+            # Long enough for the conversation list, and for an attachment to
+            # come back through the endpoint that checks the session and be
+            # turned into a blob.
+            page.wait_for_timeout(1200)
+            page.screenshot(path=str(out / name))
+            written.append(name)
+            print(f"  {name:<28} widget  ({view})")
+    finally:
+        page.close()
+    return written
+
 
 def _wait_for_port(port: int, timeout: float = 40.0) -> bool:
     deadline = time.time() + timeout
@@ -73,6 +157,7 @@ def main() -> int:
     if not db.exists():
         print("the seed did not produce demo_support.db")
         return 1
+    _enable_widget(db)
 
     env = {
         **os.environ,
@@ -122,8 +207,9 @@ def main() -> int:
                 page.screenshot(path=str(OUT / name))
                 page.close()
                 print(f"  {name:<28} {path}  ({theme})")
+            widget = _shoot_widget(browser, BASE, OUT)
             browser.close()
-        print(f"\nwrote {len(SHOTS)} files to {OUT.relative_to(ROOT)}")
+        print(f"\nwrote {len(SHOTS) + len(widget)} files to {OUT.relative_to(ROOT)}")
         return 0
     finally:
         server.terminate()

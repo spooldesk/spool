@@ -39,6 +39,30 @@ class _Bot:
         self.sent.append(text)
 
 
+async def _another_operator() -> int:
+    """A second, real operator account.
+
+    Tests used to say `assigned_to=op + 999` for "somebody else's ticket",
+    which works only because SQLite does not check foreign keys by default.
+    PostgreSQL does, and so does this suite now — and a real row says what
+    the test means rather than standing in for it.
+    """
+    from src.database.models import AdminUser
+
+    async with db_session() as session:
+        colleague = AdminUser(
+            email=f"colleague-{next_tg_id()}@local",
+            password_hash="not-a-real-hash",
+            name="A Colleague",
+            role="operator",
+            is_active=True,
+        )
+        session.add(colleague)
+        await session.flush()
+        await session.commit()
+        return colleague.id
+
+
 async def _overdue_ticket(*, minutes_ago: int, assigned_to: int | None = None) -> int:
     async with db_session() as session:
         team = Team(name=f"sla-{next_tg_id()}")
@@ -109,7 +133,7 @@ async def test_returning_to_the_pool_unassigns(initialized_db):
     """On a small team that is what escalation means: whoever claimed it has
     not got to it, so stop hiding it from everyone else."""
     await _arm(notify=False, return_to_pool=True)
-    tid = await _overdue_ticket(minutes_ago=900, assigned_to=4242)
+    tid = await _overdue_ticket(minutes_ago=900, assigned_to=await _another_operator())
 
     result = await sla_service.run_once(None)
     assert result["returned"] >= 1

@@ -33,6 +33,30 @@ async def _owner_id() -> int:
         )).scalar_one()
 
 
+async def _another_operator() -> int:
+    """A second, real operator account.
+
+    Tests used to say `assigned_to=op + 999` for "somebody else's ticket",
+    which works only because SQLite does not check foreign keys by default.
+    PostgreSQL does, and so does this suite now — and a real row says what
+    the test means rather than standing in for it.
+    """
+    from src.database.models import AdminUser
+
+    async with db_session() as session:
+        colleague = AdminUser(
+            email=f"colleague-{next_tg_id()}@local",
+            password_hash="not-a-real-hash",
+            name="A Colleague",
+            role="operator",
+            is_active=True,
+        )
+        session.add(colleague)
+        await session.flush()
+        await session.commit()
+        return colleague.id
+
+
 async def _waiting_ticket(*, minutes_ago: int, assigned_to: int | None = None,
                           answered: bool = False) -> int:
     """A ticket whose last message is from the customer, i.e. owed an answer."""
@@ -81,7 +105,7 @@ async def test_a_colleagues_ticket_is_not_yours_to_take(initialized_db):
     """Offering it is how a queue starts causing the collisions it exists to
     prevent."""
     op = await _owner_id()
-    theirs = await _waiting_ticket(minutes_ago=900, assigned_to=op + 999)
+    theirs = await _waiting_ticket(minutes_ago=900, assigned_to=await _another_operator())
 
     assert theirs not in [t for t, _ in await queries._queue_rows(op, "open")]
     assert theirs in [t for t, _ in await queries._queue_rows(op, "all")]

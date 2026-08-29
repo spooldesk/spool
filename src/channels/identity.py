@@ -82,6 +82,9 @@ async def create_customer(
     username: str | None = None,
     language: str | None = None,
     team_id: int | None = None,
+    email: str | None = None,
+    external_id: str | None = None,
+    identity_verified: bool = False,
 ) -> User:
     """Register a customer reachable on `channel` at `address`.
 
@@ -97,6 +100,8 @@ async def create_customer(
         user = User(
             tg_id=int(address), channel=DEFAULT, channel_user_id=address,
             username=username, language=language, team_id=team_id,
+            email=email, external_id=external_id,
+            identity_verified=identity_verified,
             is_verified=True, is_active=True,
         )
         session.add(user)
@@ -111,6 +116,8 @@ async def create_customer(
         user = User(
             tg_id=key - attempt, channel=channel, channel_user_id=address,
             username=username, language=language, team_id=team_id,
+            email=email, external_id=external_id,
+            identity_verified=identity_verified,
             is_verified=True, is_active=True,
         )
         session.add(user)

@@ -203,9 +203,17 @@ _fail_log: dict[str, list[float]] = {}
 
 
 def _client_ip(request: Request) -> str:
-    fwd = request.headers.get("x-forwarded-for")
-    if fwd:
-        return fwd.split(",")[0].strip()
+    """Who to hold responsible for this request.
+
+    Every rate limit here is keyed on the answer, so this is not a detail:
+    getting it wrong does not weaken those limits, it removes them.
+
+    No header is read. `request.client` is whatever the socket said, unless
+    src/dashboard/proxy.py replaced it — which happens only when the
+    deployment has declared how many proxies are in front. Keeping the
+    decision in one place is the point: it used to be made here *and* in
+    uvicorn's own middleware, and the two disagreed.
+    """
     return request.client.host if request.client else "unknown"
 
 

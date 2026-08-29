@@ -1,7 +1,8 @@
 # Convenience commands. Requires Docker + Docker Compose v2.
 .DEFAULT_GOAL := help
 
-.PHONY: help setup up down restart build logs logs-bot logs-dash ps shell-bot
+.PHONY: help setup up down restart build logs logs-bot logs-dash ps shell-bot \
+        prod-up prod-down prod-logs backup pg-up pg-down
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -35,3 +36,31 @@ ps: ## Show running services
 
 shell-bot: ## Open a shell in the bot container
 	docker compose exec bot /bin/sh
+
+# ---- production ----------------------------------------------------------
+# Everything below adds the TLS proxy. Needs SPOOLDESK_DOMAIN in .env and its
+# DNS record already pointing here.
+PROD := -f docker-compose.yml -f docker-compose.prod.yml
+
+prod-up: ## Start with TLS in front (needs SPOOLDESK_DOMAIN)
+	docker compose $(PROD) up -d --build
+
+prod-down: ## Stop the production stack
+	docker compose $(PROD) down
+
+prod-logs: ## Tail logs including the proxy
+	docker compose $(PROD) logs -f
+
+backup: ## Archive the database and its attachments together
+	bash scripts/backup.sh
+
+# ---- PostgreSQL ----------------------------------------------------------
+# Only worth it for more than one dashboard process, or an ops team that would
+# rather run the database themselves. Needs POSTGRES_PASSWORD in .env.
+PG := -f docker-compose.yml -f docker-compose.postgres.yml
+
+pg-up: ## Start with PostgreSQL instead of SQLite
+	docker compose $(PG) up -d --build
+
+pg-down: ## Stop the PostgreSQL stack
+	docker compose $(PG) down

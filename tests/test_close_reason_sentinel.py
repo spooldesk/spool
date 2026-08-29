@@ -11,6 +11,7 @@ from sqlalchemy import select, text
 from src.dashboard import queries
 from src.dashboard.i18n import set_active_language
 from src.database.db import db_session, engine, init_db
+from src.database.dialect import is_sqlite
 from src.database.models import Team, Ticket, User
 from src.services import close_reason_service as crs
 
@@ -79,8 +80,21 @@ async def test_export_renders_the_sentinel_too(initialized_db):
     assert "Custom option" in row["closure_categories"]
 
 
+@pytest.mark.skipif(
+    not is_sqlite(str(engine.url)),
+    reason="the rewrite is part of the SQLite in-place migration, which a "
+           "PostgreSQL database does not run — it has no legacy to rewrite",
+)
 async def test_legacy_value_is_migrated(initialized_db):
-    """A DB written before the rename must come out clean after init_db()."""
+    """A DB written before the rename must come out clean after init_db().
+
+    Asserts on the *stored* form, which is where the engines part company:
+    SQLAlchemy escapes non-ASCII into `\u0421` and SQLite keeps that text
+    verbatim, which is exactly what the migration matches on. PostgreSQL
+    parses JSON into a value and hands back a list, so there is no escaped
+    text to find — and no legacy row to fix either, because create_all builds
+    a current schema on a database with no history.
+    """
     tid = await _closed_ticket(["Свой вариант", "VPN"], tg_id=980003)
 
     async with engine.begin() as conn:

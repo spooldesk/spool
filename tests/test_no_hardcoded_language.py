@@ -40,6 +40,11 @@ ALLOWED = {
     #   and the prompt teaches the model what an acknowledgement looks like in
     #   the languages users actually write in.
     "src/ai/prompts.py",
+    #   The mail parser recognises the line a client puts above a quoted
+    #   reply — "…написал:" as well as "…wrote:". These are what other
+    #   people's software emits, so translating them would stop the quoted
+    #   history being trimmed and put four screens of it in every ticket.
+    "src/channels/email_parse.py",
 }
 
 # Where user-visible text actually gets produced.

@@ -405,6 +405,42 @@ async def set_widget_origins(raw: str, *, updated_by: int = 0) -> None:
     await set_value(KEY_WIDGET_ORIGINS, (raw or "").strip(), updated_by=updated_by)
 
 
+KEY_WIDGET_ASK_IDENTITY = "widget_ask_identity"   # "1" = ask before the first message
+KEY_WIDGET_IDENTITY_SECRET = "widget_identity_secret"  # signs identities the host vouches for
+
+
+async def get_widget_ask_identity() -> bool:
+    """Whether to ask a visitor who they are before their first message.
+
+    Off by default, and that default is a real trade-off rather than
+    caution: every field in front of the box costs conversations that would
+    otherwise have been started. A site with two support requests a week
+    wants the name; a site drowning in them wants the message first and the
+    name never.
+    """
+    return (await get_value(KEY_WIDGET_ASK_IDENTITY, "0")) == "1"
+
+
+async def set_widget_ask_identity(on: bool, *, updated_by: int = 0) -> None:
+    await set_value(KEY_WIDGET_ASK_IDENTITY, "1" if on else "0", updated_by=updated_by)
+
+
+async def get_widget_identity_secret() -> str:
+    """The shared secret a host site signs its logged-in visitors with.
+
+    Empty means nobody is signing anything, and every identity the widget
+    reports is therefore something a visitor typed. That is a perfectly
+    normal way to run this — it is simply the difference between "says they
+    are" and "is", and the ticket page says which one it is looking at.
+    """
+    return (await get_value(KEY_WIDGET_IDENTITY_SECRET, "")).strip()
+
+
+async def set_widget_identity_secret(value: str, *, updated_by: int = 0) -> None:
+    await set_value(KEY_WIDGET_IDENTITY_SECRET, (value or "").strip()[:200],
+                    updated_by=updated_by)
+
+
 async def get_widget_greeting() -> str:
     """The opening line, or empty to use the translated default."""
     return (await get_value(KEY_WIDGET_GREETING, "")).strip()

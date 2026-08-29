@@ -10,6 +10,11 @@
   from a CDN is a widget that fails on any page with a strict CSP, and
   those are exactly the pages worth having as customers.
 
+  Three views in one document, not three documents. Switching screens must
+  not cost a round trip on a network that is already someone's mobile
+  connection, and the alternative — reloading the frame per view — would
+  also drop the poll timer and the session every time.
+
   It follows the visitor's own light/dark preference rather than the host
   site's, because the host site has no way to tell us and guessing wrong
   looks broken either way. Matching the operating system is at least a
@@ -17,69 +22,267 @@
 -->
 <style>
   :root {
-    --bg: #ffffff; --panel: #f4f4f5; --text: #18181b; --muted: #71717a;
-    --line: #e4e4e7; --brand: #7c5cff; --brand-text: #ffffff; --mine: #7c5cff;
-    --mine-text: #ffffff; --theirs: #ffffff;
+    --bg: #ffffff; --panel: #f6f6f7; --text: #18181b; --muted: #71717a;
+    --line: #e4e4e7; --brand: #7c5cff; --brand-2: #5b3df0; --brand-text: #ffffff;
+    --mine: #7c5cff; --mine-text: #ffffff; --theirs: #ffffff;
+    --card: #ffffff; --hover: #f1f1f3; --danger: #e11d48;
+    --shadow: 0 1px 2px rgba(0,0,0,.06), 0 8px 24px rgba(0,0,0,.06);
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #0c0c0e; --panel: #18181b; --text: #f4f4f5; --muted: #a1a1aa;
-      --line: #27272a; --theirs: #1f1f23;
+      --bg: #0c0c0e; --text: #f4f4f5; --muted: #a1a1aa;
+      --line: #27272a; --theirs: #1f1f23; --card: #16161a; --hover: #1f1f23;
+      --panel: #141417; --danger: #fb7185;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
     }
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
   body {
-    display: flex; flex-direction: column; background: var(--bg); color: var(--text);
+    background: var(--bg); color: var(--text);
     font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    -webkit-font-smoothing: antialiased;
+    -webkit-font-smoothing: antialiased; overflow: hidden;
   }
+  button { font: inherit; color: inherit; }
 
-  header {
-    display: flex; align-items: center; gap: 10px; padding: 14px 16px;
+  /* ---- the shell ---- */
+  #app { display: flex; flex-direction: column; height: 100%; }
+  .view { display: none; flex: 1 1 auto; min-height: 0; flex-direction: column; }
+  .view.on { display: flex; }
+
+  .bar {
+    display: flex; align-items: center; gap: 10px; padding: 14px 14px;
     border-bottom: 1px solid var(--line); background: var(--bg); flex: 0 0 auto;
   }
-  header .mark {
-    width: 30px; height: 30px; border-radius: 15px; background: var(--brand);
+  .bar .title { font-weight: 600; font-size: 16px; }
+  .icon {
+    border: 0; background: transparent; color: var(--muted); cursor: pointer;
+    padding: 6px; border-radius: 8px; line-height: 0; flex: 0 0 auto;
+  }
+  .icon:hover { background: var(--hover); color: var(--text); }
+  .icon.right { margin-left: auto; }
+  .mark {
+    width: 32px; height: 32px; border-radius: 16px;
+    background: linear-gradient(140deg, var(--brand), var(--brand-2));
     color: var(--brand-text); display: flex; align-items: center;
     justify-content: center; font-weight: 600; font-size: 13px; flex: 0 0 auto;
   }
-  header .who { font-weight: 600; min-width: 0; overflow: hidden;
-                text-overflow: ellipsis; white-space: nowrap; }
-  header .state { font-size: 12px; color: var(--muted); font-weight: 400; }
-  header button {
-    margin-left: auto; border: 0; background: transparent; color: var(--muted);
-    cursor: pointer; padding: 6px; border-radius: 8px; line-height: 0;
-  }
-  header button:hover { background: var(--panel); color: var(--text); }
+  .who { font-weight: 600; min-width: 0; overflow: hidden;
+         text-overflow: ellipsis; white-space: nowrap; }
+  .state { font-size: 12px; color: var(--muted); display: flex;
+           align-items: center; gap: 5px; }
+  .dot-on { width: 7px; height: 7px; border-radius: 4px; background: #22c55e;
+            flex: 0 0 auto; }
+  .dot-off { width: 7px; height: 7px; border-radius: 4px; background: #a1a1aa;
+             flex: 0 0 auto; }
 
+  .scroll { flex: 1 1 auto; overflow-y: auto; min-height: 0; }
+
+  /* ---- home ---- */
+  .hero {
+    background: linear-gradient(150deg, var(--brand), var(--brand-2));
+    color: #fff; padding: 22px 20px 26px; flex: 0 0 auto; position: relative;
+  }
+  .hero .icon { color: rgba(255,255,255,.85); position: absolute;
+                top: 12px; right: 10px; }
+  .hero .icon:hover { background: rgba(255,255,255,.16); color: #fff; }
+  .hero h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -.01em; }
+  .hero p { margin: 6px 0 0; font-size: 14px; opacity: .9; }
+  .home-body { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 14px; box-shadow: var(--shadow);
+  }
+  .card .label { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+  .cta {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    width: 100%; padding: 14px 16px; border: 0; border-radius: 14px;
+    background: linear-gradient(140deg, var(--brand), var(--brand-2));
+    color: var(--brand-text); font-weight: 600; cursor: pointer;
+    box-shadow: var(--shadow);
+  }
+  .cta:hover { filter: brightness(1.06); }
+
+  /* ---- conversation list ---- */
+  .convo {
+    display: flex; gap: 12px; align-items: flex-start; width: 100%;
+    padding: 14px 16px; border: 0; border-bottom: 1px solid var(--line);
+    background: transparent; text-align: left; cursor: pointer;
+  }
+  .convo:hover { background: var(--hover); }
+  .convo .body { min-width: 0; flex: 1 1 auto; }
+  .convo .top { display: flex; gap: 8px; align-items: baseline; }
+  .convo .name { font-weight: 600; font-size: 14px; min-width: 0;
+                 overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .convo .when { margin-left: auto; font-size: 12px; color: var(--muted);
+                 flex: 0 0 auto; }
+  .convo .prev { font-size: 13px; color: var(--muted); overflow: hidden;
+                 text-overflow: ellipsis; white-space: nowrap; }
+  .convo .closed { font-size: 11px; color: var(--muted); border: 1px solid var(--line);
+                   border-radius: 6px; padding: 0 5px; margin-left: 6px; }
+  .empty { padding: 40px 20px; text-align: center; color: var(--muted);
+           font-size: 14px; }
+  .foot { padding: 14px 16px; border-top: 1px solid var(--line); flex: 0 0 auto; }
+
+  /* ---- chat ---- */
   #log { flex: 1 1 auto; overflow-y: auto; padding: 16px; display: flex;
-         flex-direction: column; gap: 10px; background: var(--panel); }
-  .msg { max-width: 82%; padding: 9px 12px; border-radius: 14px;
-         white-space: pre-wrap; overflow-wrap: anywhere; }
+         flex-direction: column; gap: 10px; background: var(--panel);
+         min-height: 0; }
+  .msg { max-width: 82%; padding: 9px 12px; border-radius: 16px;
+         white-space: pre-wrap; overflow-wrap: anywhere; box-shadow: var(--shadow); }
   .msg.you { align-self: flex-end; background: var(--mine); color: var(--mine-text);
-             border-bottom-right-radius: 4px; }
+             border-bottom-right-radius: 5px; }
   .msg.agent { align-self: flex-start; background: var(--theirs);
-               border: 1px solid var(--line); border-bottom-left-radius: 4px; }
+               border: 1px solid var(--line); border-bottom-left-radius: 5px; }
+  .msg.pending { opacity: .6; }
+  .stamp { font-size: 11px; color: var(--muted); padding: 0 4px; }
+  .stamp.you { align-self: flex-end; }
+  .stamp.agent { align-self: flex-start; }
   .greet { color: var(--muted); font-size: 14px; align-self: flex-start;
            padding: 2px 2px 6px; }
+  /* The choices offered with a message. Aligned with the message they
+     belong to, and gone the moment one is taken — a question that has been
+     answered should not still look like a question. */
+  .picks { display: flex; flex-wrap: wrap; gap: 6px; align-self: flex-start;
+           max-width: 88%; padding: 2px 0 4px; }
+  .picks button {
+    border: 1px solid var(--line); background: var(--bg); color: var(--text);
+    border-radius: 999px; padding: 7px 13px; font: inherit; font-size: 13px;
+    cursor: pointer;
+  }
+  .picks button:hover { border-color: var(--brand); color: var(--brand); }
+  .picks button:disabled { opacity: .5; cursor: default; }
   .note { color: var(--muted); font-size: 12px; align-self: center;
           text-align: center; padding: 4px 8px; }
 
-  form { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--line);
-         background: var(--bg); flex: 0 0 auto; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+  /* An attachment is a message, so it is a bubble; only the inside differs. */
+  .msg.file { padding: 6px; }
+  .msg.file img { display: block; max-width: 100%; border-radius: 11px; }
+  /* A bubble the size of a small screenshot, so the log does not jump when
+     the real one arrives — and so nobody sees a broken-image icon while an
+     authenticated fetch is still in flight. */
+  .shimmer { width: 200px; height: 130px; border-radius: 11px;
+             background: linear-gradient(100deg, rgba(127,127,127,.12) 30%,
+                         rgba(127,127,127,.22) 50%, rgba(127,127,127,.12) 70%);
+             background-size: 220% 100%; animation: sweep 1.2s linear infinite; }
+  @keyframes sweep { from { background-position: 120% 0 } to { background-position: -20% 0 } }
+  .chip { display: flex; align-items: center; gap: 10px; padding: 4px 6px;
+          min-width: 180px; }
+  .chip .glyph { width: 34px; height: 34px; border-radius: 9px; flex: 0 0 auto;
+                 display: flex; align-items: center; justify-content: center;
+                 background: rgba(127,127,127,.16); }
+  .chip .meta { min-width: 0; flex: 1 1 auto; }
+  .chip .fname { font-size: 13px; font-weight: 600; overflow: hidden;
+                 text-overflow: ellipsis; white-space: nowrap; }
+  .chip .fsize { font-size: 11px; opacity: .75; }
+  .chip .get { border: 0; background: transparent; cursor: pointer; padding: 6px;
+               border-radius: 8px; line-height: 0; opacity: .8; }
+  .chip .get:hover { background: rgba(127,127,127,.18); opacity: 1; }
+
+  #composer, #gate, #closedBar {
+    padding: 12px; border-top: 1px solid var(--line); background: var(--bg);
+    flex: 0 0 auto; padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+  #composer { display: flex; gap: 8px; align-items: flex-end; }
+  #composer.off { display: none; }
   textarea {
-    flex: 1 1 auto; resize: none; border: 1px solid var(--line); border-radius: 10px;
+    flex: 1 1 auto; resize: none; border: 1px solid var(--line); border-radius: 12px;
     padding: 9px 12px; font: inherit; color: inherit; background: var(--bg);
     max-height: 120px; min-height: 40px;
   }
-  textarea:focus { outline: 2px solid var(--brand); outline-offset: -1px; border-color: transparent; }
+  textarea:focus { outline: 2px solid var(--brand); outline-offset: -1px;
+                   border-color: transparent; }
+  .attach {
+    flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
+    width: 40px; height: 40px; border-radius: 12px; cursor: pointer;
+    color: var(--muted);
+  }
+  .attach:hover { background: var(--hover); color: var(--text); }
   button.send {
-    flex: 0 0 auto; border: 0; border-radius: 10px; background: var(--brand);
-    color: var(--brand-text); padding: 0 14px; cursor: pointer; font: inherit;
-    font-weight: 600;
+    flex: 0 0 auto; border: 0; border-radius: 12px;
+    background: linear-gradient(140deg, var(--brand), var(--brand-2));
+    color: var(--brand-text); width: 40px; height: 40px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
   }
   button.send:disabled { opacity: .5; cursor: default; }
+
+  #closedBar { display: none; flex-direction: column; gap: 10px; }
+  #closedBar.on { display: flex; }
+  #closedBar .said { font-size: 13px; color: var(--muted); text-align: center; }
+
+  /* The pre-chat form, when an operator has asked for one. Two fields and
+     a way past them: every box in front of a support request is a support
+     request that does not get sent. */
+  #gate { display: none; flex-direction: column; gap: 8px; }
+  #gate.on { display: flex; }
+  #gate .lead { font-size: 12px; color: var(--muted); }
+  #gate input {
+    border: 1px solid var(--line); border-radius: 12px; padding: 9px 12px;
+    font: inherit; color: inherit; background: var(--bg); width: 100%;
+  }
+  #gate input:focus { outline: 2px solid var(--brand); outline-offset: -1px;
+                      border-color: transparent; }
+  #gate .row { display: flex; gap: 8px; align-items: center; }
+  #gate .go {
+    flex: 1 1 auto; border: 0; border-radius: 12px;
+    background: linear-gradient(140deg, var(--brand), var(--brand-2));
+    color: var(--brand-text); padding: 10px 14px; cursor: pointer;
+    font-weight: 600;
+  }
+  #gate .skip {
+    flex: 0 0 auto; border: 0; background: transparent; color: var(--muted);
+    cursor: pointer; font-size: 13px; padding: 10px 6px; text-decoration: underline;
+  }
+  #gate .err { font-size: 12px; color: var(--danger); }
+
+  /* ---- help ---- */
+  .search { padding: 14px 16px 10px; flex: 0 0 auto; }
+  .search input {
+    width: 100%; border: 1px solid var(--line); border-radius: 12px;
+    padding: 10px 12px; font: inherit; color: inherit; background: var(--bg);
+  }
+  .search input:focus { outline: 2px solid var(--brand); outline-offset: -1px;
+                        border-color: transparent; }
+  .art {
+    display: block; width: 100%; text-align: left; cursor: pointer;
+    padding: 13px 16px; border: 0; border-bottom: 1px solid var(--line);
+    background: transparent;
+  }
+  .art:hover { background: var(--hover); }
+  .art .t { font-weight: 600; font-size: 14px; }
+  .art .s { font-size: 13px; color: var(--muted); margin-top: 2px;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* An article body is prose a person wrote in a textarea, rendered as text.
+     Never innerHTML: it is written by an operator, but an operator who has
+     been handed a paragraph by a customer and pasted it. */
+  .doc { padding: 16px; }
+  .doc h3 { margin: 0 0 10px; font-size: 17px; }
+  .doc .text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; }
+  .doc .after { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--line); }
+
+  /* ---- bottom navigation ---- */
+  #tabs { display: flex; border-top: 1px solid var(--line); background: var(--bg);
+          flex: 0 0 auto; padding-bottom: env(safe-area-inset-bottom); }
+  #tabs.off { display: none; }
+  #tabs button {
+    flex: 1 1 0; border: 0; background: transparent; color: var(--muted);
+    padding: 9px 4px 8px; cursor: pointer; display: flex; flex-direction: column;
+    align-items: center; gap: 3px; font-size: 11px;
+  }
+  #tabs button.on { color: var(--brand); }
+  #tabs button:hover { color: var(--text); }
+  #tabs button.on:hover { color: var(--brand); }
+
+  /* Dropping a file anywhere on the panel works; this says so while it is
+     happening, because an invisible drop target reads as a broken one. */
+  #drop {
+    position: fixed; inset: 0; display: none; z-index: 9;
+    background: color-mix(in srgb, var(--brand) 14%, transparent);
+    border: 2px dashed var(--brand); border-radius: 12px;
+    align-items: center; justify-content: center; font-weight: 600;
+    color: var(--brand); pointer-events: none;
+  }
+  #drop.on { display: flex; }
 
   /* Screen-reader-only: the live region that announces a reply. Visually
      absent, because the message itself is already on screen. */
@@ -88,27 +291,190 @@
 </style>
 </head>
 <body>
-<header>
-  <div class="mark" id="mark">S</div>
-  <div>
-    <div class="who" id="brand">Support</div>
-    <div class="state" id="state"></div>
-  </div>
-  <button type="button" id="close" aria-label="Close">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-         stroke-width="2" stroke-linecap="round" aria-hidden="true">
-      <path d="M18 6 6 18M6 6l12 12"/>
-    </svg>
-  </button>
-</header>
+<div id="app">
 
-<div id="log" role="log" aria-live="polite"></div>
+  <!-- ============================ home ============================ -->
+  <section class="view" id="v-home">
+    <div class="hero">
+      <button type="button" class="icon" data-close aria-label="Close">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M18 6 6 18M6 6l12 12"/>
+        </svg>
+      </button>
+      <h1 id="heroBrand">Support</h1>
+      <p id="heroSub"></p>
+    </div>
+    <div class="scroll">
+      <div class="home-body">
+        <div class="card" id="recentCard" style="display:none">
+          <div class="label" id="recentLabel"></div>
+          <button type="button" class="convo" id="recentBtn"
+                  style="padding:0;border:0;background:transparent">
+            <div class="mark" id="recentMark">S</div>
+            <div class="body">
+              <div class="top">
+                <span class="name" id="recentName"></span>
+                <span class="when" id="recentWhen"></span>
+              </div>
+              <div class="prev" id="recentPrev"></div>
+            </div>
+          </button>
+        </div>
+        <button type="button" class="cta" id="ctaHome">
+          <span id="ctaHomeLabel">Contact support</span>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M5 12h14M13 6l6 6-6 6"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========================== messages =========================== -->
+  <section class="view" id="v-list">
+    <div class="bar">
+      <span class="title" id="listTitle">Messages</span>
+      <button type="button" class="icon right" data-close aria-label="Close">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M18 6 6 18M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+    <div class="scroll" id="convos"></div>
+    <div class="foot">
+      <button type="button" class="cta" id="ctaList">
+        <span id="ctaListLabel">Contact support</span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M5 12h14M13 6l6 6-6 6"/>
+        </svg>
+      </button>
+    </div>
+  </section>
+
+  <!-- ============================ chat ============================= -->
+  <section class="view" id="v-chat">
+    <div class="bar">
+      <button type="button" class="icon" id="back" aria-label="Back">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M15 18l-6-6 6-6"/>
+        </svg>
+      </button>
+      <div class="mark" id="mark">S</div>
+      <div style="min-width:0">
+        <div class="who" id="brand">Support</div>
+        <div class="state" id="state"></div>
+      </div>
+      <button type="button" class="icon right" data-close aria-label="Close">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M18 6 6 18M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+
+    <div id="log" role="log" aria-live="polite"></div>
+
+    <form id="gate" novalidate>
+      <div class="lead" id="gateLead"></div>
+      <input id="gateName" type="text" maxlength="60" autocomplete="name">
+      <input id="gateEmail" type="email" maxlength="320" autocomplete="email"
+             inputmode="email" spellcheck="false">
+      <div class="err" id="gateErr" role="alert"></div>
+      <div class="row">
+        <button class="go" type="submit" id="gateGo"></button>
+        <button class="skip" type="button" id="gateSkip"></button>
+      </div>
+    </form>
+
+    <div id="closedBar">
+      <div class="said" id="closedSaid"></div>
+      <button type="button" class="cta" id="newChat">
+        <span id="newChatLabel"></span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M5 12h14M13 6l6 6-6 6"/>
+        </svg>
+      </button>
+    </div>
+
+    <form id="composer">
+      <!-- Always in the DOM, never behind a condition. The script reads it on
+           the line after it is found, so a conditional input is a script that
+           stops at the first property access and takes every listener below
+           it with it. Only the label is optional. -->
+      <input type="file" id="file-input" multiple style="display:none">
+      <label class="attach" for="file-input" id="attachBtn" title="">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21.4 11.05 12.25 20.2a5.5 5.5 0 0 1-7.78-7.78l9.2-9.19a3.67 3.67 0 0 1 5.18 5.18l-9.2 9.2a1.83 1.83 0 0 1-2.59-2.6l8.5-8.49"/>
+        </svg>
+      </label>
+      <textarea id="text" rows="1" maxlength="4000" autocomplete="off"></textarea>
+      <button class="send" id="send" type="submit" aria-label="Send">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M5 12h14M13 6l6 6-6 6"/>
+        </svg>
+      </button>
+    </form>
+  </section>
+
+  <!-- ============================ help ============================= -->
+  <section class="view" id="v-help">
+    <div class="bar">
+      <button type="button" class="icon" id="helpBack" aria-label="Back" style="display:none">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M15 18l-6-6 6-6"/>
+        </svg>
+      </button>
+      <span class="title" id="helpTitle">Help</span>
+      <button type="button" class="icon right" data-close aria-label="Close">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M18 6 6 18M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+    <div class="search" id="helpSearchWrap">
+      <input id="helpQ" type="search" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="scroll" id="helpBody"></div>
+  </section>
+
+  <nav id="tabs">
+    <button type="button" data-view="home" id="tabHome">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>
+      </svg>
+      <span id="tabHomeLabel">Home</span>
+    </button>
+    <button type="button" data-view="help" id="tabHelp" style="display:none">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="9"/>
+        <path d="M9.6 9a2.5 2.5 0 1 1 3.2 3c-.6.3-.8.7-.8 1.3v.4M12 17h.01"/>
+      </svg>
+      <span id="tabHelpLabel">Help</span>
+    </button>
+    <button type="button" data-view="list" id="tabList">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+      </svg>
+      <span id="tabListLabel">Messages</span>
+    </button>
+  </nav>
+</div>
+
+<div id="drop"></div>
 <div class="sr" id="announce" aria-live="polite"></div>
-
-<form id="composer">
-  <textarea id="text" rows="1" maxlength="4000" autocomplete="off"></textarea>
-  <button class="send" id="send" type="submit">→</button>
-</form>
 
 <script>
 (function () {
@@ -124,10 +490,30 @@
   var box = document.getElementById("text");
   var send = document.getElementById("send");
   var state = document.getElementById("state");
+  var composer = document.getElementById("composer");
+  var gate = document.getElementById("gate");
+  var gateName = document.getElementById("gateName");
+  var gateEmail = document.getElementById("gateEmail");
+  var gateErr = document.getElementById("gateErr");
+  var gateLead = document.getElementById("gateLead");
+  var closedBar = document.getElementById("closedBar");
+  var fileInput = document.getElementById("file-input");
+  var drop = document.getElementById("drop");
+  var tabs = document.getElementById("tabs");
+
   var strings = {};
   var seen = {};           // message ids already on screen
   var timer = null;
   var pollMs = POLL_IDLE;
+  var view = "home";
+  // Which conversation the chat view is showing. Null means "whichever one
+  // is active" — the common case, and the one the poll feeds.
+  var shownTicket = null;
+  var liveTicket = null;   // the active conversation, from the last poll
+  // What we tell the server about who is typing. Sent with every message
+  // rather than only the first, because a visitor can log in halfway
+  // through a conversation and the host will call identify() then.
+  var identity = {};
 
   // Third-party iframe storage is partitioned, and in strict configurations
   // refused outright. Falling back to memory keeps the conversation alive
@@ -143,9 +529,74 @@
     try { return localStorage.getItem(KEY) || ""; } catch (e) { return ""; }
   }
 
+  function auth(extra) {
+    var h = extra || {};
+    if (token()) h["x-spooldesk-session"] = token();
+    return h;
+  }
+
   function tell(parent, payload) {
     try { parent.postMessage(payload, "*"); } catch (e) { /* not embedded */ }
   }
+
+  // ---------------------------------------------------------------- views
+
+  function show(name) {
+    view = name;
+    ["home", "help", "list", "chat"].forEach(function (v) {
+      document.getElementById("v-" + v).classList.toggle("on", v === name);
+    });
+    document.getElementById("tabHome").classList.toggle("on", name === "home");
+    document.getElementById("tabHelp").classList.toggle("on", name === "help");
+    document.getElementById("tabList").classList.toggle("on", name === "list");
+    // The chat has its own back button and needs every pixel it can get for
+    // the keyboard; the tab bar would be a third row of chrome.
+    tabs.classList.toggle("off", name === "chat");
+    if (name === "home" || name === "list") loadConversations();
+    if (name === "help") askHelp(document.getElementById("helpQ").value);
+    if (name === "chat") box.focus();
+  }
+
+  document.querySelectorAll("[data-close]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      tell(window.parent, { spooldesk: "close" });
+    });
+  });
+  document.getElementById("tabHome").addEventListener("click", function () { show("home"); });
+  document.getElementById("tabHelp").addEventListener("click", function () {
+    document.getElementById("helpBack").style.display = "none";
+    document.getElementById("helpSearchWrap").style.display = "";
+    show("help");
+  });
+  document.getElementById("tabList").addEventListener("click", function () { show("list"); });
+  document.getElementById("back").addEventListener("click", function () { show("list"); });
+  document.getElementById("ctaHome").addEventListener("click", openActive);
+  document.getElementById("ctaList").addEventListener("click", openActive);
+  document.getElementById("newChat").addEventListener("click", openActive);
+
+  // ---------------------------------------------------------------- time
+
+  function ago(iso) {
+    if (!iso) return "";
+    var then = Date.parse(iso.endsWith("Z") ? iso : iso + "Z");
+    if (isNaN(then)) return "";
+    var s = Math.max(0, (Date.now() - then) / 1000);
+    if (s < 60) return "now";
+    if (s < 3600) return Math.floor(s / 60) + "m";
+    if (s < 86400) return Math.floor(s / 3600) + "h";
+    if (s < 2592000) return Math.floor(s / 86400) + "d";
+    if (s < 31536000) return Math.floor(s / 2592000) + "mo";
+    return Math.floor(s / 31536000) + "y";
+  }
+
+  function humanSize(n) {
+    if (!n) return "";
+    if (n < 1024) return n + " B";
+    if (n < 1048576) return Math.round(n / 1024) + " KB";
+    return (n / 1048576).toFixed(1) + " MB";
+  }
+
+  // ---------------------------------------------------------- rendering
 
   function bubble(cls, text) {
     var el = document.createElement("div");
@@ -156,23 +607,416 @@
     return el;
   }
 
+  // The bytes come from an endpoint that checks the session header, so they
+  // cannot be fetched by putting a URL in `src`. One fetch into a blob is
+  // the price of not putting a credential in a URL, where it would end up in
+  // access logs and browser history.
+  function fetchFile(id) {
+    return fetch(BASE + "/widget/api/file/" + id, { headers: auth({}) })
+      .then(function (r) {
+        if (!r.ok) throw new Error("unavailable");
+        return r.blob();
+      });
+  }
+
+  function fileBubble(m) {
+    var wrap = document.createElement("div");
+    wrap.className = "msg file " + (m.from === "you" ? "you" : "agent");
+
+    if (m.file.image) {
+      // The bytes need an auth header, so they arrive by fetch rather than
+      // by `src`. Until they do there is a placeholder: an <img> with no src
+      // is a broken-image icon, which is what a visitor would otherwise see
+      // every time they open the panel.
+      var hold = document.createElement("div");
+      hold.className = "shimmer";
+      wrap.appendChild(hold);
+      fetchFile(m.id).then(function (blob) {
+        var img = document.createElement("img");
+        img.alt = m.file.name;
+        img.src = URL.createObjectURL(blob);
+        img.addEventListener("load", function () {
+          log.scrollTop = log.scrollHeight;
+        });
+        wrap.replaceChildren(img);
+      }).catch(function () {
+        wrap.replaceChildren(chipFor(m));
+      });
+    } else {
+      wrap.appendChild(chipFor(m));
+    }
+    log.appendChild(wrap);
+    log.scrollTop = log.scrollHeight;
+
+    // A caption travels with the file rather than as its own bubble; two
+    // bubbles would read as the operator having said something separate.
+    if (m.text) bubble("msg " + (m.from === "you" ? "you" : "agent"), m.text);
+    return wrap;
+  }
+
+  function chipFor(m) {
+    var chip = document.createElement("div");
+    chip.className = "chip";
+
+    var glyph = document.createElement("div");
+    glyph.className = "glyph";
+    glyph.innerHTML =
+      '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"' +
+      ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/>' +
+      '<path d="M14 3v5h5"/></svg>';
+
+    var meta = document.createElement("div");
+    meta.className = "meta";
+    var nm = document.createElement("div");
+    nm.className = "fname";
+    nm.textContent = m.file.name;
+    var sz = document.createElement("div");
+    sz.className = "fsize";
+    sz.textContent = humanSize(m.file.size);
+    meta.appendChild(nm);
+    meta.appendChild(sz);
+
+    var get = document.createElement("button");
+    get.type = "button";
+    get.className = "get";
+    get.title = strings.download || "Download";
+    get.innerHTML =
+      '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"' +
+      ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<path d="M12 3v12M7 11l5 5 5-5M5 21h14"/></svg>';
+    get.addEventListener("click", function () {
+      fetchFile(m.id).then(function (blob) {
+        // The download has to be started from script because the URL needs a
+        // header. The frame's sandbox therefore has to allow downloads — see
+        // the loader, which grants exactly that and nothing more.
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement("a");
+        a.href = url;
+        a.download = m.file.name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 30000);
+      }).catch(function () {
+        bubble("note", strings.file_failed || "Could not fetch that file.");
+      });
+    });
+
+    chip.appendChild(glyph);
+    chip.appendChild(meta);
+    chip.appendChild(get);
+    return chip;
+  }
+
+  function picks(m) {
+    var row = document.createElement("div");
+    row.className = "picks";
+    m.options.forEach(function (opt) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.textContent = opt.label;
+      b.addEventListener("click", function () {
+        // Disabled as a group before the request, not after. The buttons are
+        // a rating: a double tap that sends twice is a customer wondering
+        // which of their answers counted.
+        row.querySelectorAll("button").forEach(function (other) {
+          other.disabled = true;
+        });
+        fetch(BASE + "/widget/api/choose", {
+          method: "POST",
+          headers: auth({ "content-type": "application/json" }),
+          body: JSON.stringify({ message: m.id, payload: opt.payload }),
+        }).then(function (r) {
+          return r.ok ? r.json() : null;
+        }).then(function (data) {
+          row.remove();
+          if (data && data.said) bubble("note", data.said);
+          if (data && data.closed) setWritable(false);
+        }).catch(function () {
+          row.querySelectorAll("button").forEach(function (other) {
+            other.disabled = false;
+          });
+          bubble("note", strings.offline || "Could not send. Please try again.");
+        });
+      });
+      row.appendChild(b);
+    });
+    log.appendChild(row);
+    log.scrollTop = log.scrollHeight;
+  }
+
   function render(messages) {
     var fresh = 0;
     (messages || []).forEach(function (m) {
       if (seen[m.id]) return;
       seen[m.id] = true;
-      bubble("msg " + (m.from === "you" ? "you" : "agent"), m.text);
+      if (m.file) fileBubble(m);
+      else bubble("msg " + (m.from === "you" ? "you" : "agent"), m.text);
+      if (m.options && m.options.length) picks(m);
       if (m.from !== "you") fresh++;
     });
     if (fresh) {
       announce.textContent = strings.replied || "New reply";
-      tell(window.parent, { spooldesk: "unread" });
+      if (view !== "chat") tell(window.parent, { spooldesk: "unread" });
       // Someone is actually at the other end right now; look more often for
       // a while, then settle back down.
       pollMs = POLL_LIVE;
       schedule();
     }
   }
+
+  function clearLog() {
+    seen = {};
+    log.innerHTML = "";
+  }
+
+  function setWritable(open) {
+    composer.classList.toggle("off", !open);
+    closedBar.classList.toggle("on", !open);
+    if (!open) {
+      document.getElementById("closedSaid").textContent =
+        strings.closed || "This conversation is closed.";
+      document.getElementById("newChatLabel").textContent =
+        strings.new_chat || "Start a new conversation";
+    }
+  }
+
+  // ------------------------------------------------------- conversations
+
+  function loadConversations() {
+    return fetch(BASE + "/widget/api/conversations", { headers: auth({}) })
+      .then(function (r) { return r.ok ? r.json() : { conversations: [] }; })
+      .then(function (data) { paintConversations(data.conversations || []); })
+      .catch(function () { /* offline; the next view switch tries again */ });
+  }
+
+  function paintConversations(list) {
+    var host = document.getElementById("convos");
+    host.replaceChildren();
+
+    if (!list.length) {
+      var none = document.createElement("div");
+      none.className = "empty";
+      none.textContent = strings.no_conversations || "No conversations yet";
+      host.appendChild(none);
+    }
+
+    list.forEach(function (c) {
+      var row = document.createElement("button");
+      row.type = "button";
+      row.className = "convo";
+
+      var mk = document.createElement("div");
+      mk.className = "mark";
+      mk.textContent = initial();
+
+      var body = document.createElement("div");
+      body.className = "body";
+      var top = document.createElement("div");
+      top.className = "top";
+      var nm = document.createElement("span");
+      nm.className = "name";
+      nm.textContent = c.title;
+      top.appendChild(nm);
+      if (!c.open) {
+        var tag = document.createElement("span");
+        tag.className = "closed";
+        tag.textContent = "×";
+        tag.title = strings.closed || "";
+        top.appendChild(tag);
+      }
+      var when = document.createElement("span");
+      when.className = "when";
+      when.textContent = ago(c.at);
+      top.appendChild(when);
+
+      var prev = document.createElement("div");
+      prev.className = "prev";
+      // Never innerHTML: the preview is whatever a stranger last typed, and
+      // an operator's own words come back through here too.
+      prev.textContent =
+        (c.from === "you" ? (strings.you || "You") + ": " : "") +
+        (c.preview || (c.attachment ? "📎" : ""));
+
+      body.appendChild(top);
+      body.appendChild(prev);
+      row.appendChild(mk);
+      row.appendChild(body);
+      row.addEventListener("click", function () { openThread(c.id, c.open); });
+      host.appendChild(row);
+    });
+
+    paintRecent(list[0]);
+  }
+
+  function paintRecent(c) {
+    var card = document.getElementById("recentCard");
+    if (!c) { card.style.display = "none"; return; }
+    card.style.display = "";
+    document.getElementById("recentLabel").textContent = strings.recent || "Recent message";
+    document.getElementById("recentMark").textContent = initial();
+    document.getElementById("recentName").textContent = c.title;
+    document.getElementById("recentWhen").textContent = ago(c.at);
+    document.getElementById("recentPrev").textContent =
+      (c.from === "you" ? (strings.you || "You") + ": " : "") +
+      (c.preview || (c.attachment ? "📎" : ""));
+    document.getElementById("recentBtn").onclick = function () {
+      openThread(c.id, c.open);
+    };
+  }
+
+  // The header's second line has two jobs — who we are and what is
+  // happening right now — and they take turns rather than one of them
+  // overwriting the other for good.
+  function presence(temporary) {
+    state.replaceChildren();
+    if (temporary) {
+      state.textContent = temporary;
+      return;
+    }
+    var lamp = document.createElement("span");
+    lamp.className = strings.online ? "dot-on" : "dot-off";
+    var word = document.createElement("span");
+    word.textContent = strings.subtitle || "";
+    state.appendChild(lamp);
+    state.appendChild(word);
+  }
+
+  function initial() {
+    return ((strings.brand || "S").trim().charAt(0) || "S").toUpperCase();
+  }
+
+  // One conversation from the list, which may be a closed one.
+  function openThread(id, open) {
+    show("chat");
+    clearLog();
+    shownTicket = id;
+    setWritable(!!open);
+    gate.classList.remove("on");
+    fetch(BASE + "/widget/api/thread/" + id, { headers: auth({}) })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        if (!data) return;
+        setWritable(!!data.open);
+        render(data.messages);
+      })
+      .catch(function () { bubble("note", strings.offline || "Could not load."); });
+  }
+
+  // "Contact support": the active conversation, or a blank one to start.
+  function openActive() {
+    show("chat");
+    clearLog();
+    shownTicket = null;
+    setWritable(true);
+    if (strings.greeting) bubble("greet", strings.greeting);
+    if (strings.ask_identity && !token() && !identity.email && !identity.external_id) ask();
+    if (token()) tick();
+  }
+
+  // ---------------------------------------------------------------- help
+
+  var helpTimer = null;
+
+  function askHelp(query) {
+    var body = document.getElementById("helpBody");
+    fetch(BASE + "/widget/api/help?q=" + encodeURIComponent(query || ""))
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        body.replaceChildren();
+        var found = (data && data.articles) || [];
+        if (!found.length) {
+          var none = document.createElement("div");
+          none.className = "empty";
+          none.textContent = query
+            ? (strings.help_no_hits || "No articles match that.")
+            : (strings.help_none || "Nothing here yet");
+          body.appendChild(none);
+        }
+        found.forEach(function (a) {
+          var row = document.createElement("button");
+          row.type = "button";
+          row.className = "art";
+          var t = document.createElement("div");
+          t.className = "t";
+          t.textContent = a.title;
+          row.appendChild(t);
+          if (a.summary) {
+            var sm = document.createElement("div");
+            sm.className = "s";
+            sm.textContent = a.summary;
+            row.appendChild(sm);
+          }
+          row.addEventListener("click", function () { openArticle(a.slug); });
+          body.appendChild(row);
+        });
+        // The way out of a help centre that did not help. Without it the
+        // only exit is a tab bar, and someone who has just failed to find
+        // an answer should not have to go looking for the way to ask.
+        var ask = document.createElement("button");
+        ask.type = "button";
+        ask.className = "art";
+        ask.style.borderBottom = "0";
+        ask.style.color = "var(--brand)";
+        ask.textContent = strings.help_still || "Still stuck? Message us";
+        ask.addEventListener("click", openActive);
+        body.appendChild(ask);
+      })
+      .catch(function () { /* offline; the next keystroke tries again */ });
+  }
+
+  function openArticle(slug) {
+    var body = document.getElementById("helpBody");
+    document.getElementById("helpSearchWrap").style.display = "none";
+    document.getElementById("helpBack").style.display = "";
+    fetch(BASE + "/widget/api/help/" + encodeURIComponent(slug))
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (a) {
+        body.replaceChildren();
+        if (!a) return;
+        var doc = document.createElement("div");
+        doc.className = "doc";
+        var h = document.createElement("h3");
+        h.textContent = a.title;
+        var text = document.createElement("div");
+        text.className = "text";
+        // textContent, not innerHTML. The body is prose an operator typed,
+        // and an operator is one paste away from carrying a customer's HTML
+        // into it.
+        text.textContent = a.body;
+        var after = document.createElement("div");
+        after.className = "after";
+        var ask = document.createElement("button");
+        ask.type = "button";
+        ask.className = "cta";
+        ask.textContent = strings.help_still || "Still stuck? Message us";
+        ask.addEventListener("click", openActive);
+        after.appendChild(ask);
+        doc.appendChild(h);
+        doc.appendChild(text);
+        doc.appendChild(after);
+        body.appendChild(doc);
+        body.scrollTop = 0;
+      })
+      .catch(function () { /* offline */ });
+  }
+
+  document.getElementById("helpBack").addEventListener("click", function () {
+    document.getElementById("helpBack").style.display = "none";
+    document.getElementById("helpSearchWrap").style.display = "";
+    askHelp(document.getElementById("helpQ").value);
+  });
+
+  document.getElementById("helpQ").addEventListener("input", function (e) {
+    // Debounced: one request per pause, not per keystroke. The endpoint's
+    // rate limit is generous enough for typing, and this is why.
+    if (helpTimer) clearTimeout(helpTimer);
+    var value = e.target.value;
+    helpTimer = setTimeout(function () { askHelp(value); }, 250);
+  });
+
+  // ---------------------------------------------------------------- poll
 
   function schedule() {
     if (timer) clearTimeout(timer);
@@ -184,41 +1028,137 @@
     // A hidden tab has nobody looking at it. Polling it anyway is how a
     // chat widget ends up in somebody's battery report.
     if (document.hidden) { schedule(); return; }
-    fetch(BASE + "/widget/api/poll", {
-      headers: { "x-spooldesk-session": token() },
-    }).then(function (r) {
-      return r.ok ? r.json() : null;
-    }).then(function (data) {
-      if (data) render(data.messages);
-      // Nothing new for a while: stop asking so eagerly.
-      if (pollMs === POLL_LIVE) pollMs = POLL_IDLE;
-    }).catch(function () {
-      /* offline, or the instance restarted; the next tick tries again */
-    }).then(schedule);
+    fetch(BASE + "/widget/api/poll", { headers: auth({}) })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        if (!data) return;
+        liveTicket = data.ticket;
+        // Only paint into the view that is showing this conversation. A
+        // visitor reading last month's thread must not have today's replies
+        // appended to it.
+        if (view === "chat" && (shownTicket === null || shownTicket === data.ticket)) {
+          render(data.messages);
+        } else if ((data.messages || []).some(function (m) {
+          return m.from !== "you" && !seen[m.id];
+        })) {
+          tell(window.parent, { spooldesk: "unread" });
+        }
+        if (pollMs === POLL_LIVE) pollMs = POLL_IDLE;
+      })
+      .catch(function () {
+        /* offline, or the instance restarted; the next tick tries again */
+      })
+      .then(schedule);
   }
 
   document.addEventListener("visibilitychange", function () {
     if (!document.hidden) tick();
   });
 
-  document.getElementById("close").addEventListener("click", function () {
-    tell(window.parent, { spooldesk: "close" });
-  });
+  // ------------------------------------------------------------ identity
 
-  // Enter sends, Shift+Enter breaks the line — the convention every chat
-  // uses, and getting it backwards is noticed immediately.
-  box.addEventListener("keydown", function (e) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      document.getElementById("composer").requestSubmit();
+  // Mirrors the server's check, and for the same narrow reason: catch a
+  // sentence typed into the email box before it reaches an operator who
+  // will read it as an address.
+  function emailish(v) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+  }
+
+  function shut() {
+    gate.classList.remove("on");
+    composer.classList.remove("off");
+    box.focus();
+  }
+
+  function ask() {
+    gateLead.textContent = strings.ask_intro || "";
+    gateName.placeholder = strings.ask_name || "Name";
+    gateEmail.placeholder = strings.ask_email || "Email";
+    document.getElementById("gateGo").textContent = strings.ask_start || "Start";
+    document.getElementById("gateSkip").textContent = strings.ask_skip || "Skip";
+    gate.classList.add("on");
+    composer.classList.add("off");
+    gateName.focus();
+  }
+
+  // Called by the host page through the loader. Everything here is a claim
+  // the page is making; `hash` is the only part of it the server can check,
+  // and without one the ticket will say so.
+  function identify(data) {
+    if (!data || typeof data !== "object") return;
+    if (data.name) identity.name = String(data.name).slice(0, 60);
+    if (data.email) identity.email = String(data.email).slice(0, 320);
+    if (data.userId) identity.external_id = String(data.userId).slice(0, 120);
+    if (data.hash) identity.hash = String(data.hash).slice(0, 200);
+    // The site already knows this person. Asking them to type their own
+    // name into a form on their own account page is how a widget gets
+    // described as annoying.
+    if (identity.email || identity.external_id) shut();
+  }
+
+  // What a site calls on log out. The reason it is not optional is a shared
+  // computer: without this the next person to open the bubble is handed the
+  // previous one's conversation, because the session token is in this
+  // browser and the widget has no way to know the human changed.
+  function forget() {
+    memory = null;
+    try { localStorage.removeItem(KEY); } catch (e) { /* nothing stored */ }
+    identity = {};
+    shownTicket = null;
+    liveTicket = null;
+    clearLog();
+    gateName.value = "";
+    gateEmail.value = "";
+    gateErr.textContent = "";
+    paintConversations([]);
+    show("home");
+  }
+
+  gate.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var email = gateEmail.value.trim();
+    if (email && !emailish(email)) {
+      gateErr.textContent = strings.ask_bad_email || "That address doesn't look right.";
+      gateEmail.focus();
+      return;
     }
-  });
-  box.addEventListener("input", function () {
-    box.style.height = "auto";
-    box.style.height = Math.min(box.scrollHeight, 120) + "px";
+    gateErr.textContent = "";
+    if (gateName.value.trim()) identity.name = gateName.value.trim();
+    if (email) identity.email = email;
+    shut();
   });
 
-  document.getElementById("composer").addEventListener("submit", function (e) {
+  document.getElementById("gateSkip").addEventListener("click", shut);
+
+  // ------------------------------------------------------------- sending
+
+  function identityFields() {
+    return {
+      name: identity.name || "",
+      email: identity.email || "",
+      external_id: identity.external_id || "",
+      hash: identity.hash || "",
+    };
+  }
+
+  function afterSend(data) {
+    if (data.session) token(data.session);
+    shownTicket = null;      // we are on the active conversation again
+    liveTicket = data.ticket;
+    presence();
+    render(data.messages);
+    pollMs = POLL_LIVE;
+    schedule();
+  }
+
+  function failed(err) {
+    presence();
+    bubble("note", err.message === "slow_down"
+      ? (strings.slow || "Too many messages — please wait a moment.")
+      : (strings.offline || "Could not send. Please try again."));
+  }
+
+  composer.addEventListener("submit", function (e) {
     e.preventDefault();
     var text = box.value.trim();
     if (!text) return;
@@ -226,32 +1166,24 @@
     box.value = "";
     box.style.height = "auto";
     send.disabled = true;
-    state.textContent = strings.sending || "";
+    presence(strings.sending || "…");
 
-    var headers = { "content-type": "application/json" };
-    if (token()) headers["x-spooldesk-session"] = token();
+    var body = identityFields();
+    body.text = text;
+    body.lang = navigator.language || "";
 
     fetch(BASE + "/widget/api/message", {
       method: "POST",
-      headers: headers,
-      body: JSON.stringify({ text: text, lang: navigator.language || "" }),
+      headers: auth({ "content-type": "application/json" }),
+      body: JSON.stringify(body),
     }).then(function (r) {
       if (r.status === 429) throw new Error("slow_down");
       if (!r.ok) throw new Error("failed");
       return r.json();
-    }).then(function (data) {
-      if (data.session) token(data.session);
-      state.textContent = "";
-      render(data.messages);
-      pollMs = POLL_LIVE;
-      schedule();
-    }).catch(function (err) {
-      state.textContent = "";
+    }).then(afterSend).catch(function (err) {
+      failed(err);
       // The text is gone from the box, so it has to come back somewhere or
       // the visitor has simply lost what they wrote.
-      bubble("note", err.message === "slow_down"
-        ? (strings.slow || "Too many messages — please wait a moment.")
-        : (strings.offline || "Could not send. Please try again."));
       box.value = text;
     }).then(function () {
       send.disabled = false;
@@ -259,32 +1191,179 @@
     });
   });
 
-  window.addEventListener("message", function (e) {
-    if ((e.data || {}).spooldesk === "opened") box.focus();
+  // Enter sends, Shift+Enter breaks the line — the convention every chat
+  // uses, and getting it backwards is noticed immediately.
+  box.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      composer.requestSubmit();
+    }
   });
+  box.addEventListener("input", function () {
+    box.style.height = "auto";
+    box.style.height = Math.min(box.scrollHeight, 120) + "px";
+  });
+
+  // --------------------------------------------------------- attachments
+
+  function upload(file) {
+    if (!file) return;
+    if (strings.max_file_bytes && file.size > strings.max_file_bytes) {
+      bubble("note", (strings.file_too_large || "That file is too large.") +
+             " (" + humanSize(strings.max_file_bytes) + ")");
+      return;
+    }
+
+    // Shown before the request, removed when the real message arrives. An
+    // upload of a phone photo on a bad connection takes long enough that
+    // silence reads as nothing having happened.
+    var pending = bubble("msg you pending", "📎 " + file.name);
+
+    var form = new FormData();
+    form.append("file", file, file.name);
+    form.append("lang", navigator.language || "");
+    var id = identityFields();
+    Object.keys(id).forEach(function (k) { form.append(k, id[k]); });
+
+    fetch(BASE + "/widget/api/upload", {
+      method: "POST",
+      headers: auth({}),          // no content-type: the browser sets the boundary
+      body: form,
+    }).then(function (r) {
+      if (r.status === 429) throw new Error("slow_down");
+      if (r.status === 413) throw new Error("too_large");
+      if (!r.ok) throw new Error("failed");
+      return r.json();
+    }).then(function (data) {
+      pending.remove();
+      afterSend(data);
+    }).catch(function (err) {
+      pending.remove();
+      if (err.message === "too_large") {
+        bubble("note", strings.file_too_large || "That file is too large.");
+      } else if (err.message === "slow_down") {
+        bubble("note", strings.slow || "Too many messages — please wait a moment.");
+      } else {
+        bubble("note", strings.file_failed || "Could not upload that file.");
+      }
+    });
+  }
+
+  function uploadAll(files) {
+    // One request each, so one oversized file does not lose the others, and
+    // each arrives as its own message the way Telegram albums do.
+    Array.prototype.slice.call(files || []).forEach(upload);
+  }
+
+  fileInput.addEventListener("change", function () {
+    uploadAll(fileInput.files);
+    fileInput.value = "";   // so picking the same file twice fires again
+  });
+
+  // Pasting a screenshot is how most support attachments actually happen:
+  // Print Screen, click in the box, Ctrl+V.
+  box.addEventListener("paste", function (e) {
+    var items = (e.clipboardData || {}).files;
+    if (items && items.length) {
+      e.preventDefault();
+      uploadAll(items);
+    }
+  });
+
+  // Drag and drop anywhere on the panel, not only onto the composer. A drop
+  // target the size of a paperclip is one people miss.
+  var dragDepth = 0;
+  window.addEventListener("dragenter", function (e) {
+    e.preventDefault();
+    if (view !== "chat" || composer.classList.contains("off")) return;
+    dragDepth++;
+    drop.textContent = strings.attach || "";
+    drop.classList.add("on");
+  });
+  window.addEventListener("dragover", function (e) { e.preventDefault(); });
+  window.addEventListener("dragleave", function () {
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (!dragDepth) drop.classList.remove("on");
+  });
+  window.addEventListener("drop", function (e) {
+    e.preventDefault();
+    dragDepth = 0;
+    drop.classList.remove("on");
+    if (view !== "chat" || composer.classList.contains("off")) return;
+    uploadAll(e.dataTransfer && e.dataTransfer.files);
+  });
+
+  // --------------------------------------------------------- the parent
+
+  window.addEventListener("message", function (e) {
+    // Only from the page we are embedded in. Anyone can postMessage at a
+    // window they hold a handle to — window.open gives one out — and while
+    // an identity from a stranger is still only a *claim*, and claims are
+    // labelled as such on the ticket, `reset` from a stranger would drop a
+    // visitor's live conversation. The host page is who this API is for.
+    if (e.source !== window.parent) return;
+    var msg = e.data || {};
+    if (msg.spooldesk === "opened") {
+      if (view === "chat") (gate.classList.contains("on") ? gateName : box).focus();
+    }
+    if (msg.spooldesk === "identify") identify(msg.identity);
+    if (msg.spooldesk === "reset") forget();
+  });
+
+  // ----------------------------------------------------------- start-up
 
   fetch(BASE + "/widget/api/hello").then(function (r) {
     return r.ok ? r.json() : null;
   }).then(function (info) {
     if (!info) return;
     strings = info;
-    document.getElementById("brand").textContent = info.brand || "Support";
-    document.getElementById("mark").textContent = (info.brand || "S").trim().charAt(0).toUpperCase();
+
+    var brand = info.brand || "Support";
+    document.getElementById("brand").textContent = brand;
+    document.getElementById("heroBrand").textContent = brand;
+    document.getElementById("mark").textContent = initial();
+    document.title = brand;
+
+    document.getElementById("heroSub").textContent = info.subtitle || "";
+    presence();
+
     box.placeholder = info.placeholder || "";
-    document.title = info.brand || "Support";
-    if (info.greeting) bubble("greet", info.greeting);
+    document.getElementById("attachBtn").title = info.attach || "";
+    document.getElementById("listTitle").textContent = info.nav_messages || "Messages";
+    document.getElementById("tabHomeLabel").textContent = info.nav_home || "Home";
+    document.getElementById("tabHelpLabel").textContent = info.nav_help || "Help";
+    document.getElementById("helpTitle").textContent = info.nav_help || "Help";
+    document.getElementById("helpQ").placeholder = info.help_search || "";
+    // Only when there is something to find. See the comment on the endpoint.
+    document.getElementById("tabHelp").style.display = info.help ? "" : "none";
+    document.getElementById("tabListLabel").textContent = info.nav_messages || "Messages";
+    document.getElementById("ctaHomeLabel").textContent = info.contact || "Contact support";
+    document.getElementById("ctaListLabel").textContent = info.contact || "Contact support";
+    // A widget whose instance cannot store files should show no paperclip
+    // rather than one that fails when it is clicked.
+    document.getElementById("attachBtn").style.display = info.files ? "" : "none";
+
+    // A visitor with a conversation already open is not here to browse a
+    // home screen; they came back for the reply. Anyone else starts at the
+    // top, where the whole thing is explained by being visible.
+    loadConversations().then(function () {
+      if (token()) { openActive(); } else { show("home"); }
+    });
   }).catch(function () {
     // Not just cosmetic. An instance that is restarting — or a free host
     // waking from sleep, which is what a public demo usually is — leaves a
     // panel that looks finished and does nothing. Say something.
+    show("chat");
     bubble("note", "Connecting…");
-    setTimeout(function () {
-      location.reload();
-    }, 4000);
+    setTimeout(function () { location.reload(); }, 4000);
   });
 
-  // A returning visitor sees their conversation before they type anything.
-  if (token()) tick(); else schedule();
+  // The host page may have called identify() before this frame existed —
+  // it is loaded lazily, on the first open. Saying we are here is what lets
+  // the loader hand over whatever it has been holding.
+  tell(window.parent, { spooldesk: "ready" });
+
+  schedule();
 })();
 </script>
 </body>

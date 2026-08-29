@@ -5,9 +5,22 @@ used to DROP it on modern SQLite, breaking every ticket query. This guards
 against that class of bug (model ↔ schema drift) permanently.
 """
 
+import pytest
 from sqlalchemy import text
 
 from src.database.db import engine, init_db
+from src.database.dialect import is_sqlite
+
+# These read SQLite's own catalogue — PRAGMA table_info and sqlite_master —
+# because what they guard is the in-place migration path, which only SQLite
+# has. On PostgreSQL there is nothing to migrate: create_all builds the
+# current schema on a database that has no history. Skipped rather than
+# rewritten against information_schema, because a test that no longer
+# exercises the migration is not the same test.
+pytestmark = pytest.mark.skipif(
+    not is_sqlite(str(engine.url)),
+    reason="the in-place column migration is SQLite's, and so is its catalogue",
+)
 
 
 async def _table_columns(table: str) -> set[str]:

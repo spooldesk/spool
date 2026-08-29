@@ -5,6 +5,12 @@
 #   2. docker compose up -d --build
 #   3. open http://localhost:8000   # dashboard
 #
+# On a server with a domain, add the production overlay instead of step 2 —
+# it puts TLS in front and stops the dashboard listening on anything but
+# loopback:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
 # Using only the website widget, with no Telegram? Start the dashboard alone:
 #   docker compose up -d --build dashboard
 # The bot service is Telegram; without BOT_TOKEN it logs why and exits, and
@@ -36,13 +42,24 @@ services:
   dashboard:
     build: .
     image: spooldesk:latest
+    # --no-proxy-headers: uvicorn has its own X-Forwarded-For handling, on by
+    # default. Two layers reading the same header is worse than one of them
+    # being wrong, so src/dashboard/proxy.py is the only reader and this
+    # switches the other off. What it trusts is TRUSTED_PROXY_HOPS.
     command: python -m uvicorn src.dashboard.app:app --host 0.0.0.0 --port 8000
+      --no-proxy-headers
     env_file: .env
     environment:
       DATABASE_URL: sqlite+aiosqlite:////app/data/support.db
       # Set DASH_COOKIE_SECURE=true in .env when serving over HTTPS.
     ports:
-      - "8000:8000"
+      # Loopback only, deliberately. On a laptop this is still
+      # http://localhost:8000; on a VPS it is the difference between the
+      # dashboard being reachable over plain HTTP by anyone who finds the
+      # address and it being reachable only through the TLS proxy in
+      # docker-compose.prod.yml. Publishing to 0.0.0.0 would quietly undo
+      # the whole production overlay.
+      - "127.0.0.1:8000:8000"
     volumes:
       - data:/app/data
       - logs:/app/logs

@@ -103,13 +103,64 @@
       <div class="text-xs text-zinc-500 mt-1">from clone to running</div>
     </div>
     <div class="bg-black px-4 py-5">
-      <div class="text-2xl font-semibold tabular-nums">541</div>
+      <!-- A floor, not a count. The exact number was 541 here for months
+           and was 639 by the time I noticed; a figure that only ever
+           grows should be written so that growing keeps it true. -->
+      <div class="text-2xl font-semibold tabular-nums">640+</div>
       <div class="text-xs text-zinc-500 mt-1">automated tests</div>
     </div>
     <div class="bg-black px-4 py-5">
       <div class="text-2xl font-semibold tabular-nums">0</div>
       <div class="text-xs text-zinc-500 mt-1">telemetry calls home</div>
     </div>
+  </div>
+</section>
+
+<!-- ============ THE WIDGET ============ -->
+<section class="max-w-6xl mx-auto px-5 pb-20">
+  <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight">A chat bubble on your own site</h2>
+  <p class="mt-3 text-zinc-400 max-w-2xl">
+    One script tag. Visitors write from the page they are already on, drag a file in or
+    paste a screenshot, and come back later to a conversation that is still there.
+    It arrives in the same queue as Telegram and Slack — one place to answer, not three.
+  </p>
+
+  <!-- One row, three panels, one height. Sized in the style attribute on
+       purpose: this page's Tailwind is compiled and committed with no build
+       step, so a class that is not already in style.css does nothing and does
+       not say so — which is how this section became six screens tall. -->
+  <div class="mt-8 flex flex-wrap justify-center gap-5">
+    <figure class="rounded-2xl border border-zinc-900 overflow-hidden bg-zinc-950"
+            style="width:262px">
+      <img src="img/widget.gif" alt="A visitor writes and an operator's reply arrives"
+           style="display:block;width:100%" loading="lazy">
+      <figcaption class="px-4 py-3 text-xs text-zinc-400">
+        <span class="text-zinc-100">They ask, you answer</span><br>
+        The reply arrives without a refresh
+      </figcaption>
+    </figure>
+    <figure class="rounded-2xl border border-zinc-900 overflow-hidden bg-zinc-950"
+            style="width:262px">
+      <img src="img/16_widget_help.png" alt="The widget's help centre, searchable"
+           style="display:block;width:100%" loading="lazy">
+      <figcaption class="px-4 py-3 text-xs text-zinc-400">
+        <span class="text-zinc-100">They answer themselves</span><br>
+        Articles you wrote, searchable in the panel
+      </figcaption>
+    </figure>
+    <figure class="rounded-2xl border border-zinc-900 overflow-hidden bg-zinc-950"
+            style="width:262px">
+      <img src="img/14_widget_messages.png" alt="The visitor's own conversation history"
+           style="display:block;width:100%" loading="lazy">
+      <figcaption class="px-4 py-3 text-xs text-zinc-400">
+        <span class="text-zinc-100">Their own history</span><br>
+        Including what you closed last week
+      </figcaption>
+    </figure>
+  </div>
+
+  <div class="mt-6 rounded-xl border border-zinc-900 bg-black px-5 py-4 overflow-x-auto">
+    <code class="text-sm text-zinc-300 font-mono" style="white-space:nowrap">&lt;script src="https://help.yoursite.com/widget/embed.js" async&gt;&lt;/script&gt;</code>
   </div>
 </section>
 
@@ -188,8 +239,8 @@
   <div class="mt-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
     <div class="rounded-xl border border-zinc-900 p-5">
       <i class="ti ti-ticket text-violet-400" style="font-size:18px"></i>
-      <h3 class="mt-3 font-medium">Ticketing in Telegram</h3>
-      <p class="mt-1.5 text-sm text-zinc-400">Categories, attachments, two-way relay, full history per ticket, user verification and blocking.</p>
+      <h3 class="mt-3 font-medium">Widget, Telegram and Slack</h3>
+      <p class="mt-1.5 text-sm text-zinc-400">Three ways in, one queue out. Attachments both directions on all of them, full history per ticket, verification and blocking.</p>
     </div>
     <div class="rounded-xl border border-zinc-900 p-5">
       <i class="ti ti-sparkles text-violet-400" style="font-size:18px"></i>
@@ -476,17 +527,18 @@ docker compose up -d --build</code></pre>
       message sitting in the queue as an ordinary ticket — with a stage, an SLA
       clock and a reply box. Reply to yourself and watch it come back to the bubble.
     </p>
-    <p class="mt-3 text-sm text-amber-400/90">
+    <p class="mt-3 text-sm text-amber-400">
       The demo instance is shared, so anything you write there is visible to
       everyone else looking at it. Please don't type anything you would mind a
       stranger reading.
     </p>
 
     <div class="mt-6 rounded-xl border border-zinc-900 bg-zinc-950 p-5">
-      <div class="text-xs uppercase tracking-wide text-zinc-500 mb-2">
+      <div class="text-xs uppercase tracking-wide text-zinc-500 mb-4">
         What you would paste into your own site
       </div>
-      <code class="block text-sm text-zinc-300 font-mono overflow-x-auto whitespace-nowrap"
+      <code class="text-sm text-zinc-300 font-mono overflow-x-auto"
+            style="display:block;white-space:nowrap"
             >&lt;script src="https://help.yoursite.com/widget/embed.js" async&gt;&lt;/script&gt;</code>
       <p class="mt-3 text-sm text-zinc-500">
         One tag, no build step, no npm. The launcher lives in a shadow root and the

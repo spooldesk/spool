@@ -128,7 +128,7 @@ async def test_a_dismissed_suggestion_is_not_an_ai_answer(initialized_db):
         from sqlalchemy import text as sql
         touched = (await session.execute(sql("""
             SELECT EXISTS (SELECT 1 FROM ai_calls a
-                            WHERE a.ticket_id = :t AND a.accepted = 1)
+                            WHERE a.ticket_id = :t AND a.accepted = true)
         """), {"t": tid})).scalar_one()
     assert not touched
 

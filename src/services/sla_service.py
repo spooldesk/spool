@@ -66,11 +66,11 @@ async def find_new_breaches() -> list[dict]:
             SELECT t.id, t.assigned_admin_id, t.category, u.username, u.tg_id,
                    (SELECT MIN(m.created_at) FROM messages m
                      WHERE m.ticket_id = t.id
-                       AND m.is_internal = 0
+                       AND m.is_internal = false
                        AND m.sender_type = 'user'
                        AND m.id > COALESCE((SELECT MAX(a.id) FROM messages a
                                              WHERE a.ticket_id = t.id
-                                               AND a.is_internal = 0
+                                               AND a.is_internal = false
                                                AND a.sender_type = 'admin'), 0)
                    ) AS waiting_since
               FROM tickets t

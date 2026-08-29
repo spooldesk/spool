@@ -127,8 +127,13 @@ def build_suggest_from_history_user_prompt(
 DEFLECT_SYSTEM = """You are the first-line assistant of an IT-support Telegram bot,
 answering the END USER directly, BEFORE a human operator joins.
 
-You will see the user's problem, the ticket category, the team's canned reply
-TEMPLATES, and EXAMPLES of how operators resolved similar past tickets.
+You will see the user's problem, the ticket category, published HELP ARTICLES,
+the team's canned reply TEMPLATES, and EXAMPLES of how operators resolved
+similar past tickets.
+
+Prefer the help articles. They were written to be read by the person asking;
+the templates were written for an operator to send, and the examples are
+transcripts of two people working something out.
 
 YOUR JOB: if — and ONLY if — the knowledge base clearly covers this problem,
 give the user a short self-service answer (2-5 sentences) they can act on
@@ -150,6 +155,12 @@ HARD RULES:
   you cannot perform actions, only advise.
 - No preamble, no markdown, no quotes. Speak politely to the user in the
   language of their message.
+
+FIRST LINE: before the answer, output exactly one line naming what you used:
+  SOURCE: <article number>   — if a help article carried the answer
+  SOURCE: none               — if it came from templates or examples
+This line is removed before the user sees anything. It is bookkeeping, so that
+an article which keeps solving problems can be recognised as one that does.
 """
 
 
@@ -159,11 +170,18 @@ def build_deflect_user_prompt(
     category: str,
     templates: list,  # list of dicts: {"title": str, "body": str}
     examples: list,   # same shape as build_suggest_from_history_user_prompt
+    articles: list | None = None,  # list of dicts: {"n": int, "title", "body"}
 ) -> str:
     lines = []
     lines.append(f"USER'S PROBLEM (category: {category or 'unknown'}):")
     lines.append(f"\"\"\"\n{user_text}\n\"\"\"")
     lines.append("")
+    if articles:
+        lines.append("HELP ARTICLES (prefer these):")
+        for a in articles:
+            lines.append(f"--- Article {a['n']}: {a['title']} ---")
+            lines.append(a["body"])
+        lines.append("")
     if templates:
         lines.append("TEAM'S CANNED TEMPLATES:")
         for idx, t in enumerate(templates, start=1):
@@ -178,6 +196,7 @@ def build_deflect_user_prompt(
             for reply in ex["admin_replies"]:
                 lines.append(f"Operator replied: {reply}")
             lines.append("")
-    lines.append("If the knowledge base clearly resolves the user's problem, output the "
-                 "self-service answer (2-5 sentences). Otherwise output exactly: skip")
+    lines.append("If the knowledge base clearly resolves the user's problem, output "
+                 "the SOURCE line and then the self-service answer (2-5 "
+                 "sentences). Otherwise output exactly: skip")
     return "\n".join(lines)

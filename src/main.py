@@ -210,6 +210,13 @@ async def main() -> None:
         from src.channels.slack import SlackChannel, is_configured
         if is_configured():
             register_channel(SlackChannel())
+        # Registered but not polled: reading the mailbox is the dashboard's
+        # job, since it is the process that always runs. This is here so a
+        # reply typed in the admin thread can reach somebody who wrote in by
+        # email.
+        from src.channels.email import EmailChannel, is_configured as mail_ready
+        if mail_ready():
+            register_channel(EmailChannel())
 
         dp = Dispatcher()
         

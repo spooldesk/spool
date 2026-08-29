@@ -59,6 +59,22 @@ class User(Base):
         String(255), nullable=True, index=True
     )
     username: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Who they say they are. On Telegram this comes from the account; on the
+    # widget it is typed into a form or handed over by the host page, and the
+    # difference matters — see `identity_verified`.
+    email: Mapped[str | None] = mapped_column(String(320), nullable=True, index=True)
+    # The customer's id in the host's own system, when their page passes one.
+    # Support's most useful question is "which of your users is this", and the
+    # site already knows the answer.
+    external_id: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    # Whether that identity was proved rather than claimed. A widget runs on a
+    # page the visitor controls: anyone can open the console and call
+    # identify({email: "ceo@..."}). Verified means the host's *server* signed
+    # it with a shared secret. An operator resetting access on the strength of
+    # an unverified email is the incident this flag exists to prevent.
+    identity_verified: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
     # Work nickname. Bridges someone's personal Telegram account and the name
     # their organisation knows them by; shown on the ticket header.
     work_username: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
@@ -175,6 +191,15 @@ class Message(Base):
     file_name: Mapped[str | None] = mapped_column(String(512), nullable=True)
     file_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
     mime_type: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    #: The choices offered with this message, as [{"label", "payload"}].
+    #:
+    #: Telegram keeps its keyboard attached to the message and remembers which
+    #: button was which. A channel whose transcript *is* the delivery has no
+    #: such memory, so the offer is stored where the message is.
+    #:
+    #: Cleared once somebody answers, which is also how the question closes:
+    #: the field the panel reads to draw the buttons is the one that stops it.
+    options: Mapped[list | None] = mapped_column(JSON, nullable=True, default=None)
     template_id: Mapped[int | None] = mapped_column(
         ForeignKey("reply_templates.id", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -309,6 +334,13 @@ class AICall(Base):
     ticket_id: Mapped[int | None] = mapped_column(
         ForeignKey("tickets.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    #: The help article the model said it answered from, when it named one.
+    #: Nullable on purpose: an answer assembled from templates and old tickets
+    #: is still a deflection, it is simply not one an article can be credited
+    #: with.
+    article_id: Mapped[int | None] = mapped_column(
+        ForeignKey("articles.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     suggested_template_id: Mapped[int | None] = mapped_column(
         ForeignKey("reply_templates.id", ondelete="SET NULL"), nullable=True
     )
@@ -358,6 +390,56 @@ class ReplyTemplate(Base):
     )
 
     team: Mapped["Team"] = relationship(back_populates="templates")
+
+
+class Article(Base):
+    """A help article, written for customers rather than for operators.
+
+    The one table in this schema whose rows are meant to be read by people
+    who have not signed in, which is what `is_published` is for: an article
+    is invisible until somebody decides it is finished. There is no draft
+    that is "nearly public".
+
+    Not team-scoped, unlike templates. A customer arriving at a help centre
+    has no team, and asking them to pick one before searching would be
+    exposing an internal structure as a navigation aid.
+    """
+
+    __tablename__ = "articles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    #: Stable, human-readable, and unique: it goes in a URL a customer may
+    #: bookmark or an operator may paste into a reply, so renaming the title
+    #: must not break the link.
+    slug: Mapped[str] = mapped_column(String(120), unique=True, nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    #: A sentence for the search results list. Kept separate from the body
+    #: rather than truncating it, because the first line of an article is
+    #: usually context and the useful summary is written on purpose.
+    summary: Mapped[str] = mapped_column(String(300), default="", nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    #: Reuses the ticket categories, so a help centre and a queue agree about
+    #: what the subjects are. Stored as a name, like Ticket.category, because
+    #: renaming a category should not silently re-file old articles.
+    category: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    is_published: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, index=True
+    )
+    #: How many times a customer opened it.
+    view_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    #: How many times an answer built from it was accepted by the person who
+    #: asked. A different question from `view_count` and a better one:
+    #: somebody who read this and opened a ticket anyway got nothing from it,
+    #: and the read still counted.
+    deflected_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_by: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
 
 
 class SavedView(Base):

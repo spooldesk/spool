@@ -40,7 +40,12 @@ def _parse_date(value: str | None) -> Optional[datetime]:
 
 # Anything wider than this cannot reach SQLite: binding it raises OverflowError
 # from the driver, which surfaces as a 500 rather than as a rejected parameter.
-_SQLITE_MAX_INT = 2 ** 63 - 1
+#
+# The bound is the column's, not the engine's. These filters are compared
+# against `Integer` columns — admin ids, team ids — which PostgreSQL stores in
+# 32 bits, so a value between 2^31 and 2^63 used to pass this check and be
+# refused by the driver instead.
+_MAX_ROW_ID = 2 ** 31 - 1
 
 
 def _parse_int(value: str | None) -> Optional[int]:
@@ -51,7 +56,7 @@ def _parse_int(value: str | None) -> Optional[int]:
         parsed = int(value)
     except (TypeError, ValueError):
         return None
-    if not -_SQLITE_MAX_INT <= parsed <= _SQLITE_MAX_INT:
+    if not -_MAX_ROW_ID <= parsed <= _MAX_ROW_ID:
         return None
     return parsed
 
@@ -700,6 +705,9 @@ async def ticket_reply(
     if has_file:
         from sqlalchemy import select
         from sqlalchemy.orm import selectinload
+        from aiogram.types import BufferedInputFile
+
+        from src.channels import DEFAULT as CHANNEL_DEFAULT
         from src.database.models import Message as MessageRecord, Ticket
 
         if len(files) > _MAX_UPLOAD_FILES:
@@ -769,7 +777,14 @@ async def ticket_reply(
                     try:
                         if not file_id:
                             raise ValueError("no reusable id to mirror with")
-                        kwargs = {"chat_id": settings.admin_chat_id, "document": file_id,
+                        # Only Telegram can be handed a reference. Every other
+                        # channel's is meaningless there — the widget's is a
+                        # key into our own store — so those get the bytes.
+                        document = (
+                            file_id if channel.name == CHANNEL_DEFAULT
+                            else BufferedInputFile(content, filename=name)
+                        )
+                        kwargs = {"chat_id": settings.admin_chat_id, "document": document,
                                   "caption": f'{tr("src_web_dashboard")} 📎 {name}' + (f"\n{caption}" if caption else "")}
                         if ticket.thread_id is not None:
                             kwargs["message_thread_id"] = ticket.thread_id

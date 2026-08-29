@@ -1,0 +1,69 @@
+# Production overlay: TLS, and the settings that only make sense once this is
+# reachable from the internet.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# An overlay rather than a second full file, so there is one definition of
+# what the services are and this only says what production changes about
+# them. Two copies of the same service drift, and the copy that drifts is
+# always the one running in front of customers.
+#
+# Set SPOOLDESK_DOMAIN in .env first. Caddy obtains the certificate on first
+# start, which needs ports 80 and 443 reachable and the DNS record already
+# pointing here.
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    depends_on: [dashboard]
+    ports:
+      - "80:80"
+      - "443:443"
+      # QUIC. Harmless if the firewall drops it; browsers fall back.
+      - "443:443/udp"
+    environment:
+      SPOOLDESK_DOMAIN: ${SPOOLDESK_DOMAIN:?set SPOOLDESK_DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates and account keys. The one volume whose loss is felt
+      # immediately: Let's Encrypt rate-limits reissuing.
+      - caddy_data:/data
+      - caddy_config:/config
+      - caddy_logs:/var/log/caddy
+    restart: unless-stopped
+    logging: &logging
+      driver: json-file
+      options:
+        # Docker's default is unbounded, and the first thing that fills a
+        # small VPS is a log nobody reads.
+        max-size: "10m"
+        max-file: "3"
+
+  dashboard:
+    environment:
+      # One proxy in front. This is what makes X-Forwarded-For trustworthy;
+      # without it every limit keyed on an address counts the whole internet
+      # as one visitor, and with the wrong number they are all separate.
+      TRUSTED_PROXY_HOPS: "1"
+      # The session cookie stops being sent over plain HTTP.
+      DASH_COOKIE_SECURE: "true"
+    logging: *logging
+    # A helpdesk on the smallest VPS anyone will run this on. The limit is
+    # not tuning — it is so that one runaway request takes the container down
+    # instead of the host, and the healthcheck brings it back.
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+
+  bot:
+    logging: *logging
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+
+volumes:
+  caddy_data:
+  caddy_config:
+  caddy_logs:

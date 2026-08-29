@@ -191,6 +191,40 @@ def work_hours_dt(days_ago: float) -> datetime:
     return min(out, NOW - timedelta(minutes=1))
 
 
+
+def _demo_screenshot() -> bytes | None:
+    """A plausible thing for a customer to attach, or None.
+
+    Drawn rather than shipped as a file so nothing in the repository is a
+    picture of anyone's real screen. Pillow only lives in
+    requirements-screenshots.txt — CI runs this seed and deliberately does not
+    install a browser stack, so its absence skips the attachment instead of
+    failing the build.
+    """
+    try:
+        from PIL import Image, ImageDraw
+    except ImportError:
+        return None
+
+    import io
+
+    img = Image.new("RGB", (720, 420), "#f4f4f5")
+    d = ImageDraw.Draw(img)
+    d.rectangle([0, 0, 720, 56], fill="#ffffff")
+    d.rectangle([24, 18, 300, 38], fill="#e4e4e7")
+    d.rectangle([40, 104, 680, 300], fill="#ffffff", outline="#e4e4e7", width=2)
+    for i, y in enumerate((140, 180, 220)):
+        d.rectangle([72, y, 72 + (420 - i * 90), y + 14], fill="#e4e4e7")
+    # The part that makes it read as a bug report rather than a blank page.
+    d.rectangle([72, 252, 400, 276], fill="#fecdd3")
+    d.rectangle([80, 258, 392, 270], fill="#e11d48")
+    d.rectangle([40, 330, 220, 372], fill="#a1a1aa")
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
 async def main() -> None:
     # Fresh start every run.
     for suffix in ("", "-shm", "-wal"):
@@ -515,23 +549,70 @@ async def main() -> None:
         # thing the channel layer bought is invisible.
         from src.channels.identity import create_customer
         from src.channels.widget import NAME as WIDGET_CHANNEL, address_for
+        from src.services import file_store
+
+        # (name, category, customer lines, the answer they got). The reply
+        # matters for the photograph: a panel showing three questions and no
+        # answers is a picture of support not happening.
+        HELP_ARTICLES = [
+            ("How do I get a refund?", "how-do-i-get-a-refund",
+             "Refunds reach the original card in about five working days.",
+             "Open Billing in your account and choose the payment you want "
+             "refunded.\n\nRefunds go back to the card that paid and take "
+             "about five working days to appear. If that card has expired we "
+             "can send it elsewhere, but we have to verify you first.\n\n"
+             "Longer than that? Message us with the order number.",
+             "Billing", True),
+            ("Checkout says gateway timeout", "checkout-gateway-timeout",
+             "Usually the card issuer rate-limiting, not a declined card.",
+             "A timeout at the payment step almost always means your bank has "
+             "rate-limited the card rather than declined it.\n\nWait ten "
+             "minutes and try once more. If it happens again, tell us the last "
+             "four digits and we will raise the limit on our side.",
+             "Other", True),
+            ("Changing the email on your account", "changing-your-email",
+             "You can do this yourself; we only step in if you are locked out.",
+             "Settings \u2192 Account \u2192 Email. We send a confirmation link "
+             "to the new address, and the old one keeps working until you click "
+             "it.\n\nIf you no longer have access to the old address, message "
+             "us and we will verify you another way.",
+             "Access", True),
+            ("Turning on two-factor authentication", "two-factor-authentication",
+             "Any authenticator app works. Keep the recovery codes.",
+             "Settings \u2192 Security \u2192 Two-factor. Scan the code with any "
+             "authenticator app.\n\nSave the recovery codes somewhere that is "
+             "not the same phone. Losing both the phone and the codes means we "
+             "have to verify you from scratch, which is slow on purpose.",
+             "Access", True),
+            ("Pricing changes for the team plan", "pricing-changes-team-plan",
+             "Not announced yet \u2014 draft.",
+             "Draft. Do not publish until legal have read it.",
+             "Billing", False),
+        ]
 
         WIDGET_VISITORS = [
-            ("Visitor from /pricing", "Billing", [
+            ("Nora Bell", "Billing", [
                 "Does the team plan bill per operator or per mailbox?",
                 "And can we pay yearly?",
-            ]),
-            ("Visitor from /docs", "Access", [
+            ], "Per operator, and yearly is 2 months off. I've put the "
+               "invoice options on your account — have a look and tell me "
+               "which suits."),
+            ("Ivan Petrov", "Access", [
                 "The API key I generated yesterday returns 401 on every call.",
-            ]),
-            ("Visitor from /checkout", "Other", [
+            ], "That key was made before we moved you to the new workspace, "
+               "so it is pointing at the old one. Generate a fresh one under "
+               "Settings → API and the 401 goes away."),
+            ("Marta Kern", "Other", [
                 "Checkout hangs on the payment step \u2014 card works elsewhere.",
                 "Chrome, latest. It says 'gateway timeout' after about 30 seconds.",
-            ]),
+            ], "Thanks for the screenshot \u2014 that timeout is our payment "
+               "provider rate-limiting the card BIN, not your card. I've "
+               "raised the limit for your account; try once more and tell me "
+               "if it still hangs."),
         ]
 
         widget_tickets = 0
-        for name, category, lines in WIDGET_VISITORS:
+        for name, category, lines, answer in WIDGET_VISITORS:
             visitor = await create_customer(
                 session, channel=WIDGET_CHANNEL,
                 address=address_for(f"demo-session-{name}"),
@@ -551,8 +632,73 @@ async def main() -> None:
                     ticket_id=ticket.id, sender_type="user", sender_id=visitor.tg_id,
                     text=line, created_at=opened + timedelta(minutes=i * 3),
                 ))
+            step = len(lines)
+
+            # One conversation carries a screenshot, because "the customer
+            # sent a picture of the problem" is what support actually looks
+            # like and no frame in the repository showed it.
+            shot = _demo_screenshot() if name == "Marta Kern" else None
+            if shot is not None:
+                ref = file_store.put(shot)
+                session.add(Message(
+                    ticket_id=ticket.id, sender_type="user",
+                    sender_id=visitor.tg_id, text="",
+                    file_id=ref, file_type="photo", file_name="checkout.png",
+                    file_size=len(shot), mime_type="image/png",
+                    created_at=opened + timedelta(minutes=step * 3),
+                ))
+                step += 1
+
+            if answer:
+                session.add(Message(
+                    ticket_id=ticket.id, sender_type="admin", sender_id=0,
+                    text=answer,
+                    created_at=opened + timedelta(minutes=step * 3 + 6),
+                ))
             widget_tickets += 1
+
+            # One visitor gets a history, so the panel's message list is a
+            # list rather than a single row, and so the closed state appears
+            # in a frame somewhere.
+            if name == "Marta Kern":
+                earlier = NOW - timedelta(days=6)
+                past = Ticket(
+                    user_id=visitor.id, team_id=None, category="Billing",
+                    status="closed", stage="in_progress", ticket_code="",
+                    telegram_id=visitor.tg_id, created_at=earlier,
+                    closed_at=earlier + timedelta(hours=2),
+                    admin_categories=["Solved"],
+                )
+                session.add(past)
+                await session.flush()
+                past.ticket_code = f"#{past.id}"
+                for offset, (who, line) in enumerate((
+                    ("user", "Can I get a VAT invoice for last month?"),
+                    ("admin", "Sent it to the address on the account just now. "
+                              "Shout if you need the company details changed."),
+                    ("user", "Got it, thank you."),
+                )):
+                    session.add(Message(
+                        ticket_id=past.id, sender_type=who,
+                        sender_id=visitor.tg_id if who == "user" else 0,
+                        text=line,
+                        created_at=earlier + timedelta(minutes=offset * 25),
+                    ))
+                widget_tickets += 1
         await session.flush()
+
+        # A help centre, so the widget's third tab exists in the demo and in
+        # the screenshots. One draft among them: the difference between what
+        # is written and what is published is the point of the feature.
+        from src.database.models import Article
+
+        for order, (title, slug, summary, body, category, live) in enumerate(HELP_ARTICLES):
+            session.add(Article(
+                slug=slug, title=title, summary=summary, body=body,
+                category=category, is_published=live, sort_order=order,
+                view_count=random.randint(4, 90) if live else 0,
+                created_at=NOW - timedelta(days=random.randint(10, 60)),
+            ))
 
         for row in ai_rows:
             session.add(row)
