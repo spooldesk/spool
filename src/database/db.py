@@ -59,6 +59,7 @@ def _register_sqlite_functions(dbapi_connection, connection_record) -> None:
     # See src/database/dialect.py for the search expression each engine gets.
     if not ON_SQLITE:
         return
+
     # driver_connection is the aiosqlite.Connection; its create_function is a
     # coroutine that proxies into aiosqlite's worker thread (the raw sqlite3
     # object is thread-bound, so it must NOT be called directly). The connect
@@ -69,6 +70,24 @@ def _register_sqlite_functions(dbapi_connection, connection_record) -> None:
         await_only(raw.create_function("ci_contains", 2, _ci_contains, deterministic=True))
     except Exception:  # pragma: no cover — never block a connection over this
         logging.getLogger(__name__).warning("Could not register ci_contains()", exc_info=True)
+
+    # Foreign keys, under test only. SQLite leaves them off by default and
+    # PostgreSQL always enforces them, so a suite run on SQLite happily
+    # inserts a ticket assigned to an operator who does not exist — and then
+    # the same test fails on PostgreSQL for a reason that has nothing to do
+    # with the code under test.
+    #
+    # Deliberately not switched on in production: an instance whose data
+    # predates a constraint would start refusing writes on upgrade, which is
+    # a far worse surprise than a lenient database.
+    if _os.getenv("TESTING") == "1":
+        try:
+            await_only(raw.execute("PRAGMA foreign_keys=ON"))
+        except Exception:  # pragma: no cover
+            logging.getLogger(__name__).warning(
+                "Could not enable foreign keys for the test database",
+                exc_info=True,
+            )
 
 
 @asynccontextmanager
