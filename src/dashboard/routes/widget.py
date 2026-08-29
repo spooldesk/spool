@@ -47,6 +47,7 @@ from src.dashboard.auth import _client_ip
 from src.database.db import db_session
 from src.services import (
     article_service,
+    choice_service,
     file_store,
     intake_service,
     settings_service,
@@ -285,6 +286,13 @@ async def _transcript(ticket_id: int) -> list[dict[str, Any]]:
                 "from": "you" if m.sender_type == "user" else "agent",
                 "text": m.text or "",
                 "at": m.created_at.isoformat() if m.created_at else None,
+                # Only while unanswered. A cleared list is a question that has
+                # been closed, and the panel stops drawing it for the same
+                # reason the server stops accepting it.
+                "options": [
+                    {"label": o.get("label"), "payload": o.get("payload")}
+                    for o in (m.options or []) if isinstance(o, dict)
+                ] or None,
                 # Metadata only. The bytes come from /api/file/{id}, which
                 # checks who is asking; putting a link here that did not
                 # would make the transcript the authorisation.
@@ -569,6 +577,60 @@ async def file_download(
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Cache-Control"] = "private, max-age=300"
     return _cors(response, origin)
+
+
+@router.post("/api/choose")
+async def choose(
+    request: Request,
+    x_spooldesk_session: str | None = Header(default=None),
+) -> JSONResponse:
+    """A visitor tapped one of the choices offered with a message.
+
+    Everything dangerous about this is in choice_service: the payload has to
+    be one the message actually offered, and the message has to belong to the
+    person asking. Both matter, because a payload is a small string with a
+    ticket id in it and the endpoint is open to anyone with a session.
+    """
+    origin = await _allowed_origin(request)
+    if (off := await _off(origin)) is not None:
+        return off
+
+    token = (x_spooldesk_session or "").strip()
+    if not token:
+        return _json({"error": "no_session"}, origin, status.HTTP_401_UNAUTHORIZED)
+
+    user = await _visitor(token)
+    if user is None:
+        return _json({"error": "no_session"}, origin, status.HTTP_401_UNAUTHORIZED)
+
+    body = await request.json()
+    try:
+        message_id = int(body.get("message") or 0)
+    except (TypeError, ValueError):
+        message_id = 0
+    payload = _clean(body.get("payload"), 120)
+    if not message_id or not payload:
+        return _json({"error": "bad_choice"}, origin, status.HTTP_400_BAD_REQUEST)
+
+    async with db_session() as session:
+        outcome = await choice_service.apply(
+            session, message_id=message_id, payload=payload, user_tg_id=user.tg_id,
+        )
+        await session.commit()
+
+    if not outcome.ok:
+        # One answer for "not yours", "not offered" and "already answered".
+        # Telling them apart would let somebody learn about a ticket by
+        # guessing at it.
+        return _json({"error": "refused"}, origin, status.HTTP_400_BAD_REQUEST)
+
+    from src.utils.i18n import get_text
+
+    return _json({
+        "ok": True,
+        "said": get_text(outcome.reply_key, user.language) if outcome.reply_key else "",
+        "closed": outcome.closed,
+    }, origin)
 
 
 @router.get("/api/poll")

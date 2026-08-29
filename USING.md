@@ -81,10 +81,10 @@ Closing tells the customer, on whatever channel they wrote from, and asks
 them to rate it 1–5. The score is immutable and shows up on the dashboard;
 nobody is asked twice.
 
-The rating is **answerable in Telegram today**. Widget and Slack customers
-get the closing notice and see the question, but the panel has no buttons to
-tap yet — so their scores are missing from the CSAT figure rather than being
-zero. Worth knowing before reading that number as the whole picture.
+Widget customers can tap the rating too. Slack customers get the question
+in words and cannot answer it by clicking, so their scores are missing from
+the figure rather than counted as bad ones — worth knowing if most of your
+volume is there.
 
 ---
 

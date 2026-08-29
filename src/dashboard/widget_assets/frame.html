@@ -140,6 +140,18 @@
   .stamp.agent { align-self: flex-start; }
   .greet { color: var(--muted); font-size: 14px; align-self: flex-start;
            padding: 2px 2px 6px; }
+  /* The choices offered with a message. Aligned with the message they
+     belong to, and gone the moment one is taken — a question that has been
+     answered should not still look like a question. */
+  .picks { display: flex; flex-wrap: wrap; gap: 6px; align-self: flex-start;
+           max-width: 88%; padding: 2px 0 4px; }
+  .picks button {
+    border: 1px solid var(--line); background: var(--bg); color: var(--text);
+    border-radius: 999px; padding: 7px 13px; font: inherit; font-size: 13px;
+    cursor: pointer;
+  }
+  .picks button:hover { border-color: var(--brand); color: var(--brand); }
+  .picks button:disabled { opacity: .5; cursor: default; }
   .note { color: var(--muted); font-size: 12px; align-self: center;
           text-align: center; padding: 4px 8px; }
 
@@ -697,6 +709,43 @@
     return chip;
   }
 
+  function picks(m) {
+    var row = document.createElement("div");
+    row.className = "picks";
+    m.options.forEach(function (opt) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.textContent = opt.label;
+      b.addEventListener("click", function () {
+        // Disabled as a group before the request, not after. The buttons are
+        // a rating: a double tap that sends twice is a customer wondering
+        // which of their answers counted.
+        row.querySelectorAll("button").forEach(function (other) {
+          other.disabled = true;
+        });
+        fetch(BASE + "/widget/api/choose", {
+          method: "POST",
+          headers: auth({ "content-type": "application/json" }),
+          body: JSON.stringify({ message: m.id, payload: opt.payload }),
+        }).then(function (r) {
+          return r.ok ? r.json() : null;
+        }).then(function (data) {
+          row.remove();
+          if (data && data.said) bubble("note", data.said);
+          if (data && data.closed) setWritable(false);
+        }).catch(function () {
+          row.querySelectorAll("button").forEach(function (other) {
+            other.disabled = false;
+          });
+          bubble("note", strings.offline || "Could not send. Please try again.");
+        });
+      });
+      row.appendChild(b);
+    });
+    log.appendChild(row);
+    log.scrollTop = log.scrollHeight;
+  }
+
   function render(messages) {
     var fresh = 0;
     (messages || []).forEach(function (m) {
@@ -704,6 +753,7 @@
       seen[m.id] = true;
       if (m.file) fileBubble(m);
       else bubble("msg " + (m.from === "you" ? "you" : "agent"), m.text);
+      if (m.options && m.options.length) picks(m);
       if (m.from !== "you") fresh++;
     });
     if (fresh) {

@@ -118,12 +118,16 @@ class WidgetChannel:
         # reference and stores the file for us; a browser cannot, so this is
         # the one adapter that owns a store — see src/services/file_store.py.
         files=True,
-        # False. The panel renders a transcript and has nothing to draw a
-        # button with. This said True while `send_text` threw the options
-        # away, which is exactly the combination the capability exists to
-        # prevent: a closing message that asks for a rating and hides every
-        # way of giving one.
-        buttons=False,
+        # True, and this time the panel really can. The choices are stored on
+        # the message that offered them (Message.options) and the panel draws
+        # them from the transcript, which is the only memory a channel like
+        # this has — Telegram keeps a keyboard attached to a message and
+        # remembers which button was which; a list of rows does not.
+        #
+        # It said True once before while `send_text` silently dropped the
+        # options, which is the combination this flag exists to prevent: a
+        # message asking for a rating with every way of giving one hidden.
+        buttons=True,
         typing=False,
         # Nothing reaches a visitor who has closed the tab. Worth declaring
         # rather than discovering: an SLA that assumes a notification landed

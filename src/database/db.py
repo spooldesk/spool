@@ -232,6 +232,17 @@ def _migrate_to_new_schema(sync_connection) -> None:
         except Exception:
             pass
 
+    # Choices offered with a message, for channels that draw their own.
+    if "messages" in tables:
+        message_columns = {c["name"] for c in inspector.get_columns("messages")}
+        if "options" not in message_columns:
+            try:
+                sync_connection.execute(
+                    text("ALTER TABLE messages ADD COLUMN options JSON")
+                )
+            except Exception:
+                pass
+
     # The help centre's two counters, added after the table existed.
     if "articles" in tables:
         article_columns = {c["name"] for c in inspector.get_columns("articles")}

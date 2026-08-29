@@ -191,6 +191,15 @@ class Message(Base):
     file_name: Mapped[str | None] = mapped_column(String(512), nullable=True)
     file_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
     mime_type: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    #: The choices offered with this message, as [{"label", "payload"}].
+    #:
+    #: Telegram keeps its keyboard attached to the message and remembers which
+    #: button was which. A channel whose transcript *is* the delivery has no
+    #: such memory, so the offer is stored where the message is.
+    #:
+    #: Cleared once somebody answers, which is also how the question closes:
+    #: the field the panel reads to draw the buttons is the one that stops it.
+    options: Mapped[list | None] = mapped_column(JSON, nullable=True, default=None)
     template_id: Mapped[int | None] = mapped_column(
         ForeignKey("reply_templates.id", ondelete="SET NULL"), nullable=True, index=True
     )

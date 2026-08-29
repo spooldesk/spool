@@ -259,21 +259,34 @@ async def deflect_and_offer(bot: Bot, ticket_id: int, user_text: str,
     if await settings_service.get_ai_shadow_mode():
         logger.info(f"deflect: answer withheld (shadow mode) for ticket #{ticket_id}")
         return
+    # Sent *and* recorded. On a channel whose transcript is what the customer
+    # reads, an answer that is sent without being recorded reached nobody —
+    # which is what happened to every widget visitor the assistant ever
+    # answered, invisibly, because sending and showing are the same act there.
+    from src.services import outbound
+
+    options = _deflect_options(ticket_id, result.ai_call_id or 0, lang)
+    pipe_can_draw = True
     try:
-        delivery = await get_channel(channel).send_text(
-            address or str(user_tg_id),
-            (get_text("deflect_prefix", lang) + "\n\n" + result.answer
-             + "\n\n" + get_text("deflect_question", lang)),
-            options=_deflect_options(ticket_id, result.ai_call_id or 0, lang),
-        )
-        if delivery.ok:
-            logger.info(f"🤖 deflect: answer offered to user for ticket #{ticket_id} "
-                        f"(ai_call={result.ai_call_id})")
-        else:
-            logger.error(f"deflect: could not send answer for #{ticket_id}: "
-                         f"{delivery.error_key}")
-    except Exception as e:  # noqa: BLE001
-        logger.error(f"deflect: failed to send answer for #{ticket_id}: {e}")
+        pipe_can_draw = get_channel(channel).caps.buttons
+    except Exception:  # noqa: BLE001 — fall back to spelling them out
+        pipe_can_draw = False
+
+    body = (get_text("deflect_prefix", lang) + "\n\n" + result.answer
+            + "\n\n" + get_text("deflect_question", lang))
+    if not pipe_can_draw:
+        body = f"{body}\n\n" + "  ·  ".join(o.label for o in options if o.label)
+
+    delivery = await outbound.say(
+        ticket_id=ticket_id, channel=channel,
+        address=address or str(user_tg_id), text=body, options=options,
+    )
+    if delivery.ok:
+        logger.info(f"🤖 deflect: answer offered to user for ticket #{ticket_id} "
+                    f"(ai_call={result.ai_call_id})")
+    else:
+        logger.error(f"deflect: could not send answer for #{ticket_id}: "
+                     f"{delivery.error_key}")
 
 
 async def mark_outcome(ai_call_id: int, accepted: bool) -> None:

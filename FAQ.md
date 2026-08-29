@@ -157,10 +157,10 @@ No, by choice. One active ticket per customer; writing again continues it.
 Their history is visible to them in the widget and to you in the dashboard.
 
 **Can widget customers rate the support they got?**
-Not by tapping, yet. The closing message reaches every channel and carries
-the question, but only Telegram can draw the buttons to answer it — so the
-CSAT figure is built from Telegram ratings, and widget conversations are
-absent from it rather than counted as bad ones.
+Yes — the rating buttons appear in the panel and a tap records it, the same
+as in Telegram. Slack still gets the question as text with no way to click,
+so those conversations are absent from the CSAT figure rather than counted
+as bad ones.
 
 **Email as a channel?**
 Yes. Point it at a mailbox you already have — IMAP in, SMTP out, no third

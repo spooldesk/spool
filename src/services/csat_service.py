@@ -98,21 +98,17 @@ async def send_close_notification(
     # message, because what gets dropped is the whole point of sending it.
     body = text if pipe.caps.buttons else _spelled_out(text, options)
 
-    try:
-        delivery = await pipe.send_text(
-            address or str(user_tg_id), body, options=options,
-        )
-        if not delivery.ok:
-            logger.error(
-                f"CSAT: could not ask user {user_tg_id} about ticket #{ticket_id}: "
-                f"{delivery.error_key} {delivery.error_detail or ''}"
-            )
-            return
-    except Exception as e:
-        logger.error(f"CSAT: failed to notify user {user_tg_id} for ticket #{ticket_id}: {e}")
-        return
+    from src.services import outbound
 
-    await _record(ticket_id, user_tg_id, body)
+    delivery = await outbound.say(
+        ticket_id=ticket_id, channel=channel,
+        address=address or str(user_tg_id), text=body, options=options,
+    )
+    if not delivery.ok:
+        logger.error(
+            f"CSAT: could not ask user {user_tg_id} about ticket #{ticket_id}: "
+            f"{delivery.error_key} {delivery.error_detail or ''}"
+        )
 
 
 def _spelled_out(text: str, options) -> str:

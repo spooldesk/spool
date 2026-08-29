@@ -83,16 +83,19 @@ async def test_a_widget_customer_is_told_their_ticket_closed(widget_on):
     assert str(ticket_id) in said, "the closing notice never reached the panel"
 
 
-async def test_the_rating_request_survives_having_no_buttons(widget_on):
-    """A channel that cannot draw a keyboard must still keep the question.
+async def test_the_rating_request_arrives_as_something_tappable(widget_on):
+    """The panel can draw buttons now, so the choices go on the message rather
+    than being spelled into its text.
 
-    This is the Channel protocol's rule, and the widget was breaking it while
-    declaring it could draw buttons — so the customer got "how did we do?"
-    with every way of answering hidden.
+    They were spelled out for a while, which was the honest thing to do when
+    nothing could draw them — the Channel protocol requires a channel without
+    `caps.buttons` to keep the question somehow. Now it has them.
     """
-    assert get_channel(WIDGET).caps.buttons is False, (
-        "the widget claims it can draw buttons; nothing in the panel can"
-    )
+    from sqlalchemy import select
+
+    from src.database.models import Message as MessageRecord
+
+    assert get_channel(WIDGET).caps.buttons is True
 
     _, ticket_id = await _widget_ticket()
     async with db_session() as session:
@@ -103,9 +106,20 @@ async def test_the_rating_request_survives_having_no_buttons(widget_on):
         None, user_tg_id=routing_key, ticket_id=ticket_id, lang="en",
     )
 
-    closing = (await _transcript(ticket_id))[-1]
-    for star in ("1⭐", "5⭐"):
-        assert star in closing, f"the {star} choice was dropped on the way out"
+    async with db_session() as session:
+        row = (await session.execute(
+            select(MessageRecord)
+            .where(MessageRecord.ticket_id == ticket_id)
+            .order_by(MessageRecord.id.desc())
+        )).scalars().first()
+
+    labels = [o["label"] for o in (row.options or [])]
+    assert len(labels) == 5, "the five ratings were not offered"
+    payloads = [o["payload"] for o in row.options]
+    assert all(p.startswith("csat:") for p in payloads)
+    # And the text stays a sentence rather than a sentence with five stars
+    # stapled to it.
+    assert "⭐" not in row.text
 
 
 async def test_a_telegram_customer_still_gets_it_the_old_way(channel):
