@@ -80,7 +80,14 @@ def _enable_widget(db) -> None:
 
 def _shoot_widget(browser, base: str, out) -> list[str]:
     """The three screens a visitor sees, in the order they meet them."""
-    page = browser.new_page(viewport=WIDGET_VIEWPORT, device_scale_factor=2)
+    # Dark, explicitly. The panel follows prefers-color-scheme, and a
+    # headless browser defaults to light — so these came out as three bright
+    # slabs on a landing page that is black, which reads as a screenshot of
+    # somebody else's product. The dashboard shots pick their theme the same
+    # way, through localStorage; this one has no setting to pick, only the
+    # visitor's own preference, so the camera has to state it.
+    page = browser.new_page(viewport=WIDGET_VIEWPORT, device_scale_factor=2,
+                            color_scheme="dark")
     written: list[str] = []
     try:
         # The token has to be on the origin before the panel loads, or it

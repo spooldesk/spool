@@ -141,7 +141,9 @@ def main() -> int:
             browser = p.chromium.launch()
             # A visitor who has never been here: no stored session, so the
             # panel opens the way it does for a stranger.
-            page = browser.new_page(viewport=VIEWPORT)
+            # Dark for the same reason as the stills: this sits on a black
+            # landing page, and the panel takes its theme from the viewer.
+            page = browser.new_page(viewport=VIEWPORT, color_scheme="dark")
             page.goto(f"{BASE}/widget/frame")
             page.wait_for_load_state("networkidle")
             page.wait_for_timeout(700)
