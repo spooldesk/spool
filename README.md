@@ -55,7 +55,8 @@ as somewhere an agent works *from*.
 |  | Spooldesk | Chatwoot / Zendesk / Freshdesk |
 |---|---|---|
 | Where agents work | **dashboard or Telegram**, per person | separate inbox app, and only that |
-| Where customers write | **widget, Slack, Telegram** — one queue | many channels, a plan tier for each |
+| Where customers write | **widget, email, Slack, Telegram** — one queue | many channels, a plan tier for each |
+| Help centre | **articles in the widget, and a public page each** | included, often on a higher tier |
 | AI deflection | **built in, opt-in, measured** | paid add-on or absent |
 | Deploy | **1 container, 5 min** | Rails/Postgres/Redis stack or SaaS-only |
 | Your data | **your server, SQLite file** | their cloud |
@@ -68,7 +69,7 @@ One Telegram bot replaced that — and grew into a full support platform.
 
 ## Features
 
-**🎫 Three ways in, one queue out**
+**🎫 Four ways in, one queue out**
 - **Website widget** — one script tag; visitors write from the page they are on and come back later to a conversation that is still there
 - **Telegram** — a bot, with each ticket its own forum topic in your admin group
 - **Slack** — a client's DM or a channel shared with their whole team

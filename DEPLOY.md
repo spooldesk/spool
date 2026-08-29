@@ -62,13 +62,19 @@ Or shorter, through `make`: `make up`, `make logs`, `make down` — see
 ### Data and backups
 
 The entire database is one SQLite file on the `data` volume, at
-`/app/data/support.db`.
+`/app/data/support.db`, and the attachments are a directory beside it.
 
 ```bash
-docker compose cp dashboard:/app/data/support.db ./backup-$(date +%F).db
+make backup        # both, in one archive, taken at one instant
+make backup-daily  # ...and every night from now on
 ```
 
-It holds every conversation in plain text. Treat the backup the way you would
+Do not copy `support.db` with `cp` or `docker compose cp`: it runs in WAL
+mode, so the file on its own is not a complete database and the copy can
+restore into a missing hour. `make backup` uses SQLite's online-backup API,
+which is the whole reason it exists. See [Backups](#backups) below.
+
+The archive holds every conversation in plain text. Treat it the way you would
 treat the conversations.
 
 ### Upgrading
@@ -244,7 +250,10 @@ SQLite file would have been. Back them up regardless of engine.
 ### Backups
 
 ```bash
-make backup      # → ./backups/spooldesk-2026-08-28-1430.tar.gz
+make backup                  # → ./backups/spooldesk-2026-08-29-1430.tar.gz
+make backup-daily            # run it every night at 03:30
+make backup-daily AT=05:00   # ...or at some other time
+make backup-status           # is anything scheduled?
 ```
 
 One archive with the database and its attachments, taken at one instant. The
@@ -256,8 +265,23 @@ mode — which this runs in, so the dashboard can read while the bot writes —
 the file on disk is not a complete database by itself, and copying it at the
 wrong moment restores into a missing hour.
 
-Copy the archive somewhere else. The disk holding the only copy is the disk
-that fails.
+`make backup-daily` installs a cron entry that runs the same command every
+night, logs to `logs/backup.log` and deletes archives older than fourteen days
+(`BACKUP_KEEP_DAYS` to change that). `make backup-daily --remove` takes it out
+again.
+
+Two things it does not do, and both matter:
+
+- **The archives stay on this machine.** The disk holding the only copy is the
+  disk that fails. Copy them off — a storage box, S3, another server, anything
+  with a different power supply.
+- **Nothing has restored one.** A backup nobody has restored is a hypothesis.
+  Try it once now, while it is cheap; the steps are at the top of
+  `scripts/backup.sh`.
+
+On PostgreSQL, `make backup` refuses to run rather than archive a database it
+cannot read. Use `pg_dump` against the database container, and remember the
+attachments separately — they are still files on the dashboard's volume.
 
 ---
 
@@ -387,6 +411,44 @@ Tickets then say **Verified identity**. Without a signature they say **Says
 they are this person**, which is the honest label and is perfectly fine for
 most support — it is a reason to check before resetting an account, not a
 reason to distrust the visitor.
+
+---
+
+## Help centre
+
+Articles are written in the dashboard under **Articles**. Publishing one puts
+it in two places at once:
+
+- the **Help** tab inside the chat widget, where a visitor can search it
+  before starting a conversation;
+- its own page at `https://your-domain/help/<slug>`, which is a link you can
+  paste into an email reply or a Telegram message.
+
+The second one is the point. A help centre earns its keep when an operator
+answers with a link instead of writing the answer for the fortieth time, and
+a link needs somewhere to go.
+
+`/help` lists everything published and has a search box. Both pages are
+plain server-rendered HTML — no JavaScript, no cookie, no session — because
+the person reading them is already having a problem and may be on a bad
+connection.
+
+### Who can see it
+
+Anyone. That is what publishing means, and the article list says so under
+the switch. Two things follow:
+
+- **Drafts are never reachable**, by any route, by anybody. Draft and
+  published are separate states and there is nothing in between.
+- **Search engines are invited.** `/robots.txt` allows `/help` and disallows
+  everything else, so a crawler indexes your documentation and not your
+  sign-in page.
+
+If your articles are internal, turn the public pages off with the switch at
+the top of the Articles list. The widget's Help tab keeps working — that is a
+different audience — and `/help` starts answering 404 as though it never
+existed. It also answers 404 while nothing is published, so a fresh install
+never shows an empty help centre to a crawler.
 
 ---
 

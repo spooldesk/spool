@@ -1,7 +1,8 @@
 """Lightweight PII / secret scrubber for text sent to external LLMs.
 
-Defense-in-depth, NOT a complete solution. Primary defense remains the
-category whitelist (1pass tickets never reach the AI at all).
+Defence in depth, NOT a complete solution. The primary defence is the
+category blocklist: a ticket in a blocked category is never sent to the AI
+at all, so nothing in it reaches a third party to be scrubbed.
 """
 
 from __future__ import annotations

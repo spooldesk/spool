@@ -262,7 +262,7 @@
            without a Telegram account at all. #}
         <div class="text-zinc-500 text-xs flex items-center gap-1.5">
           <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded
-                       bg-zinc-800/70 text-zinc-400">
+                       bg-zinc-800 text-zinc-400">
             <i class="ti {{ 'ti-brand-telegram' if t.channel == 'telegram' else 'ti-message-circle' }}"
                style="font-size:11px" aria-hidden="true"></i>
             {{ T.get('ch_' ~ t.channel, t.channel) }}
@@ -286,7 +286,7 @@
         {% endif %}
         {% if t.user_email or t.user_external_id %}
           {% if t.user_identity_verified %}
-            <div class="inline-flex items-center gap-1 text-xs text-emerald-400/90">
+            <div class="inline-flex items-center gap-1 text-xs text-emerald-400">
               <i class="ti ti-rosette-discount-check shrink-0" style="font-size:12px" aria-hidden="true"></i>
               {{ T.id_verified }}
             </div>

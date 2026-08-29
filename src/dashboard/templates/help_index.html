@@ -1,0 +1,39 @@
+{% extends "_help_base.html" %}
+
+{% block title %}Help centre · {{ brand }}{% endblock %}
+{% block description %}Answers to common questions about {{ brand }}.{% endblock %}
+
+{% block content %}
+  <h1>How can we help?</h1>
+
+  {#
+    A GET form, so a search has a URL. Somebody who finds the answer by
+    searching can send the search itself to the next person who asks.
+  #}
+  <form class="search" method="get" action="/help" role="search">
+    <input type="search" name="q" value="{{ q }}" maxlength="120"
+           placeholder="Search the help centre" aria-label="Search the help centre">
+    <button type="submit">Search</button>
+  </form>
+
+  {% if articles %}
+    <ul class="articles">
+      {% for a in articles %}
+        <li>
+          <a href="/help/{{ a.slug }}">
+            <div class="t">{{ a.title }}</div>
+            {% if a.summary %}<div class="s">{{ a.summary }}</div>{% endif %}
+          </a>
+        </li>
+      {% endfor %}
+    </ul>
+  {% elif q %}
+    <p class="empty">
+      Nothing matches &ldquo;{{ q }}&rdquo;. <a href="/help">Show everything</a>.
+    </p>
+  {% else %}
+    {# _enabled() already refused the page when nothing is published, so this
+       is only reachable in the moment between the count and the read. #}
+    <p class="empty">Nothing here yet.</p>
+  {% endif %}
+{% endblock %}

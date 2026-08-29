@@ -40,10 +40,11 @@ logger = logging.getLogger(__name__)
 # Categories whose ticket bodies must NEVER be displayed in the dashboard
 # (they contain credentials). Only the header/metadata is shown.
 #
-# Currently EMPTY: the 1Pass/Gmail/Telegram category was opened up because creds
-# are shared via the team's own secret-link tool (no plaintext credentials ever
-# appear in messages), so there's nothing to mask. Re-add fragments here if a
-# truly sensitive category is introduced later.
+# Empty by default, because masking is only right for a team that actually
+# puts credentials in ticket bodies — most send a one-time secret link
+# instead, and a masked body they cannot read helps nobody. Add fragments of
+# a category name here if this deployment has a category where the message
+# text itself is sensitive.
 _SENSITIVE_CATEGORY_FRAGMENTS: tuple[str, ...] = ()
 
 
@@ -1054,7 +1055,8 @@ async def ticket_detail(ticket_id: int) -> dict | None:
     messages = []
     for m in sorted(ticket.messages, key=lambda x: x.created_at):
         text = m.text or ""
-        # 1Pass etc. — mask bodies, keep the metadata so admins can audit who said when
+        # Mask the body, keep the metadata: an operator still needs to see
+        # who said something and when, just not what it was.
         if sensitive:
             text = _dash_t("msg_masked_credentials")
         # Is the attachment an image we can preview inline?

@@ -86,3 +86,21 @@ def test_the_check_would_have_caught_the_ones_that_got_through(known_absent):
         f"regenerated this parametrisation is stale, and that is fine, but "
         f"pick another absent class so the escaping stays covered"
     )
+
+
+def test_no_template_syntax_survives_on_the_landing():
+    """The landing is served raw, so a Jinja tag is just text on the page.
+
+    Everything else in docs/ and src/dashboard/templates/ is a Jinja
+    template, and a comment written out of habit renders as a paragraph of
+    developer notes in the middle of the pricing table. It did — between the
+    self-hosted feature list and its button, in production font size.
+    """
+    html = LANDING.read_text(encoding="utf-8")
+    strays = re.findall(r"\{[#{%].{0,50}", html, re.S)
+    assert not strays, (
+        "docs/index.html is static HTML served as-is, but it contains template "
+        "syntax that will render as visible text: "
+        + "; ".join(s.replace(chr(10), " ")[:60] for s in strays)
+        + " — use an HTML comment instead."
+    )

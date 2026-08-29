@@ -26,8 +26,8 @@ from src.services import template_service
 logger = logging.getLogger(__name__)
 
 # Tickets in these categories never reach the LLM.
-# Match is substring, case-insensitive — handles localized variants like
-# "1pass/gmail/telegram" (uk default) regardless of exact spelling.
+# Match is substring and case-insensitive, so a category renamed or
+# translated by the team still matches what was blocked.
 # Category blacklist now lives in settings (editable from the web dashboard) and
 # is enforced once in ai/notifier.py before this use case runs. Kept empty here
 # to avoid a second, conflicting source of truth.

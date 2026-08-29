@@ -76,6 +76,14 @@ async def _free_slug(session: AsyncSession, wanted: str, *, exclude: int | None 
 # ---------------------------------------------------------------- writing
 
 
+#: Longest article body accepted. Roughly thirty-five thousand words —
+#: far past any support article and far short of anything that would make a
+#: page slow to render or a row awkward to move. The column is Text and has
+#: no limit of its own, so without this the only bound on what an operator
+#: can paste in is what their browser will post.
+MAX_BODY = 100_000
+
+
 async def create(*, title: str, body: str, summary: str = "",
                  category: str | None = None, is_published: bool = False,
                  created_by: int = 0) -> Article:
@@ -84,7 +92,7 @@ async def create(*, title: str, body: str, summary: str = "",
             slug=await _free_slug(session, slugify(title)),
             title=(title or "").strip()[:200],
             summary=(summary or "").strip()[:300],
-            body=body or "",
+            body=(body or "")[:MAX_BODY],
             category=(category or None),
             is_published=bool(is_published),
             created_by=created_by,
@@ -117,10 +125,10 @@ async def update(article_id: int, **fields) -> bool:
                 article.slug = await _free_slug(
                     session, slugify(article.title), exclude=article.id
                 )
-        for name, cap in (("summary", 300), ("body", None), ("category", 50)):
+        for name, cap in (("summary", 300), ("body", MAX_BODY), ("category", 50)):
             if name in fields and fields[name] is not None:
                 value = fields[name]
-                setattr(article, name, value[:cap] if cap else value)
+                setattr(article, name, value[:cap])
         if "is_published" in fields:
             article.is_published = bool(fields["is_published"])
         if "sort_order" in fields and fields["sort_order"] is not None:

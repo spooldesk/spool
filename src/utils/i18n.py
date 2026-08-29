@@ -78,10 +78,6 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "active_ticket_exists": "У вас уже есть активный запрос №{ticket_id}. Пожалуйста, подождите ответа или закройте текущий запрос.",
         
         # Categories
-        "category_vpn": "VPN",
-        "category_server": "Server",
-        "category_password": "1pass/gmail/telegram",
-        "category_other": "Другое",
         
         # Team assignment
         "team_assigned": "✅ Ваш аккаунт привязан к команде '{team_name}'.\nВаш ID в команде: {local_user_id}\n\nТеперь вы можете создавать запросы.",
@@ -131,10 +127,6 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "active_ticket_exists": "У вас вже є активний запит №{ticket_id}. Будь ласка, зачекайте на відповідь або закрийте поточний запит.",
         
         # Categories
-        "category_vpn": "VPN",
-        "category_server": "Server",
-        "category_password": "1pass/gmail/telegram",
-        "category_other": "Інше питання",
         
         # Team assignment
         "team_assigned": "✅ Ваш обліковий запис прив'язано до команди '{team_name}'.\nВаш ID в команді: {local_user_id}\n\nТепер ви можете створювати запити.",
@@ -184,10 +176,6 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "active_ticket_exists": "You already have an active request #{ticket_id}. Please wait for a response or close the current request.",
         
         # Categories
-        "category_vpn": "VPN",
-        "category_server": "Server",
-        "category_password": "1pass/gmail/telegram",
-        "category_other": "Other",
         
         # Team assignment
         "team_assigned": "✅ Your account has been linked to team '{team_name}'.\nYour ID in the team: {local_user_id}\n\nYou can now create requests.",

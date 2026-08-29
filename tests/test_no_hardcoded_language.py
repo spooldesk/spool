@@ -54,9 +54,9 @@ ALLOWED = {
 # text posted into the admin chat goes through _op() and follows the instance
 # UI language. Neither may be a literal.
 # src/config and src/ai were outside this list, and that is how a leftover
-# module shipped a previous employer's category list — "1Pass / Gmail / TG /
-# Slack", "Трубка" — as the product's defaults. Scan all of src/ instead of
-# naming the directories that happen to matter today.
+# module shipped the category names of the one help desk this started as —
+# in Russian, naming that team's own tools — as the product's defaults. Scan
+# all of src/ instead of naming the directories that happen to matter today.
 SCANNED = ["src"]
 
 
