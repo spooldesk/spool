@@ -241,6 +241,84 @@ async def read(slug: str) -> Article | None:
         return article
 
 
+#: Words this short carry no signal and match half the help centre.
+_MIN_TERM = 4
+#: More than this and the search costs more than the answer is worth.
+_MAX_TERMS = 8
+
+
+def _terms(question: str) -> list[str]:
+    """The words worth looking up out of a customer's message."""
+    seen: list[str] = []
+    for word in re.findall(r"\w{%d,}" % _MIN_TERM, (question or "").lower(), re.UNICODE):
+        if word not in seen:
+            seen.append(word)
+        if len(seen) >= _MAX_TERMS:
+            break
+    return seen
+
+
+async def candidates_for(question: str, *, category: str | None = None,
+                         limit: int = 4) -> list[Article]:
+    """Published articles that might answer this, best first.
+
+    Ranked by how many of the question's words each one matched, with the
+    ticket's category breaking ties. Nothing here decides anything — the
+    model reads them and judges — so a rough ranking that surfaces the right
+    four is the whole requirement.
+    """
+    terms = _terms(question)
+    if not terms:
+        return []
+
+    hits: dict[int, int] = {}
+    found: dict[int, Article] = {}
+
+    async with db_session() as session:
+        for term in terms:
+            rows = (await session.execute(
+                select(Article)
+                .where(Article.is_published == True,  # noqa: E712
+                       or_(_contains(Article.title, term),
+                           _contains(Article.summary, term),
+                           _contains(Article.body, term)))
+                .limit(limit * 3)
+            )).scalars().all()
+            for article in rows:
+                found[article.id] = article
+                hits[article.id] = hits.get(article.id, 0) + 1
+
+    ranked = sorted(
+        found.values(),
+        key=lambda a: (
+            -hits[a.id],
+            # A ticket filed under Billing is more likely answered by a
+            # Billing article, all else being equal.
+            a.category != category,
+            a.sort_order,
+        ),
+    )
+    return ranked[:limit]
+
+
+async def credit_deflection(article_id: int) -> None:
+    """Record that an answer built from this article ended a conversation.
+
+    Only ever called when the person who asked said it solved their problem.
+    Counting offers instead would make every article look useful, which is
+    the same as measuring nothing.
+    """
+    if not article_id:
+        return
+    async with db_session() as session:
+        await session.execute(
+            Article.__table__.update()
+            .where(Article.id == article_id)
+            .values(deflected_count=Article.deflected_count + 1)
+        )
+        await session.commit()
+
+
 async def count_published() -> int:
     """Whether the help centre has anything in it.
 

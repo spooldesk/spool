@@ -108,9 +108,13 @@ answer rather than the answer.
 its link; editing a published one does not, because that link may be in a
 customer's bookmarks or in a reply a colleague sent last month.
 
-The **Reads** column is the only evidence you will get about whether writing
-one was worth the afternoon. An article nobody opens is either badly titled
-or answering a question nobody has.
+Two numbers per article, and they answer different questions. **Reads** is
+how many people opened it — including everyone who read it and opened a ticket
+anyway. **Solved** is how many times the assistant answered from it and the
+person confirmed that was the end of it.
+
+An article with reads and no solves is being found and not helping. That is
+more useful to know than either number alone.
 
 ---
 
@@ -197,6 +201,10 @@ up.
 It is off unless a `GEMINI_API_KEY` is set. When on, it suggests — it never
 sends.
 
+- Answers customers directly from your **help articles**, before an operator
+  joins — and records which article did it, so the Solved column means
+  something. Articles are preferred over the other two sources: they were
+  written for the person asking.
 - Searches previous resolved tickets and drafts an answer for a new one.
 - Picks likely templates.
 - Every suggestion is Accept/Dismiss, and the accept rate, latency and token

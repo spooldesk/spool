@@ -232,6 +232,27 @@ def _migrate_to_new_schema(sync_connection) -> None:
         except Exception:
             pass
 
+    # The help centre's two counters, added after the table existed.
+    if "articles" in tables:
+        article_columns = {c["name"] for c in inspector.get_columns("articles")}
+        if "deflected_count" not in article_columns:
+            try:
+                sync_connection.execute(text(
+                    "ALTER TABLE articles ADD COLUMN deflected_count INTEGER DEFAULT 0 NOT NULL"
+                ))
+            except Exception:
+                pass
+
+    if "ai_calls" in tables:
+        ai_columns = {c["name"] for c in inspector.get_columns("ai_calls")}
+        if "article_id" not in ai_columns:
+            try:
+                sync_connection.execute(
+                    text("ALTER TABLE ai_calls ADD COLUMN article_id INTEGER")
+                )
+            except Exception:
+                pass
+
     # Who a widget visitor says they are, and whether they proved it.
     for column, ddl in (
         ("email", "ALTER TABLE users ADD COLUMN email VARCHAR(320)"),

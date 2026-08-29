@@ -77,6 +77,12 @@ is the honest reason to stay on SQLite unless you have a reason not to.
 **Where does customer data live?**
 On your server. There is no telemetry, no phone-home, no account to create.
 
+**Does the AI answer from my own articles?**
+Yes, and it prefers them to the other sources — an article was written for the
+person asking, while a canned template was written for an operator to send.
+When an answer built from an article is confirmed as solving the problem, that
+article is credited, so you can see which ones are earning their keep.
+
 **Does the AI see my tickets?**
 Only if you give it a `GEMINI_API_KEY`, and then only what it needs to
 suggest an answer. Internal notes are never included. Categories marked

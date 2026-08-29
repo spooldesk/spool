@@ -325,6 +325,13 @@ class AICall(Base):
     ticket_id: Mapped[int | None] = mapped_column(
         ForeignKey("tickets.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    #: The help article the model said it answered from, when it named one.
+    #: Nullable on purpose: an answer assembled from templates and old tickets
+    #: is still a deflection, it is simply not one an article can be credited
+    #: with.
+    article_id: Mapped[int | None] = mapped_column(
+        ForeignKey("articles.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     suggested_template_id: Mapped[int | None] = mapped_column(
         ForeignKey("reply_templates.id", ondelete="SET NULL"), nullable=True
     )
@@ -409,9 +416,13 @@ class Article(Base):
     is_published: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False, index=True
     )
-    #: How many times a customer opened it. The only number here that says
-    #: whether writing it was worth the afternoon.
+    #: How many times a customer opened it.
     view_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    #: How many times an answer built from it was accepted by the person who
+    #: asked. A different question from `view_count` and a better one:
+    #: somebody who read this and opened a ticket anyway got nothing from it,
+    #: and the read still counted.
+    deflected_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_by: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(

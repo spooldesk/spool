@@ -50,6 +50,7 @@
             <th class="px-4 py-3">{{ T.m_article }}</th>
             <th class="px-4 py-3 text-center">{{ T.status }}</th>
             <th class="px-4 py-3 text-right">{{ T.m_article_views }}</th>
+            <th class="px-4 py-3 text-right">{{ T.m_article_solved }}</th>
             <th class="px-4 py-3 text-right">{{ T.actions }}</th>
           </tr>
         </thead>
@@ -71,6 +72,10 @@
                 {% endif %}
               </td>
               <td class="px-4 py-3 text-right tabular-nums text-zinc-400">{{ a.views }}</td>
+              <td class="px-4 py-3 text-right tabular-nums" title="{{ T.m_article_solved_hint }}">
+                {% if a.deflected %}<span class="text-emerald-400">{{ a.deflected }}</span>
+                {% else %}<span class="text-zinc-600">0</span>{% endif %}
+              </td>
               <td class="px-4 py-3">
                 <div class="flex items-center justify-end gap-2">
                   <form method="post" action="/manage/articles/{{ a.id }}/publish">

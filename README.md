@@ -84,8 +84,9 @@ One Telegram bot replaced that — and grew into a full support platform.
   a written answer stop arriving as tickets
 - Draft and published are separate states, and the Help tab stays hidden until
   something is published
-- A read count per article, which is the only honest answer to "was writing
-  that worth it"
+- Two numbers per article: how many people read it, and how many times the AI
+  answered from it and the customer said that was the end of it — which are
+  different questions and only the second one is worth much
 
 **🤖 AI assistant (Google Gemini)**
 - Searches the internal knowledge base and suggests a solution for a new ticket

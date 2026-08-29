@@ -42,6 +42,7 @@ def _row(article) -> dict:
         "category": article.category or "",
         "is_published": article.is_published,
         "views": article.view_count,
+        "deflected": article.deflected_count,
         "updated_at": article.updated_at,
     }
 
