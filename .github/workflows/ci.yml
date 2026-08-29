@@ -119,6 +119,13 @@ jobs:
             -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" \
             caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
 
+      # Both compose files declare `env_file: .env`, and compose refuses to
+      # merge without it. The file is gitignored, so CI has to make one — and
+      # copying the example is the useful way to do it, because a broken
+      # .env.example then fails here too.
+      - name: An environment to merge against
+        run: cp .env.example .env
+
       - name: The production overlay merges
         run: |
           SPOOLDESK_DOMAIN=help.example.com \

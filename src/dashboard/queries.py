@@ -64,7 +64,7 @@ def is_sensitive_category(category: str | None) -> bool:
 # the admin sent or the system "Заявка закрита..." marker we write on closure.
 # That gives a much more honest "time to resolution" metric.
 _MEANINGFUL_MSG_FILTER = f"""
-    m.is_internal = 0
+    m.is_internal = false
     AND NOT (
         m.sender_type = 'admin'
         AND (
@@ -87,7 +87,7 @@ async def _effective_close_seconds_map(session, ticket_ids: list[int]) -> dict[i
     rows = (await session.execute(text(f"""
         SELECT
             t.id,
-            (julianday(MAX(m.created_at)) - julianday(t.created_at)) * 24 * 3600 AS sec
+            {_sql_seconds('MAX(m.created_at)', 't.created_at')} AS sec
         FROM tickets t
         JOIN messages m ON m.ticket_id = t.id
         WHERE t.id IN ({ids_csv})
@@ -95,6 +95,62 @@ async def _effective_close_seconds_map(session, ticket_ids: list[int]) -> dict[i
         GROUP BY t.id
     """))).all()
     return {int(r[0]): float(r[1]) for r in rows if r[1] is not None}
+
+
+# ---- SQL fragments that differ per engine --------------------------------
+#
+# These queries are raw strings, so the dialect layer hands back SQL rather
+# than SQLAlchemy objects. Every argument is a column name written here; none
+# of it comes from a request.
+
+def _sql_minutes(later: str, earlier: str) -> str:
+    from src.database.db import settings as _s
+    from src.database.dialect import minutes_between
+
+    return minutes_between(later, earlier, url=_s.database_url)
+
+
+def _sql_seconds(later: str, earlier: str) -> str:
+    from src.database.db import settings as _s
+    from src.database.dialect import seconds_between
+
+    return seconds_between(later, earlier, url=_s.database_url)
+
+
+def _sql_hours(later: str, earlier: str) -> str:
+    from src.database.db import settings as _s
+    from src.database.dialect import hours_between
+
+    return hours_between(later, earlier, url=_s.database_url)
+
+
+def _sql_day(column: str) -> str:
+    from src.database.db import settings as _s
+    from src.database.dialect import day_of
+
+    return day_of(column, url=_s.database_url)
+
+
+def _sql_weekday(column: str) -> str:
+    from src.database.db import settings as _s
+    from src.database.dialect import weekday_of
+
+    return weekday_of(column, url=_s.database_url)
+
+
+def _sql_hour(column: str) -> str:
+    from src.database.db import settings as _s
+    from src.database.dialect import hour_of
+
+    return hour_of(column, url=_s.database_url)
+
+
+def _sql_text(expression: str) -> str:
+    from src.database.db import settings as _s
+    from src.database.dialect import as_text
+
+    return as_text(expression, url=_s.database_url)
+
 
 
 # ==================== Overview KPIs ====================
@@ -118,7 +174,7 @@ async def overview_stats() -> dict:
         avg_close_seconds = (await session.execute(text(f"""
             SELECT AVG(close_sec) FROM (
                 SELECT
-                    (julianday(MAX(m.created_at)) - julianday(t.created_at)) * 24 * 3600 AS close_sec
+                    {_sql_seconds('MAX(m.created_at)', 't.created_at')} AS close_sec
                 FROM tickets t
                 JOIN messages m ON m.ticket_id = t.id
                 WHERE t.status = 'closed'
@@ -127,15 +183,15 @@ async def overview_stats() -> dict:
             )
         """))).scalar_one()
 
-        # Avg time-to-first-admin-reply, in minutes. SQLite julianday math:
-        # (julianday(reply_time) - julianday(ticket_created)) gives days as a float.
-        avg_first_response_min = (await session.execute(text("""
-            SELECT AVG((julianday(first_admin.first_at) - julianday(t.created_at)) * 24 * 60)
+        # Avg time-to-first-admin-reply, in minutes. How the elapsed time is
+        # expressed differs per engine — see _sql_minutes.
+        avg_first_response_min = (await session.execute(text(f"""
+            SELECT AVG({_sql_minutes('first_admin.first_at', 't.created_at')})
             FROM tickets t
             JOIN (
                 SELECT ticket_id, MIN(created_at) AS first_at
                 FROM messages
-                WHERE sender_type = 'admin' AND is_internal = 0
+                WHERE sender_type = 'admin' AND is_internal = false
                 GROUP BY ticket_id
             ) first_admin ON first_admin.ticket_id = t.id
         """))).scalar_one()
@@ -172,7 +228,7 @@ async def _awaiting_response_count(session) -> int:
           AND NOT EXISTS (
               SELECT 1 FROM messages m
               WHERE m.ticket_id = t.id
-                AND m.sender_type = 'admin' AND m.is_internal = 0
+                AND m.sender_type = 'admin' AND m.is_internal = false
           )
     """))).scalar_one()
     return int(val or 0)
@@ -201,10 +257,10 @@ async def tickets_version() -> str:
     callers still keep a slow full refresh as a backstop.
     """
     async with db_session() as session:
-        row = (await session.execute(text("""
+        row = (await session.execute(text(f"""
             SELECT (SELECT COALESCE(MAX(id), 0) FROM messages),
                    (SELECT COALESCE(MAX(id), 0) FROM tickets),
-                   (SELECT COALESCE(MAX(closed_at), '') FROM tickets),
+                   (SELECT COALESCE({_sql_text('MAX(closed_at)')}, '') FROM tickets),
                    (SELECT COUNT(*) FROM tickets WHERE status = 'active'),
                    (SELECT COUNT(*) FROM tickets
                      WHERE status = 'active' AND stage = 'new'),
@@ -223,8 +279,8 @@ async def tickets_per_day(days: int = 30) -> list[tuple[str, int]]:
     """Tickets created per day for the last N days. Fills zero-count days."""
     async with db_session() as session:
         cutoff = datetime.utcnow() - timedelta(days=days)
-        rows = (await session.execute(text("""
-            SELECT date(created_at) AS day, COUNT(*) AS cnt
+        rows = (await session.execute(text(f"""
+            SELECT {_sql_day('created_at')} AS day, COUNT(*) AS cnt
             FROM tickets
             WHERE created_at >= :cutoff
             GROUP BY day
@@ -247,15 +303,15 @@ async def avg_first_response_per_day(days: int = 30) -> list[tuple[str, float | 
     """
     async with db_session() as session:
         cutoff = datetime.utcnow() - timedelta(days=days)
-        rows = (await session.execute(text("""
+        rows = (await session.execute(text(f"""
             SELECT
-                date(t.created_at) AS day,
-                AVG((julianday(first_admin.first_at) - julianday(t.created_at)) * 24 * 60) AS avg_min
+                {_sql_day('t.created_at')} AS day,
+                AVG({_sql_minutes('first_admin.first_at', 't.created_at')}) AS avg_min
             FROM tickets t
             JOIN (
                 SELECT ticket_id, MIN(created_at) AS first_at
                 FROM messages
-                WHERE sender_type = 'admin' AND is_internal = 0
+                WHERE sender_type = 'admin' AND is_internal = false
                 GROUP BY ticket_id
             ) first_admin ON first_admin.ticket_id = t.id
             WHERE t.created_at >= :cutoff
@@ -281,13 +337,13 @@ async def avg_close_time_per_day(days: int = 30) -> list[tuple[str, float | None
         cutoff = datetime.utcnow() - timedelta(days=days)
         rows = (await session.execute(text(f"""
             SELECT
-                date(sub.created_at) AS day,
+                {_sql_day('sub.created_at')} AS day,
                 AVG(sub.close_sec) / 3600.0 AS avg_hours
             FROM (
                 SELECT
                     t.id,
                     t.created_at,
-                    (julianday(MAX(m.created_at)) - julianday(t.created_at)) * 24 * 3600 AS close_sec
+                    {_sql_seconds('MAX(m.created_at)', 't.created_at')} AS close_sec
                 FROM tickets t
                 JOIN messages m ON m.ticket_id = t.id
                 WHERE t.status = 'closed'
@@ -295,8 +351,8 @@ async def avg_close_time_per_day(days: int = 30) -> list[tuple[str, float | None
                   AND {_MEANINGFUL_MSG_FILTER}
                 GROUP BY t.id
             ) sub
-            GROUP BY date(sub.created_at)
-            ORDER BY date(sub.created_at)
+            GROUP BY {_sql_day('sub.created_at')}
+            ORDER BY {_sql_day('sub.created_at')}
         """), {"cutoff": cutoff})).all()
 
     by_day = {str(r[0]): float(r[1]) for r in rows if r[1] is not None}
@@ -365,10 +421,10 @@ async def activity_heatmap() -> tuple[list[list[int]], int]:
     Max value is returned alongside so the template can normalise opacity.
     """
     async with db_session() as session:
-        rows = (await session.execute(text("""
+        rows = (await session.execute(text(f"""
             SELECT
-                CAST(strftime('%w', created_at) AS INTEGER) AS dow,
-                CAST(strftime('%H', created_at) AS INTEGER) AS hour,
+                {_sql_weekday('created_at')} AS dow,
+                {_sql_hour('created_at')} AS hour,
                 COUNT(*) AS cnt
             FROM tickets
             GROUP BY dow, hour
@@ -699,11 +755,11 @@ async def board_columns(
                   FROM tickets t
                   JOIN messages m ON m.ticket_id = t.id
                  WHERE t.id IN :ids
-                   AND m.is_internal = 0
+                   AND m.is_internal = false
                    AND m.sender_type = 'user'
                    AND m.id > COALESCE((SELECT MAX(a.id) FROM messages a
                                          WHERE a.ticket_id = t.id
-                                           AND a.is_internal = 0
+                                           AND a.is_internal = false
                                            AND a.sender_type = 'admin'), 0)
                  GROUP BY t.id
             """).bindparams(bindparam("ids", expanding=True)), {"ids": active_ids})).all()
@@ -801,7 +857,7 @@ async def list_tickets_for_export(
                 SELECT
                     ticket_id,
                     SUM(CASE WHEN sender_type='user' THEN 1 ELSE 0 END) AS u,
-                    SUM(CASE WHEN sender_type='admin' AND is_internal=0 THEN 1 ELSE 0 END) AS a,
+                    SUM(CASE WHEN sender_type='admin' AND is_internal=false THEN 1 ELSE 0 END) AS a,
                     SUM(CASE WHEN template_id IS NOT NULL THEN 1 ELSE 0 END) AS via_tpl
                 FROM messages
                 WHERE ticket_id IN ({ids_csv})
@@ -1057,7 +1113,7 @@ async def ai_overview() -> dict:
             SELECT
                 use_case,
                 COUNT(*) AS total,
-                SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) AS successful,
+                SUM(CASE WHEN success = true THEN 1 ELSE 0 END) AS successful,
                 SUM(CASE WHEN accepted = 1 THEN 1 ELSE 0 END) AS accepted,
                 SUM(CASE WHEN accepted = 0 THEN 1 ELSE 0 END) AS rejected,
                 SUM(tokens_in) AS tokens_in_total,
@@ -1072,7 +1128,7 @@ async def ai_overview() -> dict:
             SELECT
                 COUNT(*) AS total,
                 SUM(tokens_in) AS ti, SUM(tokens_out) AS to_,
-                SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) AS ok,
+                SUM(CASE WHEN success = true THEN 1 ELSE 0 END) AS ok,
                 SUM(CASE WHEN accepted = 1 THEN 1 ELSE 0 END) AS acc,
                 SUM(CASE WHEN accepted IS NOT NULL THEN 1 ELSE 0 END) AS decided
             FROM ai_calls
@@ -1129,8 +1185,8 @@ async def ai_calls_per_day(days: int = 30) -> list[tuple[str, int]]:
     """AI calls per day for the last N days, including zero-filled gaps."""
     async with db_session() as session:
         cutoff = datetime.utcnow() - timedelta(days=days)
-        rows = (await session.execute(text("""
-            SELECT date(created_at) AS day, COUNT(*) AS cnt
+        rows = (await session.execute(text(f"""
+            SELECT {_sql_day('created_at')} AS day, COUNT(*) AS cnt
             FROM ai_calls
             WHERE created_at >= :cutoff
             GROUP BY day
@@ -1556,7 +1612,7 @@ async def template_csat() -> dict[int, dict]:
               FROM messages m
               JOIN tickets t ON t.id = m.ticket_id
               WHERE m.template_id IS NOT NULL
-                AND m.is_internal = 0
+                AND m.is_internal = false
                 AND t.csat_rating IS NOT NULL
             )
             GROUP BY template_id
@@ -1665,11 +1721,11 @@ _QUEUE_SQL = """
     SELECT t.id,
            (SELECT MIN(m.created_at) FROM messages m
              WHERE m.ticket_id = t.id
-               AND m.is_internal = 0
+               AND m.is_internal = false
                AND m.sender_type = 'user'
                AND m.id > COALESCE((SELECT MAX(a.id) FROM messages a
                                      WHERE a.ticket_id = t.id
-                                       AND a.is_internal = 0
+                                       AND a.is_internal = false
                                        AND a.sender_type = 'admin'), 0)
            ) AS waiting_since
       FROM tickets t
@@ -1763,12 +1819,12 @@ async def shadow_comparisons(limit: int = 40) -> list[dict]:
                    (SELECT m.text FROM messages m
                      WHERE m.ticket_id = a.ticket_id
                        AND m.sender_type = 'admin'
-                       AND m.is_internal = 0
+                       AND m.is_internal = false
                        AND m.created_at >= a.created_at
                      ORDER BY m.created_at ASC LIMIT 1) AS human_reply
               FROM ai_calls a
-             WHERE a.shadow = 1
-               AND a.success = 1
+             WHERE a.shadow = true
+               AND a.success = true
                AND a.suggested_text IS NOT NULL
              ORDER BY a.created_at DESC
              LIMIT :lim
@@ -1820,7 +1876,7 @@ async def shadow_summary() -> dict:
                    COALESCE(SUM(tokens_out), 0),
                    MIN(created_at)
               FROM ai_calls
-             WHERE shadow = 1 AND success = 1
+             WHERE shadow = true AND success = true
         """))).one()
 
     calls, tok_in, tok_out, since = row

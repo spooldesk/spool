@@ -147,3 +147,89 @@ def test_no_sqlite_only_sql_is_left_in_the_seeds():
             f"integer literal in a seed VALUES list: {statement!r} — "
             f"PostgreSQL needs a real boolean"
         )
+
+
+# --------------------------------------------------------------- raw SQL
+#
+# Everything above compiles an expression and asks what it renders as. None
+# of it can see a raw SQL string, and thirty of this application's aggregate
+# queries are exactly that — which is how `julianday`, `strftime`, `json_each`
+# and `is_internal = 0` all reached a PostgreSQL CI run that failed a hundred
+# tests. These are the cheap static checks that would have caught them here.
+
+RAW_SQL_MODULES = (
+    "src/dashboard/queries.py",
+    "src/dashboard/report_queries.py",
+    "src/services/sla_service.py",
+)
+
+#: Functions only SQLite has, and what to use instead. The replacements all
+#: live in src/database/dialect.py.
+SQLITE_ONLY = {
+    "julianday(": "dialect.seconds_between / minutes_between / hours_between",
+    "strftime('%": "dialect.weekday_of / hour_of",
+    "json_each(": "dialect-aware JSON expansion — see _sql_json_array",
+}
+
+#: Columns the models declare as Boolean. PostgreSQL will not compare one to
+#: an integer; both engines understand `true` and `false`.
+BOOLEAN_COLUMNS = (
+    "is_internal", "is_active", "is_archived", "is_verified",
+    "is_published", "notification_sent", "success", "shadow",
+)
+
+
+def _sql_blocks(source: str):
+    """(is_f_string, body) for every text(\"\"\"…\"\"\") in a module."""
+    return [
+        (bool(m.group(1)), m.group(2))
+        for m in re.finditer(r'text\((f?)"""(.*?)"""', source, re.S)
+    ]
+
+
+@pytest.mark.parametrize("rel", RAW_SQL_MODULES)
+def test_no_sqlite_only_functions_in_raw_sql(rel):
+    source = Path(rel).read_text(encoding="utf-8")
+    bodies = "\n".join(body for _, body in _sql_blocks(source))
+
+    for needle, instead in SQLITE_ONLY.items():
+        assert needle not in bodies, (
+            f"{rel} uses {needle!r}, which PostgreSQL does not have — use "
+            f"{instead}"
+        )
+
+
+@pytest.mark.parametrize("rel", RAW_SQL_MODULES)
+def test_booleans_are_compared_to_booleans(rel):
+    """`is_internal = 0` is fine in SQLite, which barely has types, and a hard
+    error in PostgreSQL."""
+    source = Path(rel).read_text(encoding="utf-8")
+    bodies = "\n".join(body for _, body in _sql_blocks(source))
+
+    offenders = [
+        column for column in BOOLEAN_COLUMNS
+        if re.search(rf"\b(?:[a-z]+\.)?{column}\s*(?:=|<>|!=)\s*[01]\b", bodies)
+    ]
+    assert not offenders, (
+        f"{rel} compares boolean columns to integers: {offenders}. "
+        f"Use `true` / `false`, which both engines accept."
+    )
+
+
+@pytest.mark.parametrize("rel", RAW_SQL_MODULES)
+def test_a_placeholder_never_lands_in_a_plain_string(rel):
+    """The mistake this file exists to stop repeating.
+
+    Making a query portable means interpolating a dialect fragment, and a
+    `{...}` in a string that is not an f-string reaches SQLite verbatim as
+    `unrecognized token: "{"`. It fails loudly, but only for whoever runs
+    that one query.
+    """
+    source = Path(rel).read_text(encoding="utf-8")
+    for is_f, body in _sql_blocks(source):
+        if "{" in body and not is_f:
+            first = next((l.strip() for l in body.splitlines() if l.strip()), "")
+            raise AssertionError(
+                f"{rel}: a SQL block containing '{{' is not an f-string — "
+                f"starts {first[:60]!r}"
+            )

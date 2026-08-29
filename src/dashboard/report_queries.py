@@ -29,6 +29,78 @@ from src.services.close_reason_service import AI_VALUE, LEGACY_AI_VALUES  # noqa
 _AI_REASONS = (AI_VALUE, *LEGACY_AI_VALUES)
 
 
+# ---- SQL fragments that differ per engine --------------------------------
+#
+# These queries are raw strings, so the dialect layer hands back SQL rather
+# than SQLAlchemy objects. Every argument is a column name written here; none
+# of it comes from a request.
+
+def _sql_minutes(later: str, earlier: str) -> str:
+    from src.database.db import settings as _s
+    from src.database.dialect import minutes_between
+
+    return minutes_between(later, earlier, url=_s.database_url)
+
+
+def _sql_seconds(later: str, earlier: str) -> str:
+    from src.database.db import settings as _s
+    from src.database.dialect import seconds_between
+
+    return seconds_between(later, earlier, url=_s.database_url)
+
+
+def _sql_hours(later: str, earlier: str) -> str:
+    from src.database.db import settings as _s
+    from src.database.dialect import hours_between
+
+    return hours_between(later, earlier, url=_s.database_url)
+
+
+def _sql_day(column: str) -> str:
+    from src.database.db import settings as _s
+    from src.database.dialect import day_of
+
+    return day_of(column, url=_s.database_url)
+
+
+def _sql_weekday(column: str) -> str:
+    from src.database.db import settings as _s
+    from src.database.dialect import weekday_of
+
+    return weekday_of(column, url=_s.database_url)
+
+
+def _sql_hour(column: str) -> str:
+    from src.database.db import settings as _s
+    from src.database.dialect import hour_of
+
+    return hour_of(column, url=_s.database_url)
+
+
+def _sql_json_array(column: str) -> str:
+    """A JSON array expanded into rows, as `je(value)`.
+
+    SQLite calls it json_each; PostgreSQL calls the text-producing form
+    jsonb_array_elements_text and wants the column cast, because the ORM
+    writes these as `json` rather than `jsonb`. Both yield one row per
+    element with the column named `value`, which is what the query joins on.
+    """
+    from src.database.db import settings as _s
+    from src.database.dialect import is_postgres
+
+    if is_postgres(_s.database_url):
+        return f"jsonb_array_elements_text(CAST({column} AS jsonb))"
+    return f"json_each({column})"
+
+
+def _sql_text(expression: str) -> str:
+    from src.database.db import settings as _s
+    from src.database.dialect import as_text
+
+    return as_text(expression, url=_s.database_url)
+
+
+
 async def report_summary(date_from: datetime, date_to: datetime) -> dict:
     """Headline numbers for the period."""
     params = {"df": date_from, "dt": date_to}
@@ -42,12 +114,12 @@ async def report_summary(date_from: datetime, date_to: datetime) -> dict:
         ), params)).scalar_one()
 
         # Avg first response (minutes) — tickets CREATED in the period
-        avg_first_min = (await session.execute(text("""
-            SELECT AVG((julianday(fa.first_at) - julianday(t.created_at)) * 24 * 60)
+        avg_first_min = (await session.execute(text(f"""
+            SELECT AVG({_sql_minutes('fa.first_at', 't.created_at')})
             FROM tickets t
             JOIN (
                 SELECT ticket_id, MIN(created_at) AS first_at
-                FROM messages WHERE sender_type = 'admin' AND is_internal = 0
+                FROM messages WHERE sender_type = 'admin' AND is_internal = false
                 GROUP BY ticket_id
             ) fa ON fa.ticket_id = t.id
             WHERE t.created_at >= :df AND t.created_at < :dt
@@ -57,7 +129,7 @@ async def report_summary(date_from: datetime, date_to: datetime) -> dict:
         # last meaningful message (same semantics as the Overview KPI).
         avg_close_hours = (await session.execute(text(f"""
             SELECT AVG(sec) / 3600 FROM (
-                SELECT (julianday(MAX(m.created_at)) - julianday(t.created_at)) * 24 * 3600 AS sec
+                SELECT {_sql_seconds('MAX(m.created_at)', 't.created_at')} AS sec
                 FROM tickets t
                 JOIN messages m ON m.ticket_id = t.id
                 WHERE t.closed_at >= :df AND t.closed_at < :dt
@@ -83,14 +155,14 @@ async def report_summary(date_from: datetime, date_to: datetime) -> dict:
             WHERE t.closed_at >= :df AND t.closed_at < :dt
               AND t.admin_categories IS NOT NULL
               AND EXISTS (
-                  SELECT 1 FROM json_each(t.admin_categories) je
+                  SELECT 1 FROM {_sql_json_array('t.admin_categories')} je
                   WHERE je.value IN ({ai_placeholders})
               )
         """), {**params, **{f"r{i}": v for i, v in enumerate(_AI_REASONS)}})).scalar_one()
 
         deflect_offered, deflect_accepted = (await session.execute(text("""
             SELECT
-                SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END),
+                SUM(CASE WHEN success = true THEN 1 ELSE 0 END),
                 SUM(CASE WHEN accepted = 1 THEN 1 ELSE 0 END)
             FROM ai_calls
             WHERE use_case = 'deflect' AND created_at >= :df AND created_at < :dt
@@ -120,7 +192,7 @@ async def report_by_operator(date_from: datetime, date_to: datetime) -> list[dic
     """
     params = {"df": date_from, "dt": date_to}
     async with db_session() as session:
-        rows = (await session.execute(text("""
+        rows = (await session.execute(text(f"""
             SELECT
                 a.id,
                 COALESCE(NULLIF(a.name, ''), a.email)          AS label,
@@ -133,7 +205,7 @@ async def report_by_operator(date_from: datetime, date_to: datetime) -> list[dic
                           AND t.csat_rating IS NOT NULL
                          THEN 1 ELSE 0 END)                     AS csat_cnt,
                 AVG(CASE WHEN t.closed_at >= :df AND t.closed_at < :dt
-                         THEN (julianday(t.closed_at) - julianday(t.created_at)) * 24 END)
+                         THEN {_sql_hours('t.closed_at', 't.created_at')} END)
                                                                 AS avg_close_hours,
                 SUM(CASE WHEN t.status = 'active' THEN 1 ELSE 0 END) AS active_now
             FROM admin_users a

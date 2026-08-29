@@ -67,6 +67,73 @@ def _as_pattern(needle: str) -> str:
     return f"%{needle}%"
 
 
+# ---------------------------------------------------------------- raw SQL
+#
+# The ORM covers almost everything, but the dashboard's aggregate queries are
+# raw strings — thirty of them — and several used SQLite's own date
+# functions. `julianday`, `strftime` and `date()` do not exist in PostgreSQL,
+# and none of it was visible to a test that compiles expressions, because a
+# string is not an expression.
+#
+# These return SQL fragments rather than SQLAlchemy objects, which is what
+# lets a raw query keep being a raw query. Every argument below is a column
+# name written in this repository; none of it comes from a request.
+
+
+def seconds_between(later: str, earlier: str, *, url: str) -> str:
+    """SQL for the seconds elapsed between two timestamp columns.
+
+    SQLite has no interval type, so the idiom is julianday arithmetic, which
+    yields days as a float. PostgreSQL subtracts timestamps into an interval
+    and EXTRACT(EPOCH …) turns that into seconds.
+    """
+    if is_postgres(url):
+        return f"EXTRACT(EPOCH FROM ({later} - {earlier}))"
+    return f"((julianday({later}) - julianday({earlier})) * 86400)"
+
+
+def minutes_between(later: str, earlier: str, *, url: str) -> str:
+    return f"({seconds_between(later, earlier, url=url)} / 60.0)"
+
+
+def hours_between(later: str, earlier: str, *, url: str) -> str:
+    return f"({seconds_between(later, earlier, url=url)} / 3600.0)"
+
+
+def day_of(column: str, *, url: str) -> str:
+    """The date part, for grouping by day."""
+    if is_postgres(url):
+        return f"CAST({column} AS date)"
+    return f"date({column})"
+
+
+def weekday_of(column: str, *, url: str) -> str:
+    """Day of week as an integer, Sunday = 0.
+
+    SQLite's `%w` and PostgreSQL's DOW agree on that numbering, which is the
+    only reason this is one line rather than a lookup table.
+    """
+    if is_postgres(url):
+        return f"CAST(EXTRACT(DOW FROM {column}) AS INTEGER)"
+    return f"CAST(strftime('%w', {column}) AS INTEGER)"
+
+
+def hour_of(column: str, *, url: str) -> str:
+    if is_postgres(url):
+        return f"CAST(EXTRACT(HOUR FROM {column}) AS INTEGER)"
+    return f"CAST(strftime('%H', {column}) AS INTEGER)"
+
+
+def as_text(expression: str, *, url: str) -> str:
+    """A value rendered as text, for fingerprints and COALESCE defaults.
+
+    `COALESCE(MAX(closed_at), '')` is fine in SQLite, which barely has types,
+    and is a hard error in PostgreSQL: an empty string is not a timestamp.
+    Casting first says what was actually meant.
+    """
+    return f"CAST({expression} AS TEXT)"
+
+
 def contains_ci(column, needle: str, *, url: str):
     """`column` contains `needle`, ignoring case, in either engine.
 
