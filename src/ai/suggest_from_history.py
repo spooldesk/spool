@@ -229,7 +229,7 @@ async def suggest_from_history_for_ticket(
 
     Safe for fire-and-forget — never raises, always logs.
     """
-    client = get_client()
+    client = await get_client()
     if client is None:
         return HistorySuggestResult(None, None)
 

@@ -10,25 +10,134 @@
     <div class="mb-4 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm">{{ T.saved }}</div>
   {% endif %}
 
-  <!-- Connection status -->
-  <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-5 mb-4">
-    <div class="text-xs uppercase tracking-wide text-zinc-500 mb-3">{{ T.ai_connection }}</div>
-    <div class="flex items-center justify-between text-sm mb-1.5">
-      <span class="text-zinc-400">{{ T.ai_api_key }}</span>
-      {% if has_key %}
-        <span class="px-2 py-0.5 rounded-full text-xs bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">{{ T.ai_connected }}</span>
-      {% else %}
-        <span class="px-2 py-0.5 rounded-full text-xs bg-red-500/15 text-red-300 border border-red-500/30">{{ T.ai_no_key }}</span>
-      {% endif %}
+  {% if flash_err %}
+    <div class="mb-4 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-sm">{{ T.ai_engine_err }}</div>
+  {% endif %}
+
+  <!-- Which LLM answers -->
+  <form method="post" action="/manage/ai/engine" class="bg-zinc-950 border border-zinc-900 rounded-xl p-5 mb-4 space-y-4">
+    <div class="text-xs uppercase tracking-wide text-zinc-500">{{ T.ai_engine }}</div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-xs text-zinc-500 mb-1.5">{{ T.ai_provider }}</label>
+        <select name="provider" id="aiProvider"
+                class="w-full px-3 py-2 rounded-lg bg-black border border-zinc-800 text-sm
+                       focus:border-brand-500 focus:outline-none text-zinc-100">
+          {% for p in providers %}
+            <option value="{{ p.id }}" {% if p.id == provider %}selected{% endif %}
+                    data-needs-key="{{ 1 if p.needs_key else 0 }}"
+                    data-host-hint="{{ p.host_hint }}">{{ p.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-xs text-zinc-500 mb-1.5">{{ T.ai_model }}</label>
+        {#
+          A text input with a datalist, not a select: the listed models are a
+          convenience and go stale within months, so anything typed has to be
+          accepted and handed to the provider untouched. One control does both.
+        #}
+        <input name="model" id="aiModel" value="{{ model }}" list="models-{{ provider }}"
+               autocomplete="off" spellcheck="false"
+               class="w-full px-3 py-2 rounded-lg bg-black border border-zinc-800 text-sm
+                      font-mono focus:border-brand-500 focus:outline-none text-zinc-100">
+        {% for p in providers %}
+          <datalist id="models-{{ p.id }}">
+            {% for m in p.models %}<option value="{{ m.name }}">{{ m.label }}</option>{% endfor %}
+          </datalist>
+        {% endfor %}
+        {% if not model_is_listed %}
+          <p class="mt-1 text-xs text-amber-400/80">{{ T.ai_model_unlisted }}</p>
+        {% endif %}
+      </div>
     </div>
-    <div class="flex items-center justify-between text-sm">
-      <span class="text-zinc-400">{{ T.ai_model }}</span>
-      <span class="text-zinc-200 font-mono text-xs">{{ model }}</span>
+
+    <div id="aiHostRow" {% if not host_hint %}hidden{% endif %}>
+      <label class="block text-xs text-zinc-500 mb-1.5">{{ T.ai_host }}</label>
+      <input name="host" id="aiHost" value="{{ host }}" placeholder="{{ host_hint }}"
+             class="w-full px-3 py-2 rounded-lg bg-black border border-zinc-800 text-sm
+                    font-mono focus:border-brand-500 focus:outline-none text-zinc-100
+                    placeholder:text-zinc-600">
     </div>
-    {% if not has_key %}
-      <p class="mt-3 text-xs text-zinc-600">{{ T.ai_key_hint }}</p>
-    {% endif %}
-  </div>
+
+    <div id="aiKeyRow" {% if not needs_key %}hidden{% endif %}>
+      <div>
+        <label class="block text-xs text-zinc-500 mb-1.5">{{ T.ai_api_key }}</label>
+        <input name="api_key" type="password" autocomplete="off"
+               placeholder="{% if key_from_env %}{{ T.ai_key_from_env }} {{ key_env_var }}{% elif key_hint %}{{ key_hint }}{% else %}{{ T.ai_key_placeholder }}{% endif %}"
+               class="w-full px-3 py-2 rounded-lg bg-black border border-zinc-800 text-sm
+                      focus:border-brand-500 focus:outline-none text-zinc-100
+                      placeholder:text-zinc-600">
+        <p class="mt-1.5 text-xs text-zinc-600">
+          {{ T.ai_key_blank_keeps }}
+          {% if console_url %}
+            <a href="{{ console_url }}" target="_blank" rel="noopener"
+               class="text-brand-400 hover:text-brand-300">{{ T.ai_key_where }}</a>
+          {% endif %}
+        </p>
+        {% if key_present and not key_from_env %}
+          <label class="mt-2 flex items-center gap-2 text-xs text-zinc-500 cursor-pointer">
+            <input type="checkbox" name="clear_key" value="1"
+                   class="rounded bg-black border-zinc-700 text-brand-600 focus:ring-brand-500 w-4 h-4">
+            {{ T.ai_key_clear }}
+          </label>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="flex items-center justify-between gap-4 pt-1">
+      <div class="text-xs min-w-0">
+        {% if key_unreadable %}
+          <span class="px-2 py-0.5 rounded-full bg-red-500/15 text-red-300 border border-red-500/30">{{ T.ai_key_unreadable }}</span>
+        {% elif key_present or not needs_key %}
+          <span class="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">{{ T.ai_connected }}</span>
+        {% else %}
+          <span class="px-2 py-0.5 rounded-full bg-red-500/15 text-red-300 border border-red-500/30">{{ T.ai_no_key }}</span>
+        {% endif %}
+        {% set note = T.get(provider_note_key) %}
+        {% if note %}<p class="mt-2 text-zinc-600">{{ note }}</p>{% endif %}
+      </div>
+      <button type="submit"
+              class="shrink-0 px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium">
+        {{ T.save }}
+      </button>
+    </div>
+  </form>
+
+  <script>
+    // Point the model field at the chosen provider's suggestions, and clear a
+    // model that belonged to the previous one. Without this the field keeps
+    // offering Gemini names after somebody picks Claude. The page works
+    // without this script — it just offers the wrong list until saved.
+    (function () {
+      var sel = document.getElementById("aiProvider");
+      var model = document.getElementById("aiModel");
+      if (!sel || !model) return;
+      var initial = sel.value;
+      var hostRow = document.getElementById("aiHostRow");
+      var host = document.getElementById("aiHost");
+      var keyRow = document.getElementById("aiKeyRow");
+
+      sel.addEventListener("change", function () {
+        var opt = sel.options[sel.selectedIndex];
+        model.setAttribute("list", "models-" + sel.value);
+        if (sel.value !== initial) model.value = "";
+        var list = document.getElementById("models-" + sel.value);
+        var first = list && list.querySelector("option");
+        if (!model.value && first) model.value = first.value;
+
+        // A provider is either something (a key) or somewhere (a host).
+        // Reshaping here rather than after a save means picking Ollama and
+        // typing its address is one step instead of two.
+        var hint = opt.getAttribute("data-host-hint") || "";
+        hostRow.hidden = !hint;
+        if (hint) host.placeholder = hint;
+        keyRow.hidden = opt.getAttribute("data-needs-key") !== "1";
+      });
+    })();
+  </script>
 
   <form method="post" action="/manage/ai" class="space-y-4">
     <!-- Master toggle -->

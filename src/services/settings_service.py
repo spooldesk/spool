@@ -54,6 +54,15 @@ KEY_DASH_LANGUAGE = "dash_language"              # operator dashboard UI languag
 # operator can paste into a reply and a search engine can index. Off means
 # the help centre exists only inside the chat panel.
 KEY_HELP_PUBLIC = "help_public"                  # "1" / "0"
+# Which LLM answers, and as which model. Content-level rather than infra by a
+# hair: the choice is a preference, and the credential it needs is stored
+# encrypted (src/services/secret_store.py) precisely so that changing provider
+# does not require somebody with SSH.
+KEY_AI_PROVIDER = "ai_provider"                  # a registry.PROVIDERS id
+KEY_AI_MODEL = "ai_model"                        # a model name, listed or not
+KEY_AI_HOST = "ai_host"                          # base URL, for self-hosted
+#: One per provider, so switching back does not mean pasting the key again.
+KEY_AI_KEY_PREFIX = "ai_key_"                    # + provider id; encrypted
 
 
 # ==================== Defaults ====================
@@ -82,6 +91,10 @@ _DEFAULTS: dict[str, str] = {
     # article nobody can link to does not deflect the ticket it was written
     # to prevent. Turn it off for an instance whose articles are internal.
     KEY_HELP_PUBLIC: "1",
+    # Gemini, because it is the one with a free tier that needs no card.
+    KEY_AI_PROVIDER: "gemini",
+    KEY_AI_MODEL: "gemini-2.5-flash",
+    KEY_AI_HOST: "",
 }
 
 
@@ -222,6 +235,98 @@ async def set_brand_name(name: str, *, updated_by: int) -> None:
     await set_value(KEY_BRAND_NAME, (name or "").strip(), updated_by=updated_by)
 
 
+# ---- Which LLM, and its credential ----
+
+async def get_ai_provider() -> str:
+    from src.ai import registry
+    chosen = (await get_value(KEY_AI_PROVIDER)).strip().lower()
+    # An id from a config somebody edited by hand, or from a release that
+    # dropped a provider. Falling back beats a dashboard that cannot render.
+    return chosen if registry.is_known(chosen) else registry.DEFAULT_PROVIDER
+
+
+async def get_ai_model() -> str:
+    from src.ai import registry
+    name = (await get_value(KEY_AI_MODEL)).strip()
+    return name or registry.default_model_for(await get_ai_provider())
+
+
+async def get_ai_host() -> str:
+    """Base URL for a provider that is somewhere rather than something."""
+    return (await get_value(KEY_AI_HOST)).strip()
+
+
+async def set_ai_engine(*, provider: str, model: str, host: str = "",
+                        updated_by: int) -> None:
+    """Change which LLM answers, and move the report's prices with it.
+
+    The prices follow the model here rather than in the route that calls
+    this, because the rule is about the two values agreeing and not about
+    HTTP. Left in the route, every other caller skipped it and the savings
+    report went on billing Gemini's rates for somebody else's tokens — a
+    number that is wrong and looks entirely fine.
+
+    Only for a model the catalogue knows the price of, and only when the
+    model actually changed: an operator who typed their own price should not
+    have it overwritten by saving the same form twice.
+    """
+    from src.ai import registry
+    if not registry.is_known(provider):
+        raise ValueError(f"unknown provider: {provider!r}")
+
+    chosen = (model or "").strip() or registry.default_model_for(provider)
+    previous = await get_value(KEY_AI_MODEL)
+
+    await set_value(KEY_AI_PROVIDER, provider, updated_by=updated_by)
+    await set_value(KEY_AI_MODEL, chosen, updated_by=updated_by)
+    await set_value(KEY_AI_HOST, (host or "").strip(), updated_by=updated_by)
+
+    if chosen != previous:
+        if (prices := registry.prices_for(provider, chosen)) is not None:
+            await set_ai_pricing(price_in=prices[0], price_out=prices[1],
+                                 updated_by=updated_by)
+
+
+async def get_ai_key(provider: str) -> str | None:
+    """The stored key in plaintext, the environment's if none is stored, or
+    None.
+
+    None has two causes and the caller cannot tell them apart, which is
+    deliberate: nothing was ever set, or what was set cannot be decrypted
+    because this database was restored without its secrets key. Both mean
+    "there is no usable credential", and both are reported the same way.
+    """
+    from src.ai import registry
+    from src.services import secret_store
+
+    stored = (await get_value(f"{KEY_AI_KEY_PREFIX}{provider}")).strip()
+    if stored:
+        return secret_store.decrypt(stored)
+
+    p = registry.provider(provider)
+    if p:
+        import os
+        return os.getenv(p.env_var, "").strip() or None
+    return None
+
+
+async def set_ai_key(provider: str, key: str, *, updated_by: int) -> None:
+    """Store a key, or clear it with an empty string."""
+    from src.services import secret_store
+    value = "" if not key.strip() else secret_store.encrypt(key.strip())
+    await set_value(f"{KEY_AI_KEY_PREFIX}{provider}", value, updated_by=updated_by)
+
+
+async def ai_key_is_stored(provider: str) -> bool:
+    """Whether a key sits in the database, readable or not.
+
+    Distinct from get_ai_key() returning something: a key that is present but
+    undecryptable should be reported as "there is one and it is broken", not
+    as "there is none" — otherwise the fix looks like a first-time setup.
+    """
+    return bool((await get_value(f"{KEY_AI_KEY_PREFIX}{provider}")).strip())
+
+
 # ---- Help centre ----
 
 async def get_help_public() -> bool:
@@ -349,6 +454,19 @@ async def get_ai_pricing() -> tuple[float, float]:
     """USD per million tokens, (input, output)."""
     return (await _get_float(KEY_AI_PRICE_IN, 0.30),
             await _get_float(KEY_AI_PRICE_OUT, 2.50))
+
+
+async def set_ai_pricing(*, price_in: float, price_out: float,
+                         updated_by: int) -> None:
+    """Just the token prices.
+
+    Separate from set_savings_assumptions because these two follow the model
+    and the third — minutes an accepted draft saves an operator — is a fact
+    about the team. Switching from Gemini to Claude should not silently
+    revise somebody's estimate of their own staff.
+    """
+    await set_value(KEY_AI_PRICE_IN, f"{max(0.0, price_in):.4f}", updated_by=updated_by)
+    await set_value(KEY_AI_PRICE_OUT, f"{max(0.0, price_out):.4f}", updated_by=updated_by)
 
 
 async def get_ai_assist_minutes() -> float:
