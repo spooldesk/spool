@@ -5,7 +5,7 @@
 Please report privately, not as a public issue:
 
 - GitHub → [Security → Report a vulnerability](https://github.com/spooldesk/spool/security/advisories/new)
-- or email **boykokuza12@gmail.com**
+- or email **hello@spooldesk.net**
 
 I maintain this alone alongside a job, so: expect a first reply within a few
 days, not hours. Tell me what you did, what happened, and how bad you think it

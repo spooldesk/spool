@@ -232,7 +232,7 @@ BSL restricts one specific use (reselling it as a service). Everything else you'
 expect from open source is here: full source, no feature gates, no telemetry, no
 seat limits, your data on your server. The single restriction exists so that a cloud
 provider can't take this and outrun a solo maintainer with it. Need different terms?
-Email [boykokuza12@gmail.com](mailto:boykokuza12@gmail.com).
+Email [hello@spooldesk.net](mailto:hello@spooldesk.net).
 
 ## Roadmap
 
@@ -252,4 +252,4 @@ not already in it silently does nothing.
 **Kostiantyn Boiko** — designed and built end-to-end: bot, AI integration, dashboard UI, deployment.
 
 - GitHub: [@vassab](https://github.com/vassab)
-- Email: boykokuza12@gmail.com
+- Email: hello@spooldesk.net
