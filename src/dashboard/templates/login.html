@@ -13,6 +13,18 @@
     })();
   </script>
 
+  <!--
+    Icons. One partial, included by every page this product serves a browser,
+    so the tab is never the blank sheet it was: the dashboard had no favicon
+    at all, and an operator with six tickets open had six identical blanks.
+    Rebuild with scripts/build_icons.py after changing assets/brand/.
+  -->
+  <link rel="icon" href="/static/icons/favicon.ico?v={{ g_asset_v }}" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32x32.png?v={{ g_asset_v }}">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16x16.png?v={{ g_asset_v }}">
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/icons/apple-touch-icon.png?v={{ g_asset_v }}">
+  <meta name="theme-color" content="#7C3AED">
+
   <!-- Compiled Tailwind (see tailwind.config.js) — no CDN, no runtime JIT -->
   <link rel="stylesheet" href="/static/tw.css?v={{ g_asset_v }}">
   <link rel="stylesheet"

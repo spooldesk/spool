@@ -192,6 +192,7 @@ See [DEPLOY.md](DEPLOY.md) for details.
 
 | | |
 |---|---|
+| **[BRAND.md](BRAND.md)** | The icon set: how it is built from one source file, and what is still missing from it |
 | **[DEPLOY.md](DEPLOY.md)** | Getting it running: Docker, TLS, PostgreSQL, backups, and setup for each channel — widget, Telegram, Slack |
 | **[USING.md](USING.md)** | The working day: the board, replying, internal notes, close reasons, keyboard shortcuts |
 | **[FAQ.md](FAQ.md)** | The questions that come before installing, including the ones answered "not yet" |
