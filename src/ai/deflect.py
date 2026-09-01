@@ -108,7 +108,7 @@ async def try_deflect_for_ticket(ticket_id: int, user_text: str) -> DeflectResul
         if not await settings_service.get_ai_deflection_enabled():
             return DeflectResult(None, None)
 
-        client = get_client()
+        client = await get_client()
         if client is None:
             return DeflectResult(None, None)
 

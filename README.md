@@ -10,7 +10,7 @@
 ![aiogram](https://img.shields.io/badge/aiogram-3.x-2CA5E0?logo=telegram&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white)
 ![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0_async-D71F00)
-![Gemini](https://img.shields.io/badge/Google_Gemini-AI_assist-4285F4?logo=google&logoColor=white)
+![AI](https://img.shields.io/badge/AI-Gemini_·_Claude_·_OpenAI_·_Ollama-7C3AED)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
 ![CI](https://github.com/spooldesk/spool/actions/workflows/ci.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-BSL_1.1-blue)
@@ -89,7 +89,9 @@ One Telegram bot replaced that — and grew into a full support platform.
   answered from it and the customer said that was the end of it — which are
   different questions and only the second one is worth much
 
-**🤖 AI assistant (Google Gemini)**
+**🤖 AI assistant — Gemini, Claude, OpenAI or your own Ollama**
+- Pick the provider and model in the dashboard; the key is stored encrypted and
+  switching takes effect on the next ticket, with no restart
 - Searches the internal knowledge base and suggests a solution for a new ticket
 - Suggests the best canned reply template for typical scenarios
 - Drafts answers based on similar resolved tickets ("this looks like ticket #47…")
@@ -144,7 +146,7 @@ flowchart LR
     U([Employee<br/>Telegram]) <--> B[Bot<br/>aiogram 3]
     A([Support team<br/>admin group chat]) <--> B
     B <--> DB[(SQLite<br/>WAL mode)]
-    B --> G[Google Gemini<br/>KB search · template suggest]
+    B --> G[Your chosen LLM<br/>KB search · template suggest]
     D[Dashboard<br/>FastAPI + Jinja2 + Chart.js] <--> DB
     O([Operators<br/>browser]) <--> D
 ```
@@ -160,7 +162,7 @@ boring infrastructure that one person can deploy and operate.
 | Bot | Python 3.12, aiogram 3, aiohttp |
 | Web | FastAPI, Jinja2, Tailwind, Chart.js, Tabler icons |
 | Data | SQLAlchemy 2.0 (async), SQLite + WAL, openpyxl (Excel export) |
-| AI | Google Gemini via `google-genai` |
+| AI | Gemini, Anthropic, OpenAI or self-hosted Ollama — chosen at runtime |
 | Security | argon2-cffi, itsdangerous (signed cookies), CSRF tokens |
 | Integrations | Telegram Bot API |
 | Ops | Docker Compose, Makefile, interactive `.env` setup wizard |

@@ -63,3 +63,10 @@ src/config.py.old
 # Личный чек-лист ручных шагов — аккаунты, платежи, юридические действия.
 # Не для публичного репозитория.
 MANUAL_STEPS.md
+
+# The key that decrypts stored API keys. Generated beside the database when
+# SECRETS_KEY is not in the environment, which on a dev checkout means the
+# repository root. Committing it would put the one thing the encryption
+# depends on in the same place as everything it protects.
+secrets.key
+**/secrets.key

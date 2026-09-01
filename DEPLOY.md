@@ -297,6 +297,11 @@ attachments separately — they are still files on the dashboard's volume.
 | `DASH_COOKIE_SECURE` | no | `true` when serving over HTTPS |
 | `SPOOLDESK_DOMAIN` | no | The domain the production overlay gets a certificate for |
 | `TRUSTED_PROXY_HOPS` | no | How many proxies are in front (default 0 = ignore `X-Forwarded-For`) |
+| `SECRETS_KEY` | no | Encrypts stored API keys. Generated into the data directory if unset — see [Which AI answers](#which-ai-answers) |
+| `GEMINI_API_KEY` | no | Fallback key, used until one is saved in the dashboard |
+| `ANTHROPIC_API_KEY` | no | ...the same, for Claude |
+| `OPENAI_API_KEY` | no | ...and for OpenAI |
+| `OLLAMA_HOST` | no | Address of a local Ollama, e.g. `http://localhost:11434` |
 | `ATTACHMENTS_DIR` | no | Where widget attachments are kept (default `./data/attachments`) |
 | `GEMINI_API_KEY` | no | Turns the AI suggestions on |
 | `EMAIL_ADDRESS` | no | Support mailbox — needs the three below too |
@@ -411,6 +416,71 @@ Tickets then say **Verified identity**. Without a signature they say **Says
 they are this person**, which is the honest label and is perfectly fine for
 most support — it is a reason to check before resetting an account, not a
 reason to distrust the visitor.
+
+---
+
+## Which AI answers
+
+Nothing here is required. Without a model configured, Spooldesk is a plain
+ticket system and every AI feature stays off.
+
+Pick a provider and a model in the dashboard under **AI settings**. Four are
+offered:
+
+| Provider | What it wants | Why you might pick it |
+|---|---|---|
+| Google Gemini | An API key | Free tier, no card. The cheapest way to find out whether any of this helps you. |
+| Anthropic Claude | An API key | |
+| OpenAI | An API key | |
+| Ollama | An address, no key | The model runs on your own hardware. Nothing leaves the server, and there is no per-token cost. |
+
+The model field offers that provider's models and **accepts anything you
+type**. Model names go stale faster than releases do, so a name this version
+has never heard of is passed to the provider untouched — if it is wrong, the
+provider's own error says so, which is more useful than a list here refusing
+it.
+
+Switching takes effect on the next ticket. No restart.
+
+### Where the key is kept
+
+In the database, encrypted, so that a **backup archive carries ciphertext**.
+`make backup` archives the database and the attachments — it does not archive
+`.env`, and it does not archive the encryption key. That archive is the copy
+that travels to a storage box or an S3 bucket, and it is what this protects.
+
+It is **not** protection against somebody who can read the server. Anyone
+with that access has both halves. Encryption at rest with the key on the same
+host never is anything else, and it is not sold here as more.
+
+The encryption key comes from `SECRETS_KEY` in the environment if you set one
+(`python scripts/setup.py` writes one for new installs), and is otherwise
+generated into the data directory as `secrets.key` on first use.
+
+> **Back that key up separately from the archive.** Restore a database onto a
+> fresh machine without it and the stored API keys cannot be decrypted. That
+> fails softly — the dashboard shows *stored, but unreadable*, AI features
+> switch off, and re-entering the key fixes it — but it is a surprise nobody
+> needs during a restore.
+
+### Keeping the key in .env instead
+
+The environment is still read, and still works: `GEMINI_API_KEY`,
+`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OLLAMA_HOST`. A key saved in the
+dashboard wins over the environment for that provider; with nothing saved,
+the environment is used. An instance configured before any of this existed
+keeps working with nothing changed.
+
+### What it costs
+
+The savings report needs to know what a million tokens cost, and the price
+follows the model automatically for the models listed in the dropdown. Type
+your own model name and the prices are left alone rather than guessed —
+a made-up number on a report somebody shows their finance team is worse than
+no number.
+
+Categories on the AI blocklist are never sent anywhere at all: the ticket
+does not reach the provider, so there is nothing to redact.
 
 ---
 

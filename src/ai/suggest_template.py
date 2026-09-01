@@ -90,7 +90,7 @@ async def suggest_template_for_ticket(
 
     Safe to call as a fire-and-forget task — never raises, always logs.
     """
-    client = get_client()
+    client = await get_client()
     if client is None:
         return SuggestResult(template_id=None, ai_call_id=None)
 
