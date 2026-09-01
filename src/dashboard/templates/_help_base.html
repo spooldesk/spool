@@ -17,6 +17,17 @@
   <title>{% block title %}{{ brand }}{% endblock %}</title>
   <meta name="description" content="{% block description %}{{ brand }} help centre{% endblock %}">
   <link rel="canonical" href="{{ canonical }}">
+
+  {#
+    No g_asset_v here. These pages are public and cached by strangers'
+    browsers, and the version global is a template variable the help centre
+    has no reason to depend on — the icons change about once a year.
+  #}
+  <link rel="icon" href="/static/icons/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16x16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/icons/apple-touch-icon.png">
+  <meta name="theme-color" content="#7C3AED">
   <style>
     :root {
       color-scheme: dark;
