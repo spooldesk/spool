@@ -686,6 +686,70 @@ a screen is a signing secret in a screenshot.
 
 ---
 
+## Knowing it broke
+
+An instance reports on itself in two ways, and neither replaces the other.
+
+### /healthz
+
+```bash
+curl -sS -o /dev/null -w '%{http_code}
+' https://your-domain/healthz
+```
+
+`200` with a body naming each subsystem, or **`503`** when one of them is
+not working. Public and unauthenticated — a healthcheck behind a login
+cannot be used by the container that needs it.
+
+What it checks:
+
+| Check | Fails when |
+|---|---|
+| `database` | a trivial query does not come back |
+| `mailbox` | the polling loop has stopped completing passes (only on an instance with email configured) |
+
+The mailbox check is about the **loop**, not the mail server. One slow pass
+is normal and says nothing; five missed in a row is a loop that is not coming
+back on its own — usually a password that changed or a host that started
+refusing the connection. The reason the provider gave is in the body.
+
+> This endpoint used to answer `{"ok": true}` without looking at anything, so
+> an instance with no database answered exactly like a healthy one.
+
+### An alert in the admin group
+
+If Telegram is configured, the instance messages the same group its tickets
+land in when a check starts failing, and again when it recovers. Nothing to
+set up, no extra service — the channel is already there.
+
+It waits two rounds before saying anything, because a database that blinks
+during a backup is not an outage, and it says it **once**: a group that pings
+every minute is a group that gets muted, and the next real message goes into
+a muted group too.
+
+Without Telegram there are no alerts. The startup log says so rather than
+leaving an instance that looks supervised and is not.
+
+### What neither of these can do
+
+**Nothing here notices a machine that is off.** If the process is dead, the
+disk is full or the network is gone, there is nothing running to send a
+message, and `/healthz` cannot answer that it is unreachable. Self-reporting
+always has that hole.
+
+Closing it takes something outside the box: point any external uptime monitor
+at `https://your-domain/healthz` and have it alert on a non-200. Five minutes
+on somebody's free tier, and it is the right second layer rather than a
+bigger first one.
+
+**A failing healthcheck does not restart the container.** Docker marks it
+unhealthy and `docker compose ps` shows it; `restart: unless-stopped`
+restarts a container that *exits*, which is a different event. Plain Compose
+has no "restart when unhealthy". The alert is what brings a person, and the
+person is the remedy.
+
+---
+
 ## When something is wrong
 
 - **The bot does not answer** → check `BOT_TOKEN`, then

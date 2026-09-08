@@ -12,6 +12,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -218,13 +219,30 @@ async def logout_get():
 
 @app.get("/healthz")
 async def healthz():
-    return {"ok": True}
+    """Whether this instance is working, not merely running.
+
+    It answered `{"ok": true}` unconditionally, which meant the container
+    healthcheck — the thing whose entire job is to notice — asked a question
+    that could not fail. A process with no database answered the same as a
+    healthy one.
+
+    503 rather than 200 when something is wrong, because that is the only
+    part any monitor reads. The body says what, for whoever looks after it.
+
+    Public and unauthenticated, like the widget's endpoints: a healthcheck
+    behind a login cannot be used by the container that needs it. It reports
+    which subsystem is unhappy and nothing about what is in them.
+    """
+    from src.services import health
+
+    result = await health.check()
+    return JSONResponse(result.as_dict(),
+                        status_code=200 if result.ok else 503)
 
 
 # ==================== Error pages ====================
 
 from starlette.exceptions import HTTPException as StarletteHTTPException  # noqa: E402
-from fastapi.responses import JSONResponse  # noqa: E402
 
 
 def _wants_json(request: Request) -> bool:
@@ -419,6 +437,24 @@ async def _startup() -> None:
     except Exception as e:  # noqa: BLE001 — never block startup over this
         logger.warning(f"Could not start mailbox polling: {e}")
 
+    # Somebody has to be told when this stops working. Errors go to a log
+    # file on a server that nobody opens, which is how a mailbox loop can
+    # fail for three days and be discovered by a customer who did not get an
+    # answer. The watchdog puts that in the admin group instead.
+    try:
+        import asyncio
+
+        from src.services import watchdog
+        if watchdog.should_run():
+            app.state.watchdog_task = asyncio.create_task(watchdog.loop())
+        else:
+            logger.info(
+                "No Telegram configured — health alerts are off. /healthz "
+                "still reports; point an external uptime check at it."
+            )
+    except Exception as e:  # noqa: BLE001 — a watchdog must never be the outage
+        logger.warning(f"Could not start the health watchdog: {e}")
+
     # Expose brand_name as a Jinja2 global so every template can reference
     # {{ g_brand_name }} without each route having to pass it explicitly.
     # Updated via _refresh_brand_global() when admin saves a new brand name.
@@ -459,5 +495,20 @@ async def _startup() -> None:
 
 @app.on_event("shutdown")
 async def _shutdown() -> None:
+    import asyncio
+
+    # Cancel the background loops before closing what they use, so a pass
+    # already in flight does not fail against a bot session that has gone.
+    # Neither was cancelled before, which is where "Task was destroyed but it
+    # is pending" on every restart came from.
+    for name in ("mail_task", "watchdog_task"):
+        task = getattr(app.state, name, None)
+        if task is not None and not task.done():
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                pass
+
     from src.dashboard.bot_client import close_bot
     await close_bot()

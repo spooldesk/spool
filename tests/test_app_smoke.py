@@ -25,9 +25,15 @@ def _csrf(client: TestClient) -> str:
 
 
 def test_healthz(client):
+    """The endpoint answers, and says it is healthy.
+
+    Not compared to a literal body any more: it now reports a check per
+    subsystem, and tests/test_health.py is where that behaviour is pinned —
+    including the part that matters, which is that it can say no.
+    """
     r = client.get("/healthz")
     assert r.status_code == 200
-    assert r.json() == {"ok": True}
+    assert r.json()["ok"] is True
 
 
 def test_login_page_renders(client):
