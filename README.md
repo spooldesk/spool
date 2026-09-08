@@ -89,6 +89,12 @@ One Telegram bot replaced that — and grew into a full support platform.
   answered from it and the customer said that was the end of it — which are
   different questions and only the second one is worth much
 
+**🚨 It tells you when it breaks**
+- `/healthz` reports per subsystem and answers 503 when one is down — point any
+  uptime monitor at it
+- The instance messages your Telegram admin group when a check starts failing,
+  and again when it recovers. Once, not every minute
+
 **🤖 AI assistant — Gemini, Claude, OpenAI or your own Ollama**
 - Pick the provider and model in the dashboard; the key is stored encrypted and
   switching takes effect on the next ticket, with no restart

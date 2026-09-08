@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import asyncio
 import email as email_lib
+import time
 import imaplib
 import logging
 from email.message import Message
@@ -241,6 +242,15 @@ async def run_once() -> dict:
     return {"fetched": len(raw), "opened": opened, "skipped": skipped}
 
 
+#: When a pass last worked, and what went wrong if the most recent one did
+#: not. Swallowing every failure is right — see the docstring below — but it
+#: leaves nobody able to tell a mailbox that is quiet from one that has been
+#: refusing the password for three days. src/services/health.py reads these.
+last_success: float | None = None
+last_error: str | None = None
+started_at: float | None = None
+
+
 async def poll_loop() -> None:
     """Check the mailbox until cancelled.
 
@@ -248,15 +258,23 @@ async def poll_loop() -> None:
     reason the SLA loop does it: a background loop that dies quietly is worse
     than one that logs and keeps going, because nobody notices until the day
     it mattered.
+
+    What it records as it goes is the other half of that. A loop that keeps
+    going and tells nobody it is failing looks exactly like a loop that is
+    working, which is the failure this product cannot afford to sell.
     """
+    global last_success, last_error, started_at
+    started_at = time.monotonic()
     logger.info(f"Mailbox polling every {POLL_SECONDS}s")
     while True:
         try:
             await asyncio.sleep(POLL_SECONDS)
             result = await run_once()
+            last_success, last_error = time.monotonic(), None
             if result.get("opened") or result.get("skipped"):
                 logger.info(f"Mail pass: {result}")
         except asyncio.CancelledError:
             raise
         except Exception as e:  # noqa: BLE001
+            last_error = f"{type(e).__name__}: {e}"
             logger.warning(f"Mail pass failed, will retry: {e}")
