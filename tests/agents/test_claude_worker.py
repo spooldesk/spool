@@ -78,6 +78,18 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual([f["path"] for f in files], ["doc.md"])
         self.assertNotIn("content", worker.manifest(files)[0])
 
+    def test_snapshot_normalizes_root_before_relative_path_checks(self):
+        folder = self.root / "docs"
+        folder.mkdir()
+        (folder / "review.md").write_text("Public review context", encoding="utf-8")
+        unresolved_root = folder / ".."
+        for selected, expected in (("doc.md", "doc.md"), ("docs", "docs/review.md")):
+            with self.subTest(selected=selected):
+                task = {**self.task, "relevant_paths": [selected]}
+                files = worker.snapshot(unresolved_root, task)
+                self.assertEqual([item["path"] for item in files], [expected])
+                self.assertEqual(files, worker.snapshot(self.root.resolve(), task))
+
     def test_dockerfile_is_allowed_but_other_extensionless_files_are_not(self):
         (self.root / "Dockerfile").write_text("FROM python:3.12-slim\n", encoding="utf-8")
         (self.root / "private-data").write_text("not a source filename", encoding="utf-8")

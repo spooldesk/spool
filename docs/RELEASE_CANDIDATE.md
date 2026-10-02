@@ -12,6 +12,8 @@ prerelease. CI now packages a Windows-friendly source ZIP, the tested image,
 its tag, commit, validation provenance and an installation guide together.
 Instructions cover downloading private GitHub release assets. One-off worker
 tasks stay outside Git. Application behavior and dashboard design match rc.4.
+The worker tooling normalizes repository paths before relative-path checks,
+including Windows short user-directory aliases found by GitHub CI.
 
 The owner reports manual functional testing completed. Installation on a second
 computer is pending; follow [SECOND_COMPUTER_INSTALL.md](SECOND_COMPUTER_INSTALL.md).

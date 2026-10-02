@@ -131,6 +131,8 @@ def scoped_path(root: Path, name: str) -> Path:
 
 
 def snapshot(root: Path, task: dict) -> list[dict]:
+    # scoped_path resolves files; use the same canonical root (including Windows 8.3 aliases).
+    root = root.resolve(strict=True)
     files = set()
     for name in task["relevant_paths"]:
         path = scoped_path(root, name)
