@@ -66,6 +66,8 @@ async def test_a_widget_customer_is_told_their_ticket_closed(widget_on):
     async with db_session() as session:
         user = await _customer_of(session, ticket_id)
         routing_key = user.tg_id
+        from src.database.models import Ticket
+        (await session.get(Ticket, ticket_id)).status = "closed"
 
     before = await _transcript(ticket_id)
     await csat_service.send_close_notification(
@@ -76,7 +78,7 @@ async def test_a_widget_customer_is_told_their_ticket_closed(widget_on):
     assert len(after) == len(before) + 1, "the customer was told nothing"
 
     with TestClient(app, base_url="http://testserver") as c:
-        seen = c.get("/widget/api/poll",
+        seen = c.get(f"/widget/api/thread/{ticket_id}",
                      headers={"x-spooldesk-session": token}).json()
 
     said = " ".join(m["text"] for m in seen["messages"])
@@ -101,6 +103,8 @@ async def test_the_rating_request_arrives_as_something_tappable(widget_on):
     async with db_session() as session:
         user = await _customer_of(session, ticket_id)
         routing_key = user.tg_id
+        from src.database.models import Ticket
+        (await session.get(Ticket, ticket_id)).status = "closed"
 
     await csat_service.send_close_notification(
         None, user_tg_id=routing_key, ticket_id=ticket_id, lang="en",
@@ -135,6 +139,8 @@ async def test_a_telegram_customer_still_gets_it_the_old_way(channel):
         result = await intake_service.receive(session, intake_service.Inbound(
             channel="telegram", address=str(tg_id), text="printer is on fire",
         ))
+        from src.database.models import Ticket
+        (await session.get(Ticket, result.ticket_id)).status = "closed"
         await session.commit()
 
     await csat_service.send_close_notification(

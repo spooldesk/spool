@@ -201,7 +201,7 @@ async def test_the_real_loop_records_what_health_reads(monkeypatch):
             await asyncio.sleep(0)
         await asyncio.sleep(0)
         assert email_ingest.last_error is not None
-        assert "AUTHENTICATIONFAILED" in email_ingest.last_error
+        assert "OSError" in email_ingest.last_error
         assert email_ingest.last_success == good
     finally:
         task.cancel()

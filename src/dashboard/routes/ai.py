@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
@@ -46,8 +44,8 @@ async def ai_page(request: Request):
         {
             "active_page": "ai",
             "stats": stats,
-            "per_day_labels_json": json.dumps([d for d, _ in per_day]),
-            "per_day_values_json": json.dumps([n for _, n in per_day]),
+            "per_day_labels_json": [d for d, _ in per_day],
+            "per_day_values_json": [n for _, n in per_day],
             "rejected": rejected,
             "quality": quality,
             "by_category": by_category,

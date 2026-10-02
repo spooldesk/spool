@@ -191,14 +191,14 @@ def test_attachments_come_through_with_their_names():
     assert got[0].content.startswith(b"\x89PNG")
 
 
-def test_an_oversized_attachment_is_dropped_rather_than_stored(monkeypatch):
-    """A mailbox will happily hand over a 40 MB video. A support ticket does
-    not need one badly enough to fill a disk."""
+def test_an_oversized_attachment_refuses_processing_without_losing_input(monkeypatch):
+    """The inbox retains raw mail for retry; the parser must not drop a part."""
     monkeypatch.setattr(P, "MAX_ATTACHMENT_BYTES", 32)
     m = _mail(text="here you go")
     m.add_attachment(b"x" * 4096, maintype="application", subtype="octet-stream",
                      filename="big.bin")
-    assert P.parse(m).attachments == []
+    with pytest.raises(ValueError, match="attachment exceeds"):
+        P.parse(m)
 
 
 def test_a_very_long_body_is_capped(monkeypatch):

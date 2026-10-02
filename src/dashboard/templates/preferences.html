@@ -8,7 +8,7 @@
 {% block content %}
 <div class="max-w-2xl">
   <h1 class="text-xl font-semibold mb-1">{{ T.pr_title }}</h1>
-  <p class="text-sm text-gray-500 dark:text-zinc-500 mb-5">{{ T.pr_intro }}</p>
+  <p data-help class="text-sm text-gray-500 dark:text-zinc-500 mb-5">{{ T.pr_intro }}</p>
 
   {% if flash_sent == 'saved' %}
     <div class="mb-5 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30
@@ -31,11 +31,8 @@
         <select id="pr-language" name="language"
                 class="w-full px-3 py-2 rounded-lg bg-gray-50 dark:bg-black border border-gray-200
                        dark:border-zinc-800 text-sm focus:border-brand-500 focus:outline-none">
-          <option value="" {% if not prefs.language %}selected{% endif %}>
-            {{ T.pr_language_follow.format(name=instance_language) }}
-          </option>
           {% for code, label in languages.items() %}
-            <option value="{{ code }}" {% if prefs.language == code %}selected{% endif %}>{{ label }}</option>
+            <option value="{{ code }}" {% if selected_language == code %}selected{% endif %}>{{ label }}</option>
           {% endfor %}
         </select>
       </div>
@@ -44,12 +41,7 @@
         <div class="text-xs text-gray-500 dark:text-zinc-500 mb-1">{{ T.pr_theme }}</div>
         <div class="flex flex-wrap gap-2">
           {% for value in themes %}
-            <label class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm cursor-pointer
-                          {% if prefs.theme == value %}
-                            border-brand-500/40 bg-brand-500/15 text-brand-600 dark:text-brand-300
-                          {% else %}
-                            border-gray-200 dark:border-zinc-800 text-gray-600 dark:text-zinc-400
-                          {% endif %}">
+            <label class="preference-choice">
               <input type="radio" name="theme" value="{{ value }}" class="sr-only"
                      {% if prefs.theme == value %}checked{% endif %}>
               {{ T['pr_theme_' ~ value] }}
@@ -62,19 +54,14 @@
         <div class="text-xs text-gray-500 dark:text-zinc-500 mb-1">{{ T.pr_density }}</div>
         <div class="flex flex-wrap gap-2">
           {% for value in densities %}
-            <label class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm cursor-pointer
-                          {% if prefs.density == value %}
-                            border-brand-500/40 bg-brand-500/15 text-brand-600 dark:text-brand-300
-                          {% else %}
-                            border-gray-200 dark:border-zinc-800 text-gray-600 dark:text-zinc-400
-                          {% endif %}">
+            <label class="preference-choice">
               <input type="radio" name="density" value="{{ value }}" class="sr-only"
                      {% if prefs.density == value %}checked{% endif %}>
               {{ T['pr_density_' ~ value] }}
             </label>
           {% endfor %}
         </div>
-        <p class="text-xs text-gray-400 dark:text-zinc-600 mt-1">{{ T.pr_density_hint }}</p>
+        <p data-help class="text-xs text-gray-400 dark:text-zinc-600 mt-1">{{ T.pr_density_hint }}</p>
       </div>
 
       <div>
@@ -86,7 +73,7 @@
             <option value="{{ path }}" {% if prefs.landing == path %}selected{% endif %}>{{ path }}</option>
           {% endfor %}
         </select>
-        <p class="text-xs text-gray-400 dark:text-zinc-600 mt-1">{{ T.pr_landing_hint }}</p>
+        <p data-help class="text-xs text-gray-400 dark:text-zinc-600 mt-1">{{ T.pr_landing_hint }}</p>
       </div>
     </div>
 
@@ -100,7 +87,7 @@
                  class="rounded bg-gray-50 dark:bg-black border-gray-300 dark:border-zinc-700 text-brand-600 focus:ring-brand-500">
           <span>{{ T.pr_queue_advance }}</span>
         </label>
-        <p class="text-xs text-gray-400 dark:text-zinc-600 mt-1 ml-6">{{ T.pr_queue_advance_hint }}</p>
+        <p data-help class="text-xs text-gray-400 dark:text-zinc-600 mt-1 ml-6">{{ T.pr_queue_advance_hint }}</p>
       </div>
 
       <div>
@@ -109,7 +96,7 @@
                  class="rounded bg-gray-50 dark:bg-black border-gray-300 dark:border-zinc-700 text-brand-600 focus:ring-brand-500">
           <span>{{ T.pr_notify_new }}</span>
         </label>
-        <p class="text-xs text-gray-400 dark:text-zinc-600 mt-1 ml-6">{{ T.pr_notify_new_hint }}</p>
+        <p data-help class="text-xs text-gray-400 dark:text-zinc-600 mt-1 ml-6">{{ T.pr_notify_new_hint }}</p>
       </div>
 
       <div>
@@ -118,7 +105,7 @@
                   class="w-full px-3 py-2 rounded-lg bg-gray-50 dark:bg-black border border-gray-200
                          dark:border-zinc-800 text-sm focus:border-brand-500 focus:outline-none
                          resize-y">{{ prefs.signature }}</textarea>
-        <p class="text-xs text-gray-400 dark:text-zinc-600 mt-1">{{ T.pr_signature_hint }}</p>
+        <p data-help class="text-xs text-gray-400 dark:text-zinc-600 mt-1">{{ T.pr_signature_hint }}</p>
       </div>
     </div>
 
@@ -130,7 +117,7 @@
                class="rounded bg-gray-50 dark:bg-black border-gray-300 dark:border-zinc-700 text-brand-600 focus:ring-brand-500">
         <span>{{ T.pr_hotkeys_on }}</span>
       </label>
-      <p class="text-xs text-gray-400 dark:text-zinc-600">{{ T.pr_hotkeys_hint }}</p>
+      <p data-help class="text-xs text-gray-400 dark:text-zinc-600">{{ T.pr_hotkeys_hint }}</p>
 
       {# The same list the ? overlay shows, so the page is useful without
          having to discover the overlay first. #}
@@ -142,4 +129,13 @@
     </button>
   </form>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.querySelector('input[name="notify_new"]').addEventListener('change', function () {
+  if (this.checked && 'Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+});
+</script>
 {% endblock %}

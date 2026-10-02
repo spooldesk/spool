@@ -31,7 +31,7 @@ import re
 from dataclasses import dataclass, field
 from email.header import decode_header, make_header
 from email.message import Message
-from email.utils import getaddresses, parsedate_to_datetime
+from email.utils import getaddresses
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,8 @@ logger = logging.getLogger(__name__)
 #: short enough that a mail loop cannot put a megabyte in a ticket.
 MAX_BODY_CHARS = 20_000
 
-#: Attachments bigger than this are dropped with a note rather than stored.
+#: Larger attachments require operator attention. Parsing fails while the
+#: durable inbox retains the original mail for a later retry.
 #: A mailbox will happily hand over a 40 MB video; a support ticket does not
 #: need one badly enough to fill a disk over it.
 MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
@@ -116,7 +117,9 @@ def references_of(message: Message) -> list[str]:
     found: list[str] = []
     for header in ("In-Reply-To", "References"):
         raw = message.get(header, "") or ""
-        for token in re.findall(r"<[^<>@\s]+@[^<>\s]+>", raw):
+        # References is written oldest-first by mail clients; the nearest
+        # known parent is the useful lookup order.
+        for token in reversed(re.findall(r"<[^<>@\s]+@[^<>\s]+>", raw)):
             if token not in found:
                 found.append(token)
     return found
@@ -256,8 +259,9 @@ def attachments_of(message: Message) -> list[Attachment]:
         if not content:
             continue
         if len(content) > MAX_ATTACHMENT_BYTES:
-            logger.info(f"Dropped an oversized mail attachment: {name} ({len(content)} bytes)")
-            continue
+            # The durable inbox retains the original and reports the refusal;
+            # a size limit must not quietly turn a real attachment into none.
+            raise ValueError("email attachment exceeds the supported size limit")
         out.append(Attachment(
             filename=name or "attachment",
             content=content,
@@ -285,16 +289,19 @@ def parse(message: Message) -> Inbound:
         # put four screens of quotes in the ticket instead.
         text=trimmed,
         full_text=full,
-        message_id=(message.get("Message-ID") or "").strip(),
+        message_id=normalise_message_id(message.get("Message-ID") or ""),
         references=references_of(message),
         attachments=attachments,
         is_empty=not trimmed and not attachments,
     )
 
 
-def received_at(message: Message):
-    """When the sender says they sent it, or None."""
-    try:
-        return parsedate_to_datetime(message.get("Date"))
-    except Exception:  # noqa: BLE001 — Date is frequently malformed
-        return None
+def normalise_message_id(raw: str) -> str:
+    """One bounded Message-ID; preserve id-left case as required by email."""
+    value = (raw or "").strip()
+    if len(value) > 998:
+        return ""
+    match = re.fullmatch(r"<([^<>@\s]+)@([^<>\s]+)>", value)
+    if not match:
+        return ""
+    return f"<{match.group(1)}@{match.group(2).lower()}>"

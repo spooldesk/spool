@@ -49,7 +49,7 @@ def test_presence_expires_when_the_heartbeat_stops(monkeypatch):
 
 
 def test_typing_fades_faster_than_presence(monkeypatch):
-    """A stale "typing…" is a lie about what is happening right now."""
+    """A stale "typingвЂ¦" is a lie about what is happening right now."""
     presence.touch(1, operator_id=7, name="Ivan", typing=True)
     assert presence.others(1, 9)[0]["typing"] is True
 
@@ -85,24 +85,32 @@ async def test_heartbeat_reports_the_other_operator(initialized_db):
     except ValueError:
         pass  # left over from an earlier run in this session
 
+    from src.database.db import db_session
+    from src.database.models import User, Ticket
+    from tests.conftest import next_tg_id
+    async with db_session() as session:
+        user = User(tg_id=next_tg_id()); session.add(user); await session.flush()
+        ticket = Ticket(user_id=user.id, category='Other', status='active')
+        session.add(ticket); await session.flush(); tid = ticket.id
+
     with TestClient(app, base_url="http://testserver") as a, \
          TestClient(app, base_url="http://testserver") as b:
         token_a = _login(a)
         token_b = _login(b, "second@t.dev", "secondpass123")
 
-        first = a.post("/api/tickets/500/presence", data={"csrf_token": token_a})
+        first = a.post(f"/api/tickets/{tid}/presence", data={"csrf_token": token_a})
         assert first.json() == {"ok": True, "others": []}
 
-        b.post("/api/tickets/500/presence", data={"csrf_token": token_b, "typing": "1"})
+        b.post(f"/api/tickets/{tid}/presence", data={"csrf_token": token_b, "typing": "1"})
 
-        seen = a.post("/api/tickets/500/presence", data={"csrf_token": token_a}).json()
+        seen = a.post(f"/api/tickets/{tid}/presence", data={"csrf_token": token_a}).json()
 
     assert [o["name"] for o in seen["others"]] == ["Second"]
     assert seen["others"][0]["typing"] is True
 
 
 def test_heartbeat_needs_a_session():
-    """Asserting the outcome, not the status code — being turned away is the
+    """Asserting the outcome, not the status code вЂ” being turned away is the
     point, and whether that arrives as a redirect, a 403 or a rejected body is
     the framework's business."""
     with TestClient(app, base_url="http://testserver") as c:

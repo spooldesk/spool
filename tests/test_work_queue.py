@@ -7,14 +7,29 @@ going on; it never said what to do next.
 
 from datetime import datetime, timedelta
 
+import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 
 from src.dashboard import queries
 from src.dashboard.app import app
 from src.database.db import db_session
 from src.database.models import AdminUser, Message, Team, Ticket, User
 from tests.conftest import next_tg_id
+
+
+@pytest.fixture(autouse=True)
+async def isolated_open_queue(initialized_db):
+    # Test the actual first result, independent of older fixtures in the shared DB.
+    async with db_session(write=True) as session:
+        before = dict((await session.execute(select(Ticket.id, Ticket.status))).all())
+        await session.execute(update(Ticket).values(status='closed'))
+    yield
+    async with db_session(write=True) as session:
+        await session.execute(delete(Ticket).where(Ticket.id.not_in(before)))
+        for status in set(before.values()):
+            ids = [ticket_id for ticket_id, previous in before.items() if previous == status]
+            await session.execute(update(Ticket).where(Ticket.id.in_(ids)).values(status=status))
 
 
 def _login(c: TestClient) -> str:

@@ -1,0 +1,4 @@
+# Compile against the runtime lock so tests cannot silently upgrade production.
+-c requirements.txt
+pytest==9.1.1
+pytest-asyncio==1.4.0

@@ -71,8 +71,24 @@ PROVIDERS: tuple[Provider, ...] = (
         console_url="https://console.anthropic.com/settings/keys",
         models=(
             Model("claude-haiku-4-5-20251001", "Claude Haiku 4.5", 1.00, 5.00),
+            # Claude Platform model overview, verified 2026-10-01. API IDs use hyphens.
+            Model("claude-sonnet-5-5", "Claude Sonnet 5.5", 2.00, 10.00),
+            Model("claude-opus-5-5", "Claude Opus 5.5", 4.00, 20.00),
             Model("claude-sonnet-5", "Claude Sonnet 5", 3.00, 15.00),
-            Model("claude-opus-5", "Claude Opus 5", 15.00, 75.00),
+            Model("claude-opus-5", "Claude Opus 5", 5.00, 25.00),
+        ),
+    ),
+    Provider(
+        id="openrouter",
+        label="OpenRouter",
+        env_var="OPENROUTER_API_KEY",
+        console_url="https://openrouter.ai/settings/keys",
+        models=(
+            # OpenRouter's public model catalog, verified 2026-10-01.
+            Model("anthropic/claude-sonnet-5.5", "Claude Sonnet 5.5", 2.00, 10.00),
+            Model("anthropic/claude-opus-5.5", "Claude Opus 5.5", 4.00, 20.00),
+            Model("anthropic/claude-opus-5", "Claude Opus 5", 5.00, 25.00),
+            Model("anthropic/claude-haiku-4.5", "Claude Haiku 4.5", 1.00, 5.00),
         ),
     ),
     Provider(

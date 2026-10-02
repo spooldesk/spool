@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import logging
 import secrets
 from collections.abc import Sequence
@@ -56,11 +57,8 @@ def address_for(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-#: What the host signs, and what it must not be. The signature covers the
-#: identifier only — never the display name — because the name is decoration
-#: and the identifier is the thing an operator would act on. Signing both
-#: would mean a site could not correct a typo in someone's name without
-#: re-issuing the signature, and would tempt them to stop signing at all.
+#: Legacy signature scope. New hosts should sign the complete v2 payload;
+#: legacy proofs remain scoped only to this selected identifier.
 def identity_subject(email: str | None, external_id: str | None) -> str:
     """The one string a signature is over.
 
@@ -88,9 +86,55 @@ def verify_identity(secret: str, claimed: str | None, subject: str) -> bool:
     to vouch for anyone, and answering True there would turn "we are not
     using this feature" into "everyone is verified".
     """
-    if not secret or not claimed or not subject:
+    if (not secret or not claimed or not subject
+            or len(claimed.strip()) != 64
+            or any(c not in "0123456789abcdef" for c in claimed.strip())):
         return False
     return hmac.compare_digest(sign_identity(secret, subject), claimed.strip())
+
+
+def identity_payload_v2(*, name: str | None = None, email: str | None = None,
+                        external_id: str | None = None) -> str:
+    """Canonical UTF-8 JSON array signed by the host backend (never the page).
+
+    Field order, normalization and limits are part of the wire contract.
+    The prefix separates this signature from the old untyped subject HMAC.
+    """
+    return json.dumps([
+        "spooldesk-identity-v2", (external_id or "").strip()[:120],
+        (email or "").strip()[:320].lower(), (name or "").strip()[:60],
+    ], ensure_ascii=False, separators=(",", ":"))
+
+
+def sign_identity_v2(secret: str, *, name: str | None = None,
+                     email: str | None = None, external_id: str | None = None) -> str:
+    return "v2:" + sign_identity(secret, identity_payload_v2(
+        name=name, email=email, external_id=external_id,
+    ))
+
+
+def verified_identity_fields(secret: str, claimed: str | None, *,
+                             name: str | None, email: str | None,
+                             external_id: str | None) -> tuple[str, ...]:
+    """Precisely which supplied values the signature actually covers.
+
+    Legacy hex signatures remain usable, but prove only their selected
+    identifier. They cannot authorize changes to a name or a neighbouring
+    email address. v2 binds all three fields together.
+    """
+    if not secret or not claimed or not identity_subject(email, external_id):
+        return ()
+    if claimed.startswith("v2:"):
+        expected = sign_identity_v2(secret, name=name, email=email, external_id=external_id)
+        if (len(claimed.strip()) != len(expected) or not claimed.isascii()
+                or not hmac.compare_digest(expected, claimed.strip())):
+            return ()
+        return tuple(key for key, value in (
+            ("name", name), ("email", email), ("external_id", external_id),
+        ) if value)
+    if verify_identity(secret, claimed, identity_subject(email, external_id)):
+        return ("external_id",) if external_id else ("email",)
+    return ()
 
 
 def looks_like_email(value: str) -> bool:
@@ -136,7 +180,7 @@ class WidgetChannel:
     )
 
     async def send_text(
-        self, address: str, text: str, *, options: Sequence[Option] | None = None
+        self, address: str, text: str, *, options: Sequence[Option] | None = None, reply_ref: str | None = None
     ) -> Delivery:
         # The caller writes the row; the page reads it. Returning no ref is
         # correct rather than lazy — there is no second id for this message
@@ -144,7 +188,7 @@ class WidgetChannel:
         return Delivery.sent(None)
 
     async def send_file(
-        self, address: str, *, filename: str, content: bytes, caption: str | None = None
+        self, address: str, *, filename: str, content: bytes, caption: str | None = None, reply_ref: str | None = None
     ) -> Delivery:
         """Keep the bytes; the page will come and ask for them.
 

@@ -4,9 +4,7 @@
 {% block content %}
 <div class="max-w-4xl">
   <h1 class="text-2xl font-semibold tracking-tight mb-1">{{ T.m_admins_title }}</h1>
-  <p class="text-sm text-zinc-500 mb-6">
-    {{ T.m_admins_hint }}
-  </p>
+  <p data-help class="text-sm text-zinc-500 mb-6">{{ T.m_admins_hint }}</p>
 
   {% if flash_sent %}
     <div class="mb-4 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm">
@@ -27,6 +25,22 @@
     </div>
   {% endif %}
 
+  {% if not bootstrap_mode %}
+  <section class="bg-zinc-950 border border-zinc-900 rounded-xl p-5 mb-6">
+    <h2 class="text-lg font-medium">{{ T.invite_title }}</h2><p data-help class="text-sm text-zinc-500 mb-3">{{ T.invite_hint }}</p>
+    {% if invitation_link %}<p>{{ T.invite_link }}</p><input class="w-full px-3 py-2 mb-3 rounded-lg bg-black border border-zinc-800" readonly value="{{ invitation_link }}" onclick="this.select()" aria-label="{{ T.invite_link }}">{% endif %}
+    <form method="post" action="/manage/admins/invite" class="flex flex-wrap gap-2">
+      <input type="email" name="email" required maxlength="255" placeholder="Email" aria-label="Email" class="px-3 py-2 rounded-lg bg-black border border-zinc-800">
+      <input name="name" maxlength="120" placeholder="{{ T.f_name }}" aria-label="{{ T.f_name }}" class="px-3 py-2 rounded-lg bg-black border border-zinc-800">
+      <select name="role" aria-label="{{ T.f_role }}" class="px-3 py-2 rounded-lg bg-black border border-zinc-800">{% for r in roles %}<option value="{{ r }}" {% if r == 'agent' %}selected{% endif %}>{{ roles[r] }}</option>{% endfor %}</select>
+      <select name="team_id" aria-label="{{ T.operator_teams }}" class="px-3 py-2 rounded-lg bg-black border border-zinc-800"><option value="">{{ T.team_any }}</option>{% for team in teams %}<option value="{{ team.id }}">{{ team.name }}</option>{% endfor %}</select>
+      <button class="px-3 py-2 rounded-lg bg-brand-600 text-white">{{ T.invite_create }}</button>
+    </form>
+    {% if invitations %}<h3 class="mt-4 text-sm font-medium">{{ T.invite_pending }}</h3>{% for invite in invitations %}
+    <div class="flex items-center gap-3 mt-2 text-sm"><span>{{ invite.email }} · {{ roles.get(invite.role, invite.role) }} · {{ invite.expires_at.strftime('%Y-%m-%d %H:%M') }} UTC</span><form method="post" action="/manage/admins/invitations/{{ invite.id }}/revoke"><button class="message-action">{{ T.invite_revoke }}</button></form></div>
+    {% endfor %}{% endif %}
+  </section>
+  {% endif %}
   <!-- Create -->
   <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-5 mb-6">
     <div class="text-sm font-medium mb-3">{{ T.m_admin_new }}</div>
@@ -49,13 +63,13 @@
         <select name="role"
                 class="w-full px-2 py-2 rounded-lg bg-black border border-zinc-800 text-sm text-zinc-100">
           {% for r in roles %}
-            <option value="{{ r }}" {% if r == 'admin' %}selected{% endif %}>{{ r }}</option>
+            <option value="{{ r }}" {% if r == 'admin' %}selected{% endif %}>{{ roles[r] }}</option>
           {% endfor %}
         </select>
       </div>
       <div class="md:col-span-3">
         <label class="block text-xs uppercase tracking-wide text-zinc-500 mb-1">{{ T.f_password }}</label>
-        <input name="password" type="text" required minlength="8" placeholder="{{ T.f_password_hint }}"
+        <input name="password" type="password" required minlength="8" placeholder="{{ T.f_password_hint }}"
                class="w-full px-3 py-2 rounded-lg bg-black border border-zinc-800 text-sm
                       focus:border-brand-500 focus:outline-none text-zinc-100 placeholder:text-zinc-600">
       </div>
@@ -65,11 +79,12 @@
         </button>
       </div>
     </form>
-    <p class="mt-2 text-xs text-zinc-600">
+    <p data-help class="mt-2 text-xs text-zinc-600">
       {{ T.m_roles_note|safe }}
     </p>
   </div>
 
+  <p data-help class="text-sm text-zinc-500 mb-3">{{ T.operator_teams_hint }}</p>
   <!-- List -->
   <div class="bg-zinc-950 border border-zinc-900 rounded-xl overflow-hidden">
     <table class="w-full text-sm">
@@ -77,6 +92,7 @@
         <tr class="text-left text-xs uppercase tracking-wide text-zinc-500">
           <th class="px-4 py-3">{{ T.th_operator }}</th>
           <th class="px-4 py-3">{{ T.f_role }}</th>
+          <th class="px-4 py-3">{{ T.operator_teams }}</th>
           <th class="px-4 py-3 text-center">{{ T.status }}</th>
           <th class="px-4 py-3">{{ T.th_last_login }}</th>
           <th class="px-4 py-3 text-right">{{ T.actions }}</th>
@@ -104,11 +120,15 @@
                 <select name="role"
                         class="px-2 py-1 rounded-md bg-black border border-zinc-800 text-xs text-zinc-100">
                   {% for r in roles %}
-                    <option value="{{ r }}" {% if a.role == r %}selected{% endif %}>{{ r }}</option>
+                    <option value="{{ r }}" {% if a.role == r %}selected{% endif %}>{{ roles[r] }}</option>
                   {% endfor %}
                 </select>
               </form>
             </td>
+            <td class="px-4 py-3"><form method="post" action="/manage/admins/{{ a.id }}/teams">
+              <select name="team_ids" multiple aria-label="{{ T.operator_teams }}" class="w-full px-2 py-1 rounded-md bg-black border border-zinc-800 text-xs">
+              {% for team in teams %}<option value="{{ team.id }}" {% if team.id in memberships[a.id] %}selected{% endif %}>{{ team.name }}</option>{% endfor %}
+              </select><button class="message-action">{{ T.save }}</button></form></td>
             <td class="px-4 py-3 text-center">
               <form method="post" action="/manage/admins/{{ a.id }}/toggle" class="inline">
                 <input type="hidden" name="is_active" value="{{ '0' if a.is_active else '1' }}">
@@ -128,7 +148,7 @@
                 <!-- Change password -->
                 <form method="post" action="/manage/admins/{{ a.id }}/password"
                       class="flex items-center gap-1">
-                  <input name="password" type="text" minlength="8" placeholder="{{ T.m_new_password }}"
+                  <input name="password" type="password" minlength="8" placeholder="{{ T.m_new_password }}"
                          class="w-32 px-2 py-1 rounded-md bg-black border border-zinc-800 text-xs
                                 focus:border-brand-500 focus:outline-none text-zinc-100 placeholder:text-zinc-600">
                   <button class="px-2 py-1 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs"
@@ -149,7 +169,7 @@
             </td>
           </tr>
         {% else %}
-          <tr><td colspan="5" class="px-4 py-10 text-center text-zinc-500">{{ T.m_no_operators }}</td></tr>
+          <tr><td colspan="6" class="px-4 py-10 text-center text-zinc-500">{{ T.m_no_operators }}</td></tr>
         {% endfor %}
       </tbody>
     </table>

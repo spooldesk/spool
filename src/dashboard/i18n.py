@@ -114,7 +114,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "reports_title": "Period report",
         "reports_subtitle": "{from} — {to} · compared to the previous period of equal length.",
         "reports_download": "Download .xlsx",
-        "reports_download_hint": "Download this report as Excel (3 sheets)",
+        "reports_download_hint": "Download this report as Excel (4 sheets)",
         "show": "Show",
         "preset_7d": "7 days",
         "preset_30d": "30 days",
@@ -197,13 +197,13 @@ _STRINGS: dict[str, dict[str, str]] = {
         "login_rate_limited": "Too many sign-in attempts. Please wait a few minutes.",
         "login_bad_credentials": "Wrong email or password",
         "html_lang": "en",
-        "demo_badge_title": "Synthetic data. The database resets on restart — feel free to change anything.",
+        "demo_badge_title": "Demonstration workspace with synthetic data. Not for real customer data.",
 
         # ---- Ticket detail ----
         "ticket": "Ticket",
         "drop_file_here": "Drop the file to attach it",
         "created_at": "Created",
-        "flash_closed": "Ticket closed, the user was notified.",
+        "flash_closed": "Ticket closed. Check the closing message for its delivery status.",
         "flash_category": "Category updated.",
         "flash_sent_user": "Sent to the user.",
         "flash_assigned": "Operator assigned.",
@@ -285,6 +285,18 @@ _STRINGS: dict[str, dict[str, str]] = {
         "e_create_failed": "Could not create: {what}",
         "e_cannot_disable_self": "You cannot disable your own account",
         "e_cannot_disable_last": "You cannot disable the last active account",
+        "e_last_active_owner": "At least one active owner must remain. Assign another owner first.",
+        "id_verified_fields": "Signed fields",
+        "e_delivery_pending": "Queued for delivery",
+        "e_delivery_sending": "Sending…",
+        "e_delivery_retry": "Waiting for an automatic retry",
+        "e_delivery_failed": "Delivery failed",
+        "e_delivery_uncertain": "Delivery could not be confirmed",
+        "e_delivery_cancelled": "Delivery cancelled",
+        "email_submitted": "Accepted by the mail server · inbox delivery is not confirmed",
+        "delivery_retry": "Retry delivery",
+        "delivery_duplicate_risk": "The customer may already have received this message. I accept the risk of sending a duplicate.",
+        "e_invalid_role": "Choose a valid operator role.",
         "e_cannot_delete_self": "You cannot delete your own account",
         "e_cannot_delete_last": "You cannot delete the last account",
         "e_pick_start_date": "Pick a start date",
@@ -329,7 +341,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "nav_categories": "Categories",
         "nav_close_reasons": "Close reasons",
         "nav_teams": "Teams",
-        "nav_tags": "Tags",
+        "nav_tags": "Telegram mentions",
         "nav_settings": "Settings",
         "nav_operators": "Operators",
         "nav_ai_config": "AI config",
@@ -641,10 +653,14 @@ _STRINGS: dict[str, dict[str, str]] = {
         # table of facts and the sentences a customer reads stay translated
         # like everything else on this page.
         "ai_note_gemini": "Has a free tier that needs no card. The cheapest way to try any of this.",
+        "ai_note_openrouter": "Use your OpenRouter key. Requests go to openrouter.ai/api/v1; model IDs include the vendor, e.g. anthropic/claude-opus-5.5. You can enter another model ID from the OpenRouter catalog.",
+        "ai_note_anthropic": "Direct connection to api.anthropic.com. Requires an Anthropic API key. For an OpenRouter key, select OpenRouter as the provider, even when using Claude.",
         "ai_note_ollama": "Runs on your own hardware. Nothing leaves the server, and there is no per-token cost — which is why the savings report shows no saving for it. What it costs is the machine.",
         "ai_connection": "Connection",
         "ai_api_key": "API key",
-        "ai_connected": "connected",
+        "ai_configured_unverified": "Configured · connection not verified",
+        "session_expired": "Your session expired. Sign in in a new tab, then retry here. Your draft is still on this page.",
+        "composer_uncertain": "Delivery could not be confirmed. Check the conversation before retrying; the message may already have been sent.",
         "ai_no_key": "no key",
         "ai_model": "Model",
         "ai_key_hint": "Pick a provider, paste its key, and it works from the next ticket. No restart.",
@@ -660,7 +676,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "ai_key_clear": "Remove the stored key",
         "ai_key_unreadable": "stored, but unreadable",
         "ai_enable": "AI suggestions enabled",
-        "ai_enable_hint": "The bot drafts replies for operators inside the ticket thread.",
+        "ai_enable_hint": "Draft replies from your team’s knowledge base and resolved tickets. Operators review drafts before sending.",
         "ai_deflection": "AI deflection: answer the user before an operator",
         "ai_deflection_hint": "Right after a ticket is created the bot tries to solve it from templates and resolved tickets. If the user taps «Solved», the ticket closes automatically (reason «Solved by AI»). Low-confidence answers are never sent.",
         "ai_blacklist": "Exclude categories from AI",
@@ -818,7 +834,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "wgs_ask_hint": "Off by default. Fewer people start a chat when there is a form in front of it — worth it when replies go by email, not worth it when they don't.",
         "wgs_secret": "Identity secret",
         "wgs_secret_hint": "Optional. If your site already knows who is logged in, sign their id with this on your server and the ticket shows a verified identity instead of a claimed one.",
-        "wgs_secret_how": "On your server: hash = HMAC-SHA256(secret, customer_id), then Spooldesk.identify({ userId, email, name, hash }). Never compute it in the browser — that publishes the secret.",
+        "wgs_secret_how": "Sign on your server, never in the browser. Recommended: hash = 'v2:' + HMAC-SHA256(secret, JSON.stringify(['spooldesk-identity-v2', userId, email, name])). Trim values; limit userId/email/name to 120/320/60 characters and lowercase email before signing. Pass the same values to Spooldesk.identify({ userId, email, name, hash }). Legacy HMAC(secret, customer_id) proves only that id, never the neighboring email or name.",
         "wgs_snippet_hint": "Just before the closing body tag, on every page where you want the bubble.",
         "wgs_copy": "Copy",
         "wgs_copied": "Copied",
@@ -958,7 +974,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "reply_tab": "Reply",
         "note_tab": "Note",
         "msg_masked_credentials": "🔒 [hidden — contains credentials]",
-        "msg_unsend": "Unsend",
+        "msg_unsend": "Delete message",
         "msg_unsend_confirm": "Remove this message from the customer's chat?",
         "msg_withdrawn": "Message withdrawn",
         "flash_deleted": "Removed from the customer's chat.",
@@ -970,6 +986,9 @@ _STRINGS: dict[str, dict[str, str]] = {
         "presence_here": "{who} has this open",
         "presence_typing": "{who} is typing…",
         "presence_here_many": "{who} have this open",
+        "presence_replying": "Reply being composed by {who}. Coordinate before sending another reply.",
+        "presence_note": "Internal note being composed by {who}.",
+        "presence_customer": "Customer typing: {who}…",
     },
     "ru": {
         # ---- Common / chrome ----
@@ -1059,7 +1078,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "reports_title": "Отчёт за период",
         "reports_subtitle": "{from} — {to} · сравнение с предыдущим периодом той же длины.",
         "reports_download": "Скачать .xlsx",
-        "reports_download_hint": "Скачать этот отчёт в Excel (3 листа)",
+        "reports_download_hint": "Скачать этот отчёт в Excel (4 листа)",
         "show": "Показать",
         "preset_7d": "7 дней",
         "preset_30d": "30 дней",
@@ -1142,13 +1161,13 @@ _STRINGS: dict[str, dict[str, str]] = {
         "login_rate_limited": "Слишком много попыток входа. Подождите несколько минут.",
         "login_bad_credentials": "Неверный email или пароль",
         "html_lang": "ru",
-        "demo_badge_title": "Синтетические данные. База сбрасывается при перезапуске — можно менять что угодно.",
+        "demo_badge_title": "Демонстрационная среда с тестовыми данными. Не для реальных данных клиентов.",
 
         # ---- Ticket detail ----
         "ticket": "Тикет",
         "drop_file_here": "Отпусти файл, чтобы прикрепить",
         "created_at": "Создан",
-        "flash_closed": "Тикет закрыт, пользователь уведомлён.",
+        "flash_closed": "Тикет закрыт. Статус доставки уведомления показан в переписке.",
         "flash_category": "Категория обновлена.",
         "flash_sent_user": "Отправлено пользователю.",
         "flash_assigned": "Оператор назначен.",
@@ -1230,6 +1249,18 @@ _STRINGS: dict[str, dict[str, str]] = {
         "e_create_failed": "Не удалось создать: {what}",
         "e_cannot_disable_self": "Нельзя отключить собственный аккаунт",
         "e_cannot_disable_last": "Нельзя отключить последний активный аккаунт",
+        "e_last_active_owner": "Должен остаться хотя бы один активный владелец. Сначала назначьте другого владельца.",
+        "id_verified_fields": "Подписанные поля",
+        "e_delivery_pending": "В очереди на отправку",
+        "e_delivery_sending": "Отправляется…",
+        "e_delivery_retry": "Ожидает автоматического повтора",
+        "e_delivery_failed": "Не удалось доставить",
+        "e_delivery_uncertain": "Доставка не подтверждена",
+        "e_delivery_cancelled": "Отправка отменена",
+        "email_submitted": "Передано почтовому серверу · получение во входящих не подтверждено",
+        "delivery_retry": "Повторить доставку",
+        "delivery_duplicate_risk": "Клиент мог уже получить это сообщение. Я принимаю риск отправки дубликата.",
+        "e_invalid_role": "Выберите существующую роль оператора.",
         "e_cannot_delete_self": "Нельзя удалить собственный аккаунт",
         "e_cannot_delete_last": "Нельзя удалить последний аккаунт",
         "e_pick_start_date": "Выберите дату выхода",
@@ -1274,7 +1305,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "nav_categories": "Категории",
         "nav_close_reasons": "Причины закрытия",
         "nav_teams": "Команды",
-        "nav_tags": "Теги",
+        "nav_tags": "Упоминания Telegram",
         "nav_settings": "Настройки",
         "nav_operators": "Операторы",
         "nav_ai_config": "Настройки ИИ",
@@ -1583,10 +1614,14 @@ _STRINGS: dict[str, dict[str, str]] = {
         "ai_title": "AI-настройки",
         "ai_subtitle": "Помощь ИИ операторам и клиентам. Какой именно — выбираете вы.",
         "ai_note_gemini": "Есть бесплатный тариф без привязки карты. Самый дешёвый способ всё это попробовать.",
+        "ai_note_openrouter": "Используйте ключ OpenRouter. Запросы идут на openrouter.ai/api/v1; ID модели включает производителя, например anthropic/claude-opus-5.5. Можно ввести другую модель из каталога OpenRouter.",
+        "ai_note_anthropic": "Прямое подключение к api.anthropic.com. Нужен API-ключ Anthropic. Для ключа OpenRouter выберите провайдера OpenRouter, даже если используете Claude.",
         "ai_note_ollama": "Работает на вашем железе. Ничего не уходит с сервера, и платы за токены нет — поэтому отчёт по экономии для него ничего не показывает. Стоит он ровно столько, сколько стоит машина.",
         "ai_connection": "Подключение",
         "ai_api_key": "API-ключ",
-        "ai_connected": "подключён",
+        "ai_configured_unverified": "Настроено · подключение не проверено",
+        "session_expired": "Сессия истекла. Войдите в новой вкладке и повторите действие здесь. Черновик остался на этой странице.",
+        "composer_uncertain": "Не удалось подтвердить отправку. Проверьте переписку перед повтором: сообщение уже могло быть отправлено.",
         "ai_no_key": "нет ключа",
         "ai_model": "Модель",
         "ai_key_hint": "Выберите провайдера, вставьте ключ — заработает со следующего тикета. Перезапуск не нужен.",
@@ -1602,7 +1637,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "ai_key_clear": "Удалить сохранённый ключ",
         "ai_key_unreadable": "сохранён, но не читается",
         "ai_enable": "ИИ-подсказки включены",
-        "ai_enable_hint": "Бот предлагает черновики ответов админам в треде тикета.",
+        "ai_enable_hint": "Черновики ответов на основе базы знаний команды и решённых обращений. Оператор проверяет черновик перед отправкой.",
         "ai_deflection": "AI-дефлексия: отвечать пользователю до оператора",
         "ai_deflection_hint": "Сразу после создания тикета бот пытается решить вопрос сам — по шаблонам и закрытым тикетам. Если пользователь нажмёт «Решено», тикет закрывается автоматически (причина «Решено ИИ»). Неуверенные ответы не отправляются.",
         "ai_blacklist": "Исключить категории из ИИ",
@@ -1757,7 +1792,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "wgs_ask_hint": "По умолчанию выключено. Форма перед чатом уменьшает число обращений — она нужна, если отвечаете на почту, и мешает, если нет.",
         "wgs_secret": "Секрет для подписи",
         "wgs_secret_hint": "Необязательно. Если сайт уже знает, кто вошёл, подпишите его id этим секретом на своём сервере — в тикете личность будет подтверждённой, а не заявленной.",
-        "wgs_secret_how": "На сервере: hash = HMAC-SHA256(secret, customer_id), затем Spooldesk.identify({ userId, email, name, hash }). Не считайте это в браузере — так секрет попадёт на страницу.",
+        "wgs_secret_how": "Подписывайте на сервере, не в браузере. Рекомендуется: hash = 'v2:' + HMAC-SHA256(secret, JSON.stringify(['spooldesk-identity-v2', userId, email, name])). Уберите пробелы по краям; ограничьте userId/email/name до 120/320/60 символов, email приведите к нижнему регистру. Передайте те же значения в Spooldesk.identify({ userId, email, name, hash }). Прежний HMAC(secret, customer_id) подтверждает только id, но не соседние email и имя.",
         "wgs_snippet_hint": "Перед закрывающим тегом body, на каждой странице, где нужен пузырь.",
         "wgs_copy": "Копировать",
         "wgs_copied": "Скопировано",
@@ -1897,7 +1932,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "reply_tab": "Ответ",
         "note_tab": "Заметка",
         "msg_masked_credentials": "🔒 [скрыто — содержит креденшелы]",
-        "msg_unsend": "Удалить у клиента",
+        "msg_unsend": "Удалить сообщение",
         "msg_unsend_confirm": "Убрать это сообщение из чата клиента?",
         "msg_withdrawn": "Сообщение удалено",
         "flash_deleted": "Убрано из чата клиента.",
@@ -1909,8 +1944,81 @@ _STRINGS: dict[str, dict[str, str]] = {
         "presence_here": "{who} тоже смотрит этот тикет",
         "presence_typing": "{who} печатает…",
         "presence_here_many": "{who} тоже смотрят этот тикет",
+        "presence_replying": "Ответ клиенту пишет: {who}. Согласуйте ответ, чтобы не отправить дважды.",
+        "presence_note": "Внутреннюю заметку пишет: {who}.",
+        "presence_customer": "Клиент печатает: {who}…",
     },
 }
+
+# Conversation controls and channel-specific expectations.
+_STRINGS['en'].update({
+    'chat_actions':'Message actions', 'chat_copy':'Copy text', 'chat_remove_unavailable':'This channel cannot remove this message, or its deletion window has expired.',
+    'chat_reply':'Reply', 'chat_edit':'Edit message', 'chat_edited':'Edited',
+    'chat_sources':'Knowledge sources — review before sending:',
+    'chat_invalid_text':'Enter a message within the channel length limit.',
+    'chat_edit_forbidden':'You can only change your own messages.',
+    'chat_edit_conflict':'This message changed. Refresh before editing again.',
+    'chat_edit_unsupported':'This channel or message cannot be edited.',
+    'chat_edit_refused':'The channel refused this edit.',
+    'chat_edit_uncertain':'The channel has not confirmed this change. Check the original conversation before taking further action.',
+    'chat_reply_unavailable':'The reply target is unavailable or private.',
+    'chat_channel_telegram':'Telegram · Replies quote a message. Text and captions can be edited; withdrawal follows Telegram limits. Customer typing is not exposed by Telegram.',
+    'chat_channel_slack':'Slack · Messages stay in the ticket thread. Reply quotes identify a specific message. Sent text can be edited or withdrawn; file comments cannot be edited here.',
+    'chat_channel_email':'Email · Replies keep the email thread and include quoted context. Sent mail cannot be edited or recalled.',
+    'chat_channel_widget':'Web chat · Replies, edits, withdrawal, files and typing indicators are synchronized with the visitor.',
+    'chat_channel_other':'Channel capabilities determine which message actions are available.',
+})
+_STRINGS['ru'].update({
+    'chat_actions':'Действия с сообщением', 'chat_copy':'Копировать текст', 'chat_remove_unavailable':'Канал не позволяет удалить это сообщение или срок удаления истёк.',
+    'chat_reply':'Ответить', 'chat_edit':'Редактировать сообщение', 'chat_edited':'Изменено',
+    'chat_sources':'Источники базы знаний — проверьте перед отправкой:',
+    'chat_invalid_text':'Введите сообщение в пределах ограничения длины канала.',
+    'chat_edit_forbidden':'Вы можете изменять только свои сообщения.',
+    'chat_edit_conflict':'Сообщение уже изменилось. Обновите страницу перед редактированием.',
+    'chat_edit_unsupported':'Канал или тип сообщения не поддерживает редактирование.',
+    'chat_edit_refused':'Канал отклонил редактирование.',
+    'chat_edit_uncertain':'Канал не подтвердил изменение. Проверьте исходный диалог перед следующим действием.',
+    'chat_reply_unavailable':'Сообщение для ответа недоступно или является внутренней заметкой.',
+    'chat_channel_telegram':'Telegram · Ответы ссылаются на сообщение. Текст и подписи можно редактировать; удаление ограничено правилами Telegram. Telegram не передаёт набор текста клиентом.',
+    'chat_channel_slack':'Slack · Переписка остаётся в ветке тикета. Цитата указывает на конкретное сообщение. Текст можно изменить или удалить; комментарии к файлам здесь не редактируются.',
+    'chat_channel_email':'Email · Ответ сохраняет почтовую цепочку и цитату. Отправленное письмо нельзя изменить или отозвать.',
+    'chat_channel_widget':'Веб-чат · Ответы, изменения, удаление, файлы и индикаторы набора текста синхронизируются с клиентом.',
+    'chat_channel_other':'Доступные действия зависят от возможностей канала.',
+})
+
+_STRINGS['en'].update({
+    'invite_title':'Invite a teammate', 'invite_hint':'Send a private invitation link. Your teammate chooses their own password. The link expires in 48 hours and works once.',
+    'invite_create':'Create invitation', 'invite_pending':'Pending invitations', 'invite_revoke':'Revoke',
+    'invite_join':'Join the workspace', 'invite_join_hint':'Choose your password to accept the invitation. Then sign in with the email your owner invited.',
+    'invite_invalid':'This invitation is expired, revoked or already used. Ask the owner for a new link.',
+    'invite_try_later':'Too many attempts. Please try again in five minutes.',
+    'invite_login':'Go to sign in', 'invite_create_owner':'Create your owner account first.',
+    'invite_link':'Copy this private link now; it will not be shown again.',
+    'operator_teams':'Routing teams', 'operator_teams_hint':'Team membership controls assignment. Operators in this installation can still view its other teams. Owner and admin can receive any ticket.',
+    'e_invalid_team':'Choose an existing team.', 'team_any':'No initial team',
+})
+_STRINGS['ru'].update({
+    'invite_title':'Пригласить сотрудника', 'invite_hint':'Передайте личную ссылку-приглашение. Сотрудник сам выберет пароль. Ссылка действует 48 часов и используется один раз.',
+    'invite_create':'Создать приглашение', 'invite_pending':'Ожидают приглашения', 'invite_revoke':'Отозвать',
+    'invite_join':'Присоединиться к команде', 'invite_join_hint':'Придумайте пароль для принятия приглашения. Затем войдите с почтой, на которую владелец создал приглашение.',
+    'invite_invalid':'Приглашение истекло, отозвано или уже использовано. Попросите владельца создать новую ссылку.',
+    'invite_try_later':'Слишком много попыток. Повторите через пять минут.',
+    'invite_login':'Перейти ко входу', 'invite_create_owner':'Сначала создайте учётную запись владельца.',
+    'invite_link':'Скопируйте личную ссылку сейчас — повторно она не отображается.',
+    'operator_teams':'Команды назначения', 'operator_teams_hint':'Участие в командах определяет назначение тикетов. Операторы этой установки видят и другие команды. Владелец и администратор могут получать любые тикеты.',
+    'e_invalid_team':'Выберите существующую команду.', 'team_any':'Без начальной команды',
+})
+
+_STRINGS['en'].update({'lead_queue': 'Queue health now', 'lead_open': 'Open tickets', 'lead_unanswered': 'Customers awaiting an answer', 'lead_waiting': 'Waiting on customer', 'lead_sla_breached': 'SLA breached', 'lead_oldest_hours': 'Oldest open ticket', 'lead_delivery_attention': 'Deliveries needing attention', 'lead_response_p50': 'First response p50, min', 'lead_response_p90': 'First response p90, min', 'lead_response_count': 'Answered tickets in creation cohort', 'lead_resolution_p50': 'Resolution p50, h', 'lead_resolution_p90': 'Resolution p90, h', 'lead_resolution_count': 'Tickets closed in period', 'lead_as_of': 'Queue snapshot', 'lead_definition': 'Metric definitions', 'lead_cohort_hint': 'Queue counts are current. Response times use tickets created in the selected period and delivered public replies; resolution runs from creation to the actual close time for tickets closed in the period. p90 means 90% were faster. A dash means no observations.'})
+_STRINGS['ru'].update({'lead_queue': 'Состояние очереди сейчас', 'lead_open': 'Открытые тикеты', 'lead_unanswered': 'Клиенты ждут ответа', 'lead_waiting': 'Ожидаем клиента', 'lead_sla_breached': 'Нарушен SLA', 'lead_oldest_hours': 'Самый старый открытый тикет', 'lead_delivery_attention': 'Доставки требуют внимания', 'lead_response_p50': 'Первый ответ p50, мин', 'lead_response_p90': 'Первый ответ p90, мин', 'lead_response_count': 'Отвеченные тикеты, созданные за период', 'lead_resolution_p50': 'Время решения p50, ч', 'lead_resolution_p90': 'Время решения p90, ч', 'lead_resolution_count': 'Тикеты, закрытые за период', 'lead_as_of': 'Снимок очереди', 'lead_definition': 'Определения метрик', 'lead_cohort_hint': 'Очередь показана на текущий момент. Время ответа — по тикетам, созданным за выбранный период, до доставленного публичного ответа. Время решения — от создания до фактического закрытия тикетов, закрытых за период. p90: 90% тикетов обработаны быстрее. Прочерк означает отсутствие наблюдений.'})
+
+_STRINGS['en'].update({'sign_in':'Sign in', 'sign_in_dashboard':'Sign in to your workspace', 'show_password':'Show or hide password', 'login_account_hint':'Use your operator account. New installations: admin@local.'})
+_STRINGS['ru'].update({'sign_in':'Войти', 'sign_in_dashboard':'Вход в рабочий кабинет', 'show_password':'Показать или скрыть пароль', 'login_account_hint':'Используйте учётную запись оператора. Новая установка: admin@local.'})
+
+_STRINGS['en'].update({'chat_reconcile':'Reconcile with channel', 'chat_reconcile_hint':'Check the original conversation first. Confirm whether the pending edit or withdrawal actually happened. This only corrects the local record; it does not resend anything.', 'chat_reconcile_applied':'The change happened', 'chat_reconcile_unchanged':'The message stayed unchanged'})
+_STRINGS['ru'].update({'chat_reconcile':'Сверить с каналом', 'chat_reconcile_hint':'Сначала проверьте исходный диалог. Подтвердите, выполнились ли правка или отзыв. Это исправит только локальную запись и ничего не отправит повторно.', 'chat_reconcile_applied':'Изменение выполнено', 'chat_reconcile_unchanged':'Сообщение не изменилось'})
+_STRINGS['en']['m_roles_note'] += ' <b>viewer</b> — read-only tickets, users and analytics.'
+_STRINGS['ru']['m_roles_note'] += ' <b>viewer</b> — просмотр тикетов, пользователей и аналитики без изменений.'
 
 SUPPORTED_DASH_LANGUAGES = {"en": "English", "ru": "Русский"}
 
@@ -1948,6 +2056,17 @@ def active_language() -> str:
 def strings(lang: str | None = None) -> dict[str, str]:
     """Full dict for the language — exposed to Jinja as the `T` global."""
     return _STRINGS.get(lang or active_language(), _STRINGS[DEFAULT_DASH_LANGUAGE])
+
+
+from src.dashboard.workspace_i18n import EN as _workspace_en, RU as _workspace_ru
+_STRINGS['en'].update(_workspace_en)
+_STRINGS['ru'].update(_workspace_ru)
+from src.dashboard.connection_i18n import EN as _connection_en, RU as _connection_ru
+_STRINGS['en'].update(_connection_en)
+_STRINGS['ru'].update(_connection_ru)
+from src.dashboard.assistant_i18n import EN as _assistant_en, RU as _assistant_ru
+_STRINGS['en'].update(_assistant_en)
+_STRINGS['ru'].update(_assistant_ru)
 
 
 def t(key: str, lang: str | None = None, **kwargs) -> str:

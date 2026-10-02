@@ -228,7 +228,10 @@ async def test_nothing_is_recorded_as_sent_when_the_send_failed(
             select(Message).where(Message.ticket_id == tid,
                                   Message.sender_type == "admin")
         )).scalars().all()
-    assert rows == [], "a reply that never left was written into the transcript"
+    assert len(rows) == 1, "the failed intent must remain available for diagnosis/retry"
+    assert rows[0].delivery_status == "failed"
+    assert rows[0].channel_ref is None
+    assert rows[0].delivery_error
 
 
 async def test_a_channel_reports_what_it_cannot_do_rather_than_failing_at_it(
@@ -477,13 +480,17 @@ async def test_an_operator_replying_from_telegram_reaches_a_widget_customer(
 
     async with db_session() as session:
         user = await create_customer(session, channel="carrier", address="visitor-9")
+        ticket = Ticket(user_id=user.id, category="", status="active")
+        session.add(ticket)
         await session.commit()
         key = user.tg_id
+        ticket_id = ticket.id
 
-    await _forward_admin_message_to_user(
-        None, key, "Sorted — try again now.", None, ticket_id=1,
+    delivery = await _forward_admin_message_to_user(
+        None, key, "Sorted — try again now.", None, ticket_id=ticket_id,
         channel="carrier", address="visitor-9",
     )
+    assert delivery.ok
     assert carrier.texts == [("visitor-9", "Sorted — try again now.")]
 
 
@@ -496,10 +503,10 @@ async def test_an_attachment_is_refused_where_the_channel_cannot_carry_one(
 
     attachment = SimpleNamespace(content_type="document", file_name="log.txt",
                                  file_id="fid-1", file_size=10, mime_type="text/plain")
-    with pytest.raises(ValueError):
-        await _forward_admin_message_to_user(
-            None, -1, "here you go", attachment, ticket_id=1,
-            channel="carrier", address="visitor-9",
-        )
+    delivery = await _forward_admin_message_to_user(
+        None, -1, "here you go", attachment, ticket_id=1,
+        channel="carrier", address="visitor-9",
+    )
+    assert not delivery.ok and delivery.error_key == "e_no_files_on_channel"
     assert carrier.files == []
     assert carrier.texts == [], "the caption must not go on ahead without its file"

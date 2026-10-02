@@ -86,7 +86,7 @@ async def test_export_renders_the_sentinel_too(initialized_db):
            "PostgreSQL database does not run — it has no legacy to rewrite",
 )
 async def test_legacy_value_is_migrated(initialized_db):
-    """A DB written before the rename must come out clean after init_db().
+    """A DB written before versioned migrations is rewritten by the bootstrap.
 
     Asserts on the *stored* form, which is where the engines part company:
     SQLAlchemy escapes non-ASCII into `\u0421` and SQLite keeps that text
@@ -104,7 +104,9 @@ async def test_legacy_value_is_migrated(initialized_db):
     # SQLAlchemy escapes non-ASCII, which is exactly what the migration matches
     assert "\\u0421" in stored
 
-    await init_db()
+    from src.database.db import _migrate_to_new_schema
+    async with engine.begin() as conn:
+        await conn.run_sync(_migrate_to_new_schema)
 
     async with engine.begin() as conn:
         migrated = (await conn.execute(text(

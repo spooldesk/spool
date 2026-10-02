@@ -35,6 +35,22 @@ class LLMUnavailable(Exception):
     surface to the user). The bot keeps working without AI.
     """
 
+    def __init__(self, message="Provider unavailable", *, code="unavailable", status_code=None):
+        super().__init__(message)
+        self.code = code if code in {
+            "unavailable", "auth", "permission", "billing", "model", "request",
+            "rate_limit", "timeout", "network", "empty", "invalid_response",
+            "truncated", "refusal", "context_large",
+        } else "unavailable"
+        self.status_code = status_code if isinstance(status_code, int) else None
+
+
+def provider_error_code(status):
+    """Stable, safe categories; never carry provider bodies or credential text."""
+    return {400: "request", 401: "auth", 402: "billing", 403: "permission",
+            404: "model", 408: "timeout", 413: "context_large",
+            429: "rate_limit", 504: "timeout"}.get(status, "unavailable")
+
 
 class LLMClient(Protocol):
     """Minimal contract for any LLM provider."""
@@ -46,6 +62,7 @@ class LLMClient(Protocol):
         user: str,
         max_output_tokens: int = 256,
         temperature: float = 0.2,
+        timeout_seconds: float = 8.0,
     ) -> LLMResponse:
         """Single-turn completion. Raises LLMUnavailable on hard failure."""
         ...
@@ -90,7 +107,9 @@ async def get_client() -> Optional[LLMClient]:
         return None
 
     model = await settings_service.get_ai_model()
-    host = await settings_service.get_ai_host() or spec.host_hint
+    # Only providers with an explicit host control can override their endpoint.
+    # Cloud keys must never inherit the last self-hosted provider's address.
+    host = (await settings_service.get_ai_host() or spec.host_hint) if spec.host_hint else ""
     key = "" if not spec.needs_key else (
         await settings_service.get_ai_key(provider_id) or "")
 
@@ -138,6 +157,8 @@ def _build(provider_id: str, *, model: str, key: str, host: str) -> LLMClient:
         return rest.AnthropicClient(api_key=key, model=model, base_url=host)
     if provider_id == "openai":
         return rest.OpenAIClient(api_key=key, model=model, base_url=host)
+    if provider_id == "openrouter":
+        return rest.OpenRouterClient(api_key=key, model=model)
     if provider_id == "ollama":
         return rest.OllamaClient(model=model, base_url=host)
 

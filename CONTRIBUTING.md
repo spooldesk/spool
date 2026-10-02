@@ -6,23 +6,26 @@ expect, and the handful of traps that are not obvious from reading the code.
 ## Running it locally
 
 ```bash
-python -m venv .venv && .venv/bin/activate      # Windows: .venv\Scripts\activate
-pip install -r requirements.txt -r requirements-dev.txt
-cp .env.example .env                            # fill in BOT_TOKEN and ADMIN_CHAT_ID
+python -m venv .venv
+source .venv/bin/activate                       # Windows PowerShell: .venv\Scripts\Activate.ps1
+python -m pip install --require-hashes --only-binary=:all: -r requirements.txt -r requirements-dev.txt
+cp .env.example .env                            # Telegram credentials are optional
 python scripts/seed_demo_data.py                # synthetic content to look at
 python scripts/run_demo_dashboard.py            # http://localhost:8010
 ```
 
-Log in with `admin@local` / whatever you set as `ACCESS_PASSWORD`.
+The demo defaults to `admin@local` / `admin` (unless `ACCESS_PASSWORD` is
+already set in the process environment).
 
 **Python 3.12** — the version the container ships and CI runs.
-Not newer: aiogram 3.10 pins aiohttp to 3.9, and aiohttp 3.9 publishes no
-Linux wheel above 3.12, so a newer Python silently switches to compiling it
-from source and breaks the moment the base image moves.
+The runtime and test dependencies are pinned with hashes. Update their `.in`
+inputs and regenerate the locks using [the dependency workflow](docs/DEPENDENCIES.md).
+Changing the supported Python version requires checking wheels and the test suite.
 
-The dashboard and the bot are two processes over one SQLite file in WAL mode:
-the bot writes, the dashboard reads and manages. You can run either alone. The
-dashboard needs no bot token unless you actually send something.
+Normal installations run the dashboard and its channel workers against
+PostgreSQL. The explicit synthetic demo above uses disposable SQLite storage.
+Telegram is optional; the legacy standalone bot is not required for a new
+installation. Never run the demo seed against a real installation.
 
 ## Tests
 
@@ -30,9 +33,9 @@ dashboard needs no bot token unless you actually send something.
 pytest
 ```
 
-Everything runs against a temporary database, no network, no Telegram. Test
-order is randomised (`pytest-randomly`), so a test that only passes in one order
-is a broken test — do not pin the order to make it green.
+The suite uses a temporary database and mocked channel deliveries. CI also
+runs it against PostgreSQL. Test order is not randomised by the current
+development dependencies; keep fixtures independent of execution order.
 
 Two guards are worth knowing about before they fail on you:
 
@@ -56,7 +59,7 @@ wrong person:
 | | Follows | Used by | Reached via |
 |---|---|---|---|
 | `src/utils/i18n.py` | the **customer's** language (ru/uk/en) | bot messages to users | `get_text(key, lang)` |
-| `src/dashboard/i18n.py` | the **instance** UI language (en/ru) | dashboard and operator-facing bot text | `t(key)` |
+| `src/dashboard/i18n.py` | the **operator's** UI language (en/ru), with an instance fallback | dashboard text | `t(key)` |
 
 A customer writing in Ukrainian must get Ukrainian regardless of what the
 dashboard is set to, and vice versa.

@@ -6,6 +6,8 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
+from src.database.connection_url import database_url
+from src.config.channel_values import get as channel_value
 
 
 # Load environment variables from a .env file located in the project root.
@@ -87,13 +89,17 @@ class Settings:
 
     @property
     def has_telegram(self) -> bool:
-        """Both halves or neither.
+        """A bot token enables Telegram; operators may work entirely in the dashboard."""
+        return bool(self.bot_token)
 
-        A token with no admin chat can send to customers but has nowhere to
-        show operators a ticket, which is an instance that looks configured
-        and quietly loses half its job.
-        """
-        return bool(self.bot_token and self.admin_chat_id)
+
+class _LiveSettings:
+    """Legacy handlers read current channel settings without freezing import-time values."""
+    def __getattr__(self, name):
+        return getattr(load_settings(), name)
+
+
+runtime_settings = _LiveSettings()
 
 
 def _require_env(name: str) -> str:
@@ -114,7 +120,10 @@ def load_settings() -> Settings:
     neither.
     """
 
-    database_url = _require_env("DATABASE_URL")
+    try:
+        resolved_database_url = database_url(os.environ)
+    except ValueError as exc:
+        raise RuntimeError(str(exc)) from None
     access_password = _require_env("ACCESS_PASSWORD")
 
     try:
@@ -125,34 +134,28 @@ def load_settings() -> Settings:
         logger.warning("TRUSTED_PROXY_HOPS is not a number; assuming no proxy")
         hops = 0
 
-    bot_token = (os.getenv("BOT_TOKEN") or "").strip()
-    raw_chat = (os.getenv("ADMIN_CHAT_ID") or "").strip()
+    bot_token = channel_value("BOT_TOKEN").strip()
+    raw_chat = channel_value("ADMIN_CHAT_ID").strip()
     try:
         admin_chat_id = int(raw_chat) if raw_chat else 0
     except ValueError:
         # A malformed id is a typo, not a decision to run without Telegram —
         # but failing to start over it would take the dashboard down too.
-        logger.warning(f"ADMIN_CHAT_ID is not a number ({raw_chat!r}); Telegram is off")
+        logger.warning("ADMIN_CHAT_ID is not a number; operator-group mirroring is off")
         admin_chat_id = 0
 
-    if bot_token and not admin_chat_id:
-        logger.warning(
-            "BOT_TOKEN is set but ADMIN_CHAT_ID is not — Telegram stays off. "
-            "Group ids are negative; copy it exactly."
-        )
-
     def _port(name: str, fallback: int) -> int:
-        raw = (os.getenv(name) or "").strip()
+        raw = channel_value(name).strip()
         try:
             return int(raw) if raw else fallback
         except ValueError:
             logger.warning(f"{name} is not a number ({raw!r}); using {fallback}")
             return fallback
 
-    email_address = (os.getenv("EMAIL_ADDRESS") or "").strip()
-    email_password = os.getenv("EMAIL_PASSWORD") or ""
-    email_imap_host = (os.getenv("EMAIL_IMAP_HOST") or "").strip()
-    email_smtp_host = (os.getenv("EMAIL_SMTP_HOST") or "").strip()
+    email_address = channel_value("EMAIL_ADDRESS").strip()
+    email_password = channel_value("EMAIL_PASSWORD")
+    email_imap_host = channel_value("EMAIL_IMAP_HOST").strip()
+    email_smtp_host = channel_value("EMAIL_SMTP_HOST").strip()
 
     # Said once, at load, rather than discovered when the first customer
     # writes in and nothing happens.
@@ -166,7 +169,7 @@ def load_settings() -> Settings:
     gemini_model = os.getenv("GEMINI_MODEL") or "gemini-2.5-flash"
 
     return Settings(
-        database_url=database_url,
+        database_url=resolved_database_url,
         access_password=access_password,
         bot_token=bot_token,
         admin_chat_id=admin_chat_id,
@@ -179,7 +182,7 @@ def load_settings() -> Settings:
         email_imap_port=_port("EMAIL_IMAP_PORT", 993),
         email_smtp_host=email_smtp_host,
         email_smtp_port=_port("EMAIL_SMTP_PORT", 587),
-        email_login=(os.getenv("EMAIL_LOGIN") or "").strip(),
-        email_from_name=(os.getenv("EMAIL_FROM_NAME") or "Support").strip(),
-        email_subject=(os.getenv("EMAIL_SUBJECT") or "Re: your support request").strip(),
+        email_login=channel_value("EMAIL_LOGIN").strip(),
+        email_from_name=channel_value("EMAIL_FROM_NAME", "Support").strip(),
+        email_subject=channel_value("EMAIL_SUBJECT", "Re: your support request").strip(),
     )

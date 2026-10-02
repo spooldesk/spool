@@ -38,6 +38,7 @@ __pycache__/
 # Virtual environments
 venv/
 .venv/
+.venv-tools/
 env/
 ENV/
 
@@ -70,3 +71,13 @@ MANUAL_STEPS.md
 # depends on in the same place as everything it protects.
 secrets.key
 **/secrets.key
+
+# Local worker ledger, task drafts and process locks (never customer context).
+/.agent-runs/
+
+# One-off delegation context is local; retain only the public smoke example.
+/agents/tasks/*.json
+!/agents/tasks/orchestration-smoke.json
+
+# Explicitly exported public landing assets.
+/site/

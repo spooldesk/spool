@@ -57,5 +57,11 @@ def loader_js(base_url: str) -> str:
 
 
 def frame_html() -> str:
-    """The panel. Talks to its own origin, so nothing to substitute."""
-    return _frame_template()
+    """Bundle shared controls into the panel so no stale static file can break it."""
+    html = _frame_template()
+    static = _ASSETS.parent / "static"
+    for name in ("message-menu.css", "message-menu.js", "auto-grow.js"):
+        path = static / name
+        source = _cached(path, path.stat().st_mtime)
+        html = html.replace(f"__SPOOL_ASSET_{name}__", source)
+    return html

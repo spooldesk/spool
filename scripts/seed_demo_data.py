@@ -3,10 +3,11 @@
 Creates demo_support.db in the project root. The real support.db is never touched.
 Run:  .venv/Scripts/python.exe scripts/seed_demo_data.py
 Re-running deletes and rebuilds the demo DB from scratch (idempotent).
+Use --database /path/to/new/demo.db to create an isolated fixture instead.
 """
 
 import asyncio
-import os
+import argparse
 import random
 import sys
 from datetime import datetime, timedelta
@@ -15,14 +16,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-DEMO_DB_PATH = PROJECT_ROOT / "demo_support.db"
-
-# Point the app at the demo DB BEFORE importing src.* (settings load at import time).
-os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{DEMO_DB_PATH.as_posix()}"
-# Dummies in case .env lacks these (setdefault never overrides real values).
-os.environ.setdefault("BOT_TOKEN", "1234567890:DEMO-not-a-real-token")
-os.environ.setdefault("ADMIN_CHAT_ID", "-1001234567890")
-os.environ.setdefault("ACCESS_PASSWORD", "admin")
+from scripts.demo_environment import configure, database_path
 
 random.seed(42)
 
@@ -225,10 +219,14 @@ def _demo_screenshot() -> bytes | None:
     return buf.getvalue()
 
 
-async def main() -> None:
+async def main(demo_db_path: Path) -> None:
+    configure(demo_db_path)
+    demo_db_path.parent.mkdir(parents=True, exist_ok=True)
     # Fresh start every run.
-    for suffix in ("", "-shm", "-wal"):
-        p = Path(f"{DEMO_DB_PATH}{suffix}")
+    for suffix in ("", "-shm", "-wal", "-journal"):
+        p = Path(f"{demo_db_path}{suffix}")
+        if p.is_symlink():
+            raise ValueError("Refusing to replace a linked demo database file")
         if p.exists():
             p.unlink()
 
@@ -239,6 +237,8 @@ async def main() -> None:
     from src.services.admin_user_service import hash_password  # noqa: E402
 
     await init_db()  # schema + default team/categories/close-reasons/admin account
+    from src.services.settings_service import set_value
+    await set_value("demo_fixture", "1", updated_by=0)
 
     async with db_session() as session:
         # --- Operators (dashboard accounts, linked to the Telegram admin ids) --
@@ -387,6 +387,9 @@ async def main() -> None:
                 category=category,
                 status="closed" if is_closed else "active",
                 thread_id=thread_seq,
+                # Each fabricated forum thread is a separate demo conversation.
+                # Real Telegram intake continues to use its actual channel key.
+                conversation_key=f"demo-thread:{thread_seq}",
                 header_message_id=thread_seq * 10,
                 notification_sent=True,
                 ticket_code=f"#{n + 1}",
@@ -703,7 +706,7 @@ async def main() -> None:
         for row in ai_rows:
             session.add(row)
 
-    print(f"Demo DB ready: {DEMO_DB_PATH}")
+    print(f"Demo DB ready: {demo_db_path}")
     print(f"  teams:     {len(TEAMS) + 1}")
     print(f"  users:     {len(FAKE_USERS)}")
     print(f"  tickets:   {n_tickets} (+{widget_tickets} from the widget)")
@@ -712,4 +715,11 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--database", help="New SQLite file; defaults to rebuilding demo_support.db")
+    args = parser.parse_args()
+    try:
+        destination = database_path(args.database, rebuild=True)
+    except ValueError as exc:
+        parser.error(str(exc))
+    asyncio.run(main(destination))

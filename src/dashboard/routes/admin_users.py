@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-_ROLES = ("owner", "admin", "agent")
+from src.services import permissions
 
 
 def _redirect(msg: str = "", err: str = "") -> RedirectResponse:
@@ -38,6 +38,13 @@ async def admins_list(request: Request, sent: str = "", err: str = ""):
     templates = request.app.state.templates
     admins = await admin_user_service.list_admins()
     me = current_user(request)
+    from sqlalchemy import select
+    from src.database.db import db_session
+    from src.database.models import Team, OperatorTeam
+    from src.services import invitation_service
+    async with db_session() as session:
+        teams = list((await session.execute(select(Team).order_by(Team.name))).scalars())
+        memberships = list((await session.execute(select(OperatorTeam))).scalars())
     rows = [
         {
             "id": a.id,
@@ -57,12 +64,55 @@ async def admins_list(request: Request, sent: str = "", err: str = ""):
         {
             "active_page": "admins",
             "rows": rows,
-            "roles": _ROLES,
+            "roles": await permissions.choices(),
             "flash_sent": sent,
             "flash_err": err,
             "bootstrap_mode": me is None,
+            "teams": teams, "memberships": {a.id: [m.team_id for m in memberships if m.operator_id == a.id] for a in admins},
+            "invitations": await invitation_service.pending(),
+            "invitation_link": getattr(request.state, 'invitation_link', None),
         },
     )
+
+
+@router.post('/manage/admins/invite')
+async def admins_invite(request: Request, email: str = Form(...), name: str = Form(''),
+                        role: str = Form('agent'), team_id: str = Form('')):
+    from src.services import invitation_service
+    me = current_user(request)
+    if me is None:
+        return _redirect(err=tr('invite_create_owner'))
+    try:
+        team = int(team_id) if team_id else None
+        if team and not 0 < team <= 2147483647:
+            raise ValueError('e_invalid_team')
+        token = await invitation_service.issue(actor_id=me.id, email=email, name=name, role=role, team_id=team)
+    except ValueError as exc:
+        return _redirect(err=tr(str(exc)))
+    request.state.invitation_link = str(request.base_url).rstrip('/') + '/join#token=' + token
+    return await admins_list(request)
+
+
+@router.post('/manage/admins/invitations/{invitation_id}/revoke')
+async def invitation_revoke(request: Request, invitation_id: int):
+    from src.services import invitation_service
+    me = current_user(request)
+    if me:
+        await invitation_service.revoke(me.id, invitation_id)
+    return _redirect(msg='saved')
+
+
+@router.post('/manage/admins/{admin_id}/teams')
+async def operator_teams(request: Request, admin_id: int, team_ids: list[int] = Form(default=[])):
+    from src.services import invitation_service
+    me = current_user(request)
+    if not me:
+        return _redirect(err=tr('invite_create_owner'))
+    try:
+        await invitation_service.set_teams(me.id, admin_id, team_ids)
+    except ValueError as exc:
+        return _redirect(err=tr(str(exc)))
+    return _redirect(msg='saved')
 
 
 @router.post("/manage/admins/new")
@@ -96,7 +146,10 @@ async def admins_set_password(request: Request, admin_id: int, password: str = F
 
 @router.post("/manage/admins/{admin_id}/role")
 async def admins_set_role(request: Request, admin_id: int, role: str = Form(...)):
-    await admin_user_service.update_profile(admin_id, role=role)
+    try:
+        await admin_user_service.update_profile(admin_id, role=role)
+    except ValueError as e:
+        return _redirect(err=str(e))
     return _redirect(msg="saved")
 
 
@@ -113,7 +166,10 @@ async def admins_toggle(request: Request, admin_id: int, is_active: str = Form(.
         active_others = [a for a in admins if a.is_active and a.id != admin_id]
         if not active_others:
             return _redirect(err=tr("e_cannot_disable_last"))
-    await admin_user_service.set_active(admin_id, want_active)
+    try:
+        await admin_user_service.set_active(admin_id, want_active)
+    except admin_user_service.LastOwnerError as e:
+        return _redirect(err=str(e))
     return _redirect(msg="saved")
 
 
@@ -125,5 +181,8 @@ async def admins_delete(request: Request, admin_id: int):
     admins = await admin_user_service.list_admins()
     if len(admins) <= 1:
         return _redirect(err=tr("e_cannot_delete_last"))
-    ok = await admin_user_service.delete_admin(admin_id)
+    try:
+        ok = await admin_user_service.delete_admin(admin_id)
+    except admin_user_service.LastOwnerError as e:
+        return _redirect(err=str(e))
     return _redirect(msg="deleted" if ok else "", err="" if ok else tr("e_user_not_found"))

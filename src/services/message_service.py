@@ -58,7 +58,9 @@ def can_delete(
     get = message.get if isinstance(message, dict) else lambda k: getattr(message, k, None)
     if get("sender_type") != "admin" or get("is_internal"):
         return False
-    if get("deleted_at"):
+    if get("deleted_at") or get("mutation_status") in {"pending", "uncertain"}:
+        return False
+    if get("delivery_status") and get("delivery_status") != "delivered":
         return False
     # Asked per message because the answer is per customer: the same operator,
     # the same minute, can unsend to one person and not to another.
@@ -80,16 +82,17 @@ def can_delete(
     created = get("created_at")
     if not created:
         return False
-    return (now or datetime.utcnow()) - created < DELETE_WINDOW
+    return channel == "slack" or (now or datetime.utcnow()) - created < DELETE_WINDOW
 
 
-async def delete_for_user(bot: Bot, message_id: int) -> DeleteResult:
+async def delete_for_user(bot: Bot, message_id: int, *, actor_id: int | None = None) -> DeleteResult:
     """Withdraw a delivered message from the customer's chat.
 
     The database is only updated once Telegram confirms, so a failure leaves
     the transcript honest: the customer can still see it, and so can we.
     """
-    async with db_session() as session:
+    from src.database.models import MessageRevision, AdminUser
+    async with db_session(write=True) as session:
         row = (await session.execute(
             select(MessageRecord)
             .where(MessageRecord.id == message_id)
@@ -98,6 +101,11 @@ async def delete_for_user(bot: Bot, message_id: int) -> DeleteResult:
 
         if row is None:
             return DeleteResult(False, "e_message_not_found")
+        if actor_id is not None:
+            actor = await session.get(AdminUser, actor_id)
+            from src.services.permissions import can
+            if not await can(actor, 'tickets', edit=True, session=session) or (actor.role not in {"owner", "admin"} and row.operator_id != actor.id):
+                return DeleteResult(False, "chat_edit_forbidden")
         if row.deleted_at:
             return DeleteResult(True, "", removed_from_channel=False)
 
@@ -117,17 +125,33 @@ async def delete_for_user(bot: Bot, message_id: int) -> DeleteResult:
             row.id if caps(channel).unsend_by_row
             else (row.channel_ref or row.tg_message_id)
         )
+        change = MessageRevision(message_id=row.id, operator_id=actor_id or row.operator_id,
+            kind="delete", before_text=row.text or "", after_text="", status="pending")
+        session.add(change)
+        row.mutation_status = "pending"
+        await session.flush()
+        change_id = change.id
 
     # The adapter decides what "could not be withdrawn" means on its own
     # medium and reports it the same way regardless.
-    if not await get_channel(channel).unsend(address, ref):
-        return DeleteResult(False, "e_delete_refused")
-
-    async with db_session() as session:
+    import asyncio
+    try:
+        async with asyncio.timeout(30):
+            removed = await get_channel(channel).unsend(address, ref)
+    except Exception:
+        removed = False
+    async with db_session(write=True) as session:
         row = await session.get(MessageRecord, message_id)
+        change = await session.get(MessageRevision, change_id)
         if row is not None:
-            row.deleted_at = datetime.utcnow()
-            await session.commit()
+            row.mutation_status = None if removed else "uncertain"
+            if removed:
+                row.deleted_at = datetime.utcnow()
+                row.revision += 1
+        if change is not None:
+            change.status = "applied" if removed else "uncertain"
+    if not removed:
+        return DeleteResult(False, "chat_edit_uncertain")
 
     logger.info(f"Message #{message_id} withdrawn from {channel}:{address}")
     return DeleteResult(True, "", removed_from_channel=True)

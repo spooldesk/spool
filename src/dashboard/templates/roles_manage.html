@@ -1,0 +1,30 @@
+{% extends "app_base.html" %}
+{% block title %}{{ T.nav_roles }}{% endblock %}
+{% macro role_form(role=None) %}
+<form method="post" action="/manage/roles/save" class="workspace-form">
+  <input type="hidden" name="key" value="{{ role.key if role else '' }}">
+  <label>{{ T.role_name }}<input name="name" value="{{ role.name if role else '' }}" maxlength="80" required></label>
+  <div class="workspace-role-grid">
+  {% for section, info in sections.items() %}
+    <label for="{{ role.key if role else 'new' }}-{{ section }}">{{ T[info[0]] }}</label>
+    <select id="{{ role.key if role else 'new' }}-{{ section }}" name="{{ section }}">
+      {% for mode in ['none', 'view', 'edit'] %}<option value="{{ mode }}" {% if (role.permissions.get(section, 'none') if role else 'none') == mode %}selected{% endif %}>{{ T['role_' ~ mode] }}</option>{% endfor %}
+    </select>
+  {% endfor %}
+  </div>
+  <button class="workspace-primary">{{ T.save if role else T.role_new }}</button>
+</form>
+{% endmacro %}
+{% block content %}
+<div class="workspace-admin">
+  <h1>{{ T.nav_roles }}</h1><p class="workspace-intro">{{ T.roles_intro }}</p>
+  {% if flash_sent %}<p role="status" class="workspace-flash">{{ T.saved }}</p>{% endif %}
+  {% if flash_err %}<p role="alert" class="workspace-error">{{ T.get(flash_err, T.role_permissions_invalid) }}</p>{% endif %}
+  {% for role in roles %}<details class="workspace-card"><summary>{{ role.name }}</summary>
+    {{ role_form(role) }}
+    <form method="post" action="/manage/roles/{{ role.key }}/delete" class="workspace-delete"><button>{{ T.delete }}</button></form>
+  </details>{% endfor %}
+  <details class="workspace-card" {% if not roles %}open{% endif %}><summary>{{ T.role_new }}</summary>{{ role_form() }}</details>
+  <p class="workspace-muted">{{ T.role_saved_hint }}</p>
+</div>
+{% endblock %}

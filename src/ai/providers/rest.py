@@ -1,4 +1,4 @@
-"""Anthropic, OpenAI and Ollama, over their HTTP APIs.
+"""Anthropic, OpenAI, OpenRouter and Ollama, over their HTTP APIs.
 
 One file rather than three because they are the same request with different
 JSON around it: post a system prompt and a user message, read back some text
@@ -24,13 +24,11 @@ from typing import Any
 
 import httpx
 
-from src.ai.client import LLMResponse, LLMUnavailable
+from src.ai.client import LLMResponse, LLMUnavailable, provider_error_code
 
 logger = logging.getLogger(__name__)
 
-#: The same wall clock Gemini gets. Nothing a customer waits on depends on
-#: this — it bounds a background task — but an LLM that has not answered in
-#: eight seconds is not going to save an operator any time.
+#: Background suggestions stay short; interactive callers supply their own budget.
 _TIMEOUT_SEC = 8.0
 
 
@@ -72,10 +70,11 @@ class _RestClient:
         user: str,
         max_output_tokens: int = 256,
         temperature: float = 0.2,
+        timeout_seconds: float = _TIMEOUT_SEC,
     ) -> LLMResponse:
         started = time.monotonic()
         try:
-            async with httpx.AsyncClient(timeout=_TIMEOUT_SEC) as http:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_seconds, connect=min(8.0, timeout_seconds))) as http:
                 resp = await http.post(
                     self._url(),
                     headers=self._headers(),
@@ -84,33 +83,39 @@ class _RestClient:
                                     temperature=temperature),
                 )
         except httpx.TimeoutException:
-            logger.warning("%s timed out after %ss", self.name, _TIMEOUT_SEC)
-            raise LLMUnavailable(f"{self.name} timed out") from None
+            logger.warning("%s timed out after %ss", self.name, timeout_seconds)
+            raise LLMUnavailable(f"{self.name} timed out", code="timeout") from None
         except httpx.HTTPError as e:
-            logger.warning("%s call failed: %s: %s", self.name, type(e).__name__, e)
-            raise LLMUnavailable(f"{type(e).__name__}: {e}") from e
+            logger.warning("%s connection failed (%s)", self.name, type(e).__name__)
+            raise LLMUnavailable(f"{self.name} connection failed", code="network") from None
 
         latency_ms = int((time.monotonic() - started) * 1000)
 
         if resp.status_code >= 400:
-            # The provider's own words, truncated. A wrong model name, an
-            # expired key and an exhausted quota all arrive here, and the
-            # message is the only thing that tells them apart — so it is
-            # carried through to the operator rather than flattened.
-            detail = _first_line(resp.text)
-            logger.warning("%s returned %s: %s", self.name, resp.status_code, detail)
-            raise LLMUnavailable(f"{self.name} {resp.status_code}: {detail}")
+            # Error bodies can echo submitted secrets or prompts, including via proxies.
+            code = provider_error_code(resp.status_code)
+            logger.warning("%s returned %s (%s)", self.name, resp.status_code, code)
+            raise LLMUnavailable(f"{self.name} HTTP {resp.status_code} ({code})",
+                                 code=code, status_code=resp.status_code)
 
         try:
-            text, tokens_in, tokens_out = self._parse(resp.json())
-        except (ValueError, KeyError, TypeError, IndexError) as e:
-            logger.warning("%s sent a shape we do not recognise: %s", self.name, e)
-            raise LLMUnavailable(f"{self.name} returned an unreadable response") from e
+            payload = resp.json()
+            if not isinstance(payload, dict):
+                raise ValueError("response_shape")
+            if payload.get("stop_reason") in {"max_tokens", "refusal"}:
+                code = "truncated" if payload["stop_reason"] == "max_tokens" else "refusal"
+                raise LLMUnavailable(f"{self.name} {code}", code=code)
+            text, tokens_in, tokens_out = self._parse(payload)
+            if not isinstance(text, str):
+                raise ValueError("text_shape")
+        except (ValueError, KeyError, TypeError, IndexError, AttributeError, OverflowError):
+            logger.warning("%s returned an unreadable response", self.name)
+            raise LLMUnavailable(f"{self.name} returned an unreadable response", code="invalid_response") from None
 
         if not text.strip():
             raise LLMUnavailable(
                 f"{self.name} returned an empty response "
-                f"(tokens_out={tokens_out}, latency={latency_ms}ms)"
+                f"(tokens_out={tokens_out}, latency={latency_ms}ms)", code="empty"
             )
 
         return LLMResponse(
@@ -120,12 +125,6 @@ class _RestClient:
             tokens_out=tokens_out,
             latency_ms=latency_ms,
         )
-
-
-def _first_line(body: str, limit: int = 300) -> str:
-    """Enough of an error to act on, not a screen of JSON in a log line."""
-    flat = " ".join((body or "").split())
-    return flat[:limit] or "no detail"
 
 
 class AnthropicClient(_RestClient):
@@ -146,14 +145,21 @@ class AnthropicClient(_RestClient):
         }
 
     def _body(self, *, system, user, max_output_tokens, temperature):
-        return {
+        body = {
             "model": self._model_name,
             "max_tokens": max_output_tokens,
-            "temperature": temperature,
             # A first-class field here, not a pseudo-message.
             "system": system,
             "messages": [{"role": "user", "content": user}],
         }
+        # Opus 4.7+ and newer model generations reject custom sampling values.
+        # Leave provider defaults intact; guide consistency through the system prompt.
+        # 5.5 always thinks. The assistant budgets thinking tokens explicitly.
+        if self._model_name in {"claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1"}:
+            body["output_config"] = {"effort": "low"}
+        elif self._model_name in {"claude-opus-5", "claude-sonnet-5"}:
+            body["thinking"] = {"type": "disabled"}
+        return body
 
     def _parse(self, payload):
         blocks = payload.get("content") or []
@@ -195,6 +201,52 @@ class OpenAIClient(_RestClient):
         return (text,
                 int(usage.get("prompt_tokens") or 0),
                 int(usage.get("completion_tokens") or 0))
+
+
+class OpenRouterClient(OpenAIClient):
+    """OpenAI-compatible gateway with its own credential and model identifiers."""
+
+    name = "OpenRouter"
+    default_base_url = "https://openrouter.ai/api"
+
+    def __init__(self, *, api_key: str, model: str) -> None:
+        # Explicit provider selection, never an implicit redirect of another key.
+        super().__init__(api_key=api_key, model=model)
+
+    def _body(self, *, system, user, max_output_tokens, temperature):
+        body = super()._body(system=system, user=user,
+                             max_output_tokens=max_output_tokens, temperature=temperature)
+        body["max_tokens"] = body.pop("max_completion_tokens")
+        # Some reasoning models reject sampling overrides. Use model defaults.
+        body.pop("temperature")
+        body["stream"] = False
+        if self._model_name in {"anthropic/claude-opus-5.5", "anthropic/claude-sonnet-5.5",
+                                "anthropic/claude-fable-5.1"}:
+            body["reasoning"] = {"effort": "low", "exclude": True}
+        elif self._model_name in {"anthropic/claude-opus-5", "anthropic/claude-sonnet-5"}:
+            body["reasoning"] = {"enabled": False}
+        return body
+
+    def _parse(self, payload):
+        # Gateway failures can arrive inside HTTP 200. Never echo raw error details.
+        if "error" in payload:
+            error = payload["error"]
+            status = error.get("code") if isinstance(error, dict) else None
+            status = status if type(status) is int and 400 <= status <= 599 else None
+            code = provider_error_code(status)
+            raise LLMUnavailable(f"OpenRouter failed ({code})", code=code, status_code=status)
+        choices = payload.get("choices") or []
+        if choices:
+            finish = choices[0].get("finish_reason")
+            message = choices[0].get("message") or {}
+            code = {"length": "truncated", "content_filter": "refusal",
+                    "error": "unavailable"}.get(finish)
+            if message.get("refusal"):
+                code = "refusal"
+            if code:
+                raise LLMUnavailable(f"OpenRouter {code}", code=code)
+        # Only message.content is an answer; reasoning fields remain private.
+        return super()._parse(payload)
 
 
 class OllamaClient(_RestClient):

@@ -41,7 +41,7 @@ from src.channels.widget import (
     identity_subject,
     looks_like_email,
     new_session_token,
-    verify_identity,
+    verified_identity_fields,
 )
 from src.dashboard.auth import _client_ip
 from src.database.db import db_session
@@ -117,7 +117,7 @@ _DOWNLOAD_TYPES = {
     "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "mp4": "video/mp4", "mov": "video/quicktime", "webm": "video/webm",
     "mp3": "audio/mpeg", "ogg": "audio/ogg", "wav": "audio/wav",
-    "heic": "image/heic", "svg": "image/svg+xml",
+    "heic": "image/heic",
 }
 
 
@@ -153,6 +153,22 @@ def _safe_filename(name: str) -> str:
     name = "".join(c for c in name if c.isprintable() and c not in '"\r\n')
     return name[:120] or "attachment"
 
+
+def _attachment_headers(name: str) -> dict[str, str]:
+    """Share one download policy between the visitor and operator endpoints."""
+    from urllib.parse import quote
+
+    name = _safe_filename(name)
+    fallback = name.encode("ascii", "ignore").decode("ascii") or "attachment"
+    disposition = "inline" if _is_image(name) else "attachment"
+    return {
+        "Content-Disposition": (
+            f'{disposition}; filename="{fallback}"; filename*=UTF-8\'\'{quote(name, safe="")}'
+        ),
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "sandbox",
+    }
+
 #: In memory, like the login throttle, and honest about what that means: a
 #: restart forgives everyone, and a second instance keeps its own count.
 #: Good enough for a self-hosted helpdesk; a deployment that needs more
@@ -168,10 +184,6 @@ def _too_many(bucket: str, limit: int, window: float) -> bool:
         return True
     recent.append(now)
     return False
-
-
-def _forget(bucket: str) -> None:
-    _hits.pop(bucket, None)
 
 
 # ---------------------------------------------------------------- CORS
@@ -231,7 +243,9 @@ def _clean(text: str | None, limit: int) -> str:
     return (text or "").strip()[:limit]
 
 
-async def _identity(body: dict[str, Any]) -> tuple[str | None, str | None, str | None, bool]:
+async def _identity(body: dict[str, Any]) -> tuple[
+    str | None, str | None, str | None, bool, tuple[str, ...]
+]:
     """Who the page says this visitor is, and whether it can prove it.
 
     Everything here arrives from a page the visitor can edit, so the only
@@ -261,13 +275,15 @@ async def _identity(body: dict[str, Any]) -> tuple[str | None, str | None, str |
 
     external_id = _clean(body.get("external_id"), _MAX_EXTERNAL_ID_CHARS) or None
 
-    verified = False
-    subject = identity_subject(email, external_id)
-    if subject:
+    fields: tuple[str, ...] = ()
+    if identity_subject(email, external_id):
         secret = await settings_service.get_widget_identity_secret()
-        verified = verify_identity(secret, _clean(body.get("hash"), 200), subject)
+        fields = verified_identity_fields(
+            secret, _clean(body.get("hash"), 200),
+            name=name, email=email, external_id=external_id,
+        )
 
-    return name, email, external_id, verified
+    return name, email, external_id, bool(fields), fields
 
 
 async def _transcript(ticket_id: int) -> list[dict[str, Any]]:
@@ -280,12 +296,17 @@ async def _transcript(ticket_id: int) -> list[dict[str, Any]]:
     """
     async with db_session() as session:
         rows = await intake_service.conversation(session, ticket_id)
+        visible = {m.id: m for m in rows}
         return [
             {
                 "id": m.id,
                 "from": "you" if m.sender_type == "user" else "agent",
                 "text": m.text or "",
                 "at": m.created_at.isoformat() if m.created_at else None,
+                "revision": m.revision,
+                "edited": bool(m.edited_at),
+                "reply": {"id": m.reply_to_id, "text": (visible[m.reply_to_id].text or '')[:240]}
+                         if m.reply_to_id in visible else None,
                 # Only while unanswered. A cleared list is a question that has
                 # been closed, and the panel stops drawing it for the same
                 # reason the server stops accepting it.
@@ -307,6 +328,87 @@ async def _transcript(ticket_id: int) -> list[dict[str, Any]]:
 
 
 # ---------------------------------------------------------------- endpoints
+
+
+async def _reply_target(session, token: str, value) -> int | None:
+    if value in (None, ''):
+        return None
+    from src.channels.identity import find_customer
+    from src.services.conversation_service import reply_context
+    if isinstance(value, bool) or not str(value).isdigit() or not 0 < int(value) <= 2147483647:
+        raise ValueError("Invalid reply")
+    user = await find_customer(session, channel=WIDGET, address=address_for(token))
+    ticket = await intake_service.open_ticket_of(session, user.id) if user else None
+    if ticket is None:
+        raise ValueError("Invalid reply")
+    await reply_context(session, ticket.id, int(value))
+    return int(value)
+
+
+async def _public_typing(ticket_id):
+    from src.services.presence_service import public_typists
+    return await public_typists(ticket_id)
+
+
+@router.post("/api/typing")
+async def typing(request: Request, x_spooldesk_session: str | None = Header(default=None)):
+    origin = await _allowed_origin(request)
+    if (off := await _off(origin)) is not None:
+        return off
+    user = await _visitor((x_spooldesk_session or '').strip())
+    if user is None:
+        return _json({"error": "no_session"}, origin, status.HTTP_401_UNAUTHORIZED)
+    if _too_many(f"typing:{user.id}", 30, 60):
+        return _json({"error": "slow_down"}, origin, status.HTTP_429_TOO_MANY_REQUESTS)
+    async with db_session() as session:
+        ticket = await intake_service.open_ticket_of(session, user.id)
+    if ticket:
+        from src.services.presence_service import heartbeat
+        await heartbeat(ticket.id, f"visitor:{user.id}", user.username or 'Customer', typing=True)
+    return _json({"ok": True}, origin)
+
+
+@router.post("/api/message/{message_id}/edit")
+@router.post("/api/message/{message_id}/delete")
+async def change_own_message(message_id: int, request: Request,
+                             x_spooldesk_session: str | None = Header(default=None)):
+    origin = await _allowed_origin(request)
+    if (off := await _off(origin)) is not None:
+        return off
+    user = await _visitor((x_spooldesk_session or '').strip())
+    if user is None:
+        return _json({"error": "no_session"}, origin, status.HTTP_401_UNAUTHORIZED)
+    if _too_many(f"mutation:{user.id}", 30, 60):
+        return _json({"error": "slow_down"}, origin, status.HTTP_429_TOO_MANY_REQUESTS)
+    from src.database.models import Message, MessageRevision, Ticket
+    from datetime import datetime
+    try:
+        body = await request.json()
+    except ValueError:
+        return _json({"error": "invalid_json"}, origin, status.HTTP_400_BAD_REQUEST)
+    if not isinstance(body, dict):
+        return _json({"error": "invalid_json"}, origin, status.HTTP_400_BAD_REQUEST)
+    deleting = request.url.path.endswith('/delete')
+    async with db_session(write=True) as session:
+        row = await session.get(Message, message_id) if 0 < message_id <= 2147483647 else None
+        ticket = await session.get(Ticket, row.ticket_id) if row else None
+        if (not row or not ticket or ticket.user_id != user.id or ticket.status != 'active'
+                or row.sender_type != 'user' or row.is_internal or row.deleted_at):
+            return _json({"error": "not_found"}, origin, status.HTTP_404_NOT_FOUND)
+        if type(body.get('revision')) is not int or body['revision'] != row.revision:
+            return _json({"error": "conflict"}, origin, status.HTTP_409_CONFLICT)
+        text = _clean(body.get('text'), _MAX_MESSAGE_CHARS)
+        if not deleting and not text:
+            return _json({"error": "empty"}, origin, status.HTTP_400_BAD_REQUEST)
+        session.add(MessageRevision(message_id=row.id, kind='customer_delete' if deleting else 'customer_edit',
+            before_text=row.text or '', after_text='' if deleting else text, status='applied'))
+        row.revision += 1
+        if deleting:
+            row.deleted_at = datetime.utcnow()
+        else:
+            row.text, row.edited_at = text, datetime.utcnow()
+        tid = ticket.id
+    return _json({"ok": True, "ticket": tid, "messages": await _transcript(tid)}, origin)
 
 
 
@@ -341,13 +443,23 @@ async def post_message(
     if (off := await _off(origin)) is not None:
         return off
 
-    body = await request.json()
+    try:
+        body = await request.json()
+    except ValueError:
+        return _json({"error": "invalid_json"}, origin, status.HTTP_400_BAD_REQUEST)
+    if not isinstance(body, dict):
+        return _json({"error": "invalid_json"}, origin, status.HTTP_400_BAD_REQUEST)
     text = _clean(body.get("text"), _MAX_MESSAGE_CHARS)
     if not text:
         return _json({"error": "empty"}, origin, status.HTTP_400_BAD_REQUEST)
 
     token = (x_spooldesk_session or "").strip()
     issued: str | None = None
+
+    # An arbitrary header is not a session. Unknown/expired tokens start over
+    # under the IP limit and receive a fresh server-generated credential.
+    if token and await _visitor(token) is None:
+        token = ""
 
     if token:
         bucket = f"w:{address_for(token)}"
@@ -361,9 +473,13 @@ async def post_message(
                          status.HTTP_429_TOO_MANY_REQUESTS)
         issued = token = new_session_token()
 
-    name, email, external_id, verified = await _identity(body)
+    name, email, external_id, verified, verified_fields = await _identity(body)
 
-    async with db_session() as session:
+    async with db_session(write=True) as session:
+        try:
+            parent_id = await _reply_target(session, token, body.get("reply_to_id"))
+        except ValueError:
+            return _json({"error": "invalid_reply"}, origin, status.HTTP_400_BAD_REQUEST)
         result = await intake_service.receive(session, intake_service.Inbound(
             channel=WIDGET,
             address=address_for(token),
@@ -373,6 +489,8 @@ async def post_message(
             email=email,
             external_id=external_id,
             identity_verified=verified,
+            identity_verified_fields=verified_fields,
+            reply_to_id=parent_id,
         ))
         await session.commit()
 
@@ -412,6 +530,7 @@ async def upload(
     email: str = Form(""),
     external_id: str = Form(""),
     hash: str = Form(""),
+    reply_to_id: str = Form(""),
     x_spooldesk_session: str | None = Header(default=None),
 ) -> JSONResponse:
     """A visitor attached something.
@@ -429,6 +548,8 @@ async def upload(
 
     token = (x_spooldesk_session or "").strip()
     issued: str | None = None
+    if token and await _visitor(token) is None:
+        token = ""
     if token:
         if _too_many(f"u:{address_for(token)}", _UPLOADS_PER_SESSION, _UPLOAD_WINDOW):
             return _json({"error": "slow_down"}, origin,
@@ -467,9 +588,14 @@ async def upload(
                      status.HTTP_503_SERVICE_UNAVAILABLE)
 
     form = {"name": name, "email": email, "external_id": external_id, "hash": hash}
-    who, addr, ext_id, verified = await _identity(form)
+    who, addr, ext_id, verified, verified_fields = await _identity(form)
 
-    async with db_session() as session:
+    async with db_session(write=True) as session:
+        try:
+            parent_id = await _reply_target(session, token, reply_to_id)
+        except ValueError:
+            file_store.delete(ref)
+            return _json({"error": "invalid_reply"}, origin, status.HTTP_400_BAD_REQUEST)
         result = await intake_service.receive(session, intake_service.Inbound(
             channel=WIDGET,
             address=address_for(token),
@@ -479,6 +605,8 @@ async def upload(
             email=addr,
             external_id=ext_id,
             identity_verified=verified,
+            identity_verified_fields=verified_fields,
+            reply_to_id=parent_id,
             attachment=intake_service.Attachment(
                 ref=ref,
                 name=filename,
@@ -567,14 +695,12 @@ async def file_download(
     import io
 
     filename = _safe_filename(record.file_name or "attachment")
-    inline = _is_image(filename)
-    response = StreamingResponse(io.BytesIO(data), media_type=_content_type(filename))
-    response.headers["Content-Disposition"] = (
-        f'{"inline" if inline else "attachment"}; filename="{filename}"'
+    response = StreamingResponse(
+        io.BytesIO(data), media_type=_content_type(filename),
+        headers=_attachment_headers(filename),
     )
     # Without this a browser is free to decide the bytes are HTML no matter
     # what we said they were, which would undo the allowlist above.
-    response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Cache-Control"] = "private, max-age=300"
     return _cors(response, origin)
 
@@ -603,7 +729,12 @@ async def choose(
     if user is None:
         return _json({"error": "no_session"}, origin, status.HTTP_401_UNAUTHORIZED)
 
-    body = await request.json()
+    try:
+        body = await request.json()
+    except ValueError:
+        return _json({"error": "invalid_json"}, origin, status.HTTP_400_BAD_REQUEST)
+    if not isinstance(body, dict):
+        return _json({"error": "invalid_json"}, origin, status.HTTP_400_BAD_REQUEST)
     try:
         message_id = int(body.get("message") or 0)
     except (TypeError, ValueError):
@@ -656,7 +787,7 @@ async def poll(
 
     async with db_session() as session:
         user = await find_customer(session, channel=WIDGET, address=address_for(token))
-        if user is None:
+        if user is None or not user.is_active:
             # An unknown token is answered the same way as a missing one. A
             # different response here would turn this into an oracle for
             # checking guesses.
@@ -665,7 +796,8 @@ async def poll(
 
     if ticket is None:
         return _json({"ticket": None, "messages": []}, origin)
-    return _json({"ticket": ticket.id, "open": True,
+    from src.services.presence_service import public_typists
+    return _json({"ticket": ticket.id, "open": True, "typing": await public_typists(ticket.id),
                   "messages": await _transcript(ticket.id)}, origin)
 
 
@@ -778,6 +910,7 @@ async def thread(
         "ticket": ticket_id,
         "open": mine[0].status == "active",
         "messages": await _transcript(ticket_id),
+        "typing": await _public_typing(ticket_id),
     }, origin)
 
 
@@ -876,6 +1009,11 @@ async def hello(request: Request) -> JSONResponse:
         "offline": dash_t("wg_offline"),
         "slow": dash_t("wg_slow"),
         "replied": dash_t("wg_replied"),
+        "reply": dash_t("chat_reply"), "edit": dash_t("chat_edit"), "message_actions": dash_t("chat_actions"),
+        "edited": dash_t("chat_edited"), "delete": dash_t("delete"),
+        "cancel": dash_t("cancel"), "save": dash_t("save"),
+        "typing": dash_t("presence_typing"),
+
         "launcher": dash_t("wg_launcher"),
         # Whether to put a form in front of the first message. The panel is
         # told rather than deciding: an operator changes this in settings and

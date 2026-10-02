@@ -1,0 +1,83 @@
+{% extends "app_base.html" %}
+{% block title %}{{ T.nav_integrations }}{% endblock %}
+{% block content %}
+<div class="workspace-admin">
+  <h1>{{ T.nav_integrations }}</h1>
+  <p class="workspace-intro">{{ T.connection_intro }}</p>
+  {% if flash_sent %}<p role="status" class="workspace-flash">{{ T.get(flash_sent, T.saved) }}</p>{% endif %}
+  {% if flash_err %}<p role="alert" class="workspace-error">{{ T.get(flash_err, T.integration_invalid) }}</p>{% endif %}
+  <nav class="workspace-anchors" aria-label="{{ T.nav_integrations }}">
+    <a href="#telegram">Telegram</a><a href="#slack">Slack</a><a href="#email">Email</a><a href="#widget">{{ T.wgs_title }}</a>
+    <a href="#delivery-problems">{{ T.connection_issues }} · {{ center.problem_count }}</a>
+  </nav>
+  <p class="workspace-muted connection-history-hint">{{ T.connection_history_hint }}</p>
+  {% for channel, state in channels.items() %}
+  <section class="workspace-card" id="{{ channel }}">
+    <div class="workspace-card-heading"><h2>{{ {'telegram':'Telegram','slack':'Slack','email':'Email'}[channel] }}</h2>
+      <span class="workspace-status">{{ T.connection_step_saved if state.configured else (T.integration_incomplete_label if state.enabled else T.integration_off) }}</span>
+    </div>
+    <p data-help>{{ T['integration_' ~ channel ~ '_help'] }}</p>
+    {% if state.unreadable %}<p class="workspace-error">{{ T.integration_unreadable }}</p>{% endif %}
+    {% include 'connection_evidence.html' %}
+    <details class="connection-settings" {% if not state.configured %}open{% endif %}>
+    <summary>{{ T.connection_configuration }}</summary>
+    <form method="post" action="/manage/integrations/{{ channel }}" class="workspace-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label class="workspace-check"><input type="checkbox" name="enabled" value="1" {% if state.enabled %}checked{% endif %}>{{ T.integration_enabled }}</label>
+      <div class="workspace-fields">
+      {% for field in fields[channel] %}
+        <div>
+          <label for="{{ channel }}-{{ field }}">{{ T.get('field_' ~ field, field) }}</label>
+          {% if field in secret_fields %}
+            <input id="{{ channel }}-{{ field }}" type="password" name="{{ field }}" autocomplete="new-password" maxlength="2048" placeholder="{{ T.integration_secret_present if state.secrets_present[field] else '—' }}">
+            {% if state.secrets_present[field] %}<label class="workspace-check"><input type="checkbox" name="clear_{{ field }}" value="1">{{ T.integration_clear_secret }}</label>{% endif %}
+          {% else %}
+            <input id="{{ channel }}-{{ field }}" name="{{ field }}" value="{{ state['values'][field] }}" maxlength="320" {% if field.endswith('_port') %}type="number" min="1" max="65535"{% elif field == 'public_url' %}type="url" placeholder="https://support.example.com"{% endif %}>
+            {% if field == 'public_url' %}<p class="workspace-muted">{{ T.connection_public_hint }}</p>{% endif %}
+          {% endif %}
+        </div>
+      {% endfor %}
+      </div>
+      <p class="workspace-muted" data-help>{{ T.integration_secret_hint }}</p>
+      <button class="workspace-primary">{{ T.save }}</button>
+    </form>
+    </details>
+    {% if channel == 'slack' %}
+      <div class="workspace-connection-details">
+        {% if slack_url %}
+        <label>{{ T.sl_url }}<code>{{ slack_url }}</code></label>
+        <label>{{ T.sl_interactive_url }}<code>{{ slack_interactive_url }}</code></label>
+        {% else %}<p>{{ T.connection_public_missing }}</p>{% endif %}
+        <p>{{ T.connection_slack_handshake }}</p>
+        <label>{{ T.sl_scopes }}<code>chat:write · im:write · im:history · channels:history · groups:history · files:read · files:write · users:read</code></label>
+      </div>
+    {% endif %}
+    <details class="connection-guide"><summary>{{ T.connection_manual_test }}</summary><p>{{ T['connection_' ~ channel ~ '_steps'] }}</p></details>
+  </section>
+  {% endfor %}
+  <section class="workspace-card" id="widget">
+    <h2>{{ T.wgs_title }}</h2>
+    <p data-help>{{ T.wgs_intro }}</p>
+    {% with channel='widget' %}{% include 'connection_evidence.html' %}{% endwith %}
+    <form method="post" action="/manage/integrations/widget" class="workspace-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label class="workspace-check"><input type="checkbox" name="widget_enabled" value="1" {% if widget_enabled %}checked{% endif %}>{{ T.wgs_enabled }}</label>
+      <label>{{ T.connection_widget_public }}<input type="url" name="widget_public_url" maxlength="320" value="{{ widget_public_url }}" placeholder="https://support.example.com"></label>
+      <p class="workspace-muted">{{ T.connection_widget_public_hint }}</p>
+      <label>{{ T.wgs_origins }}<textarea name="widget_origins" rows="2" maxlength="8000" placeholder="https://example.com">{{ widget_origins }}</textarea></label>
+      <p data-help>{{ T.wgs_origins_hint }}</p>
+      <label>{{ T.wgs_greeting }}<textarea name="widget_greeting" rows="1" maxlength="300">{{ widget_greeting }}</textarea></label>
+      <label class="workspace-check"><input type="checkbox" name="widget_ask_identity" value="1" {% if widget_ask_identity %}checked{% endif %}>{{ T.wgs_ask }}</label>
+      <label>{{ T.wgs_secret }}<input type="password" name="widget_identity_secret" minlength="32" maxlength="200" autocomplete="new-password" placeholder="{{ T.integration_secret_present if widget_secret_present else '—' }}"></label>
+      {% if widget_secret_present %}<label class="workspace-check"><input type="checkbox" name="clear_widget_identity_secret" value="1">{{ T.integration_clear_secret }}</label>{% endif %}
+      <p data-help>{{ T.integration_secret_hint }} {{ T.wgs_secret_hint }}</p>
+      <button class="workspace-primary">{{ T.save }}</button>
+    </form>
+    {% if widget_enabled %}<div class="workspace-connection-details">{% if widget_snippet %}<label>{{ T.wgs_snippet }}<code>{{ widget_snippet }}</code></label>{% else %}<p>{{ T.connection_widget_no_snippet }}</p>{% endif %}<a href="/widget/frame" target="_blank" rel="noopener">{{ T.wgs_preview }}</a></div>{% endif %}
+    <details class="connection-guide"><summary>{{ T.connection_manual_test }}</summary><p>{{ T.connection_widget_steps }}</p></details>
+  </section>
+  {% include 'connection_problems.html' %}
+  <p class="workspace-muted">{{ T.integration_runtime }}</p>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/connection-center.js?v={{ g_asset_v }}" defer></script>{% endblock %}

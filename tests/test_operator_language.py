@@ -8,6 +8,8 @@ support team reading Russian buttons.
 """
 
 import pytest
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 from src.dashboard.i18n import set_active_language
 from src.handlers import admin_handlers, ticket_actions, user_handlers
@@ -22,23 +24,15 @@ def _restore_language():
 
 # ---------- operator side: follows the instance ----------
 
-def test_thread_buttons_follow_the_instance_language():
-    """The [Templates] [AI] [Close] row under every forwarded user message."""
-    set_active_language("en")
-    labels = [
-        b.text
-        for row in user_handlers._ticket_action_keyboard(1).inline_keyboard
-        for b in row
-    ]
-    assert labels == ["📝 Templates", "🤖 AI", "✅ Close"]
-
-    set_active_language("ru")
-    labels_ru = [
-        b.text
-        for row in user_handlers._ticket_action_keyboard(1).inline_keyboard
-        for b in row
-    ]
-    assert labels_ru == ["📝 Шаблоны", "🤖 ИИ", "✅ Закрыть"]
+@pytest.mark.parametrize('language,word', [('en', 'dashboard'), ('ru', 'кабинет')])
+async def test_retired_thread_buttons_explain_dashboard_in_operator_language(language, word):
+    from src.handlers.retired_operator_actions import retired_operator_action
+    set_active_language(language)
+    callback = SimpleNamespace(answer=AsyncMock(), message=SimpleNamespace(edit_reply_markup=AsyncMock()))
+    await retired_operator_action(callback)
+    assert word in callback.answer.call_args.args[0].lower()
+    assert callback.answer.call_args.kwargs['show_alert'] is True
+    callback.message.edit_reply_markup.assert_awaited_once_with(reply_markup=None)
 
 
 @pytest.mark.parametrize("module", [ticket_actions, admin_handlers, user_handlers])

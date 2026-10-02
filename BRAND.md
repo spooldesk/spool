@@ -38,15 +38,23 @@ CSS has loaded — worth keeping honest.
 The splash background is `#09090B`, not white. The product is dark, and a PWA
 opening on white flashes white first.
 
-## Why the app's own logo is not this mark
+## Shared landing and dashboard identity
 
-The sign-in page and the sidebar show a generic headset glyph next to
-`brand_name`, which every deployment sets for itself. That is deliberate.
-A customer who has renamed the product to "Acme Support" should not find a
-Spooldesk spool sitting next to their own name. The tab icon is different —
-that is the icon of the software, not of their support desk — so the mark is
-the default favicon and a white-label deployment can replace the files in
-`static/icons/`.
+The landing, interactive preview, default sign-in page and sidebar use the same
+spool mark and lowercase wordmark. Deployments with a custom `brand_name` keep
+their name and neutral headset; the default Support/Spooldesk workspace shows
+Spooldesk. A white-label deployment can replace the icons in `static/icons/`.
+
+`assets/brand/tokens.css` is the shared palette, typography and control-radius
+source. Run `python scripts/build_brand.py` to distribute it; the landing build
+does this as well. Generated copies are `docs/brand.css` and
+`src/dashboard/static/brand.css`. Both themes use neutral surfaces, the existing
+violet primary action and a lighter violet for text on dark surfaces. The site
+uses a system font stack, with no font downloads. The dashboard keeps its
+existing typography and controls. The landing and new features follow that
+dashboard design; they must not recolor its existing pages. In particular, the
+dark canvas remains black and the sidebar uses its existing near-black surface,
+not the gray panel fill rejected by the user on 2026-10-01.
 
 ---
 

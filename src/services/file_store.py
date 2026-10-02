@@ -75,7 +75,10 @@ def put(content: bytes) -> str:
     # Written beside and moved into place, so a crash mid-write cannot leave a
     # truncated file behind a reference the database already believes in.
     staging = target.with_suffix(".part")
-    staging.write_bytes(content)
+    with staging.open("wb") as handle:
+        handle.write(content)
+        handle.flush()
+        os.fsync(handle.fileno())
     staging.replace(target)
     return ref
 

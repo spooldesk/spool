@@ -1,0 +1,62 @@
+{% extends "app_base.html" %}
+{% block title %}{{ T.assistant_title }}{% endblock %}
+{% block main_overflow %}overflow-hidden{% endblock %}
+{% block main_pad %}{% endblock %}
+{% block head_extra %}<link rel="stylesheet" href="/static/assistant.css?v={{ g_asset_v }}">{% endblock %}
+{% block content %}
+<section class="assistant-page" id="assistant" data-context="{{ context_path }}" aria-label="{{ T.assistant_title }}">
+  <header class="assistant-heading">
+    <div class="assistant-heading-title"><h1>{{ T.assistant_title }}</h1><span class="assistant-model" title="{{ T.assistant_model }}">{{ model }}</span></div>
+    <div class="assistant-heading-actions">
+      {% if enabled %}<button type="button" id="assistant-history-toggle" aria-controls="assistant-history" aria-label="{{ T.assistant_history }}"><i class="ti ti-layout-sidebar-right" aria-hidden="true"></i><span>{{ T.assistant_history }}</span></button>{% endif %}
+      {% if can_view('/manage/ai') %}<a href="/manage/ai#assistant-config" class="assistant-settings-link" aria-label="{{ T.nav_ai_config }}"><i class="ti ti-adjustments-horizontal" aria-hidden="true"></i></a>{% endif %}
+      {% if enabled %}<button type="button" id="assistant-new"><i class="ti ti-plus" aria-hidden="true"></i><span>{{ T.assistant_new }}</span></button>{% endif %}
+    </div>
+  </header>
+  {% if not enabled %}
+  <div class="assistant-disabled"><img src="/static/icons/favicon-96x96.png?v={{ g_asset_v }}" width="44" height="44" alt=""><h2>{{ T.assistant_question }}</h2><p>{{ T.assistant_disabled }}</p>
+    {% if can_view('/manage/ai') %}<a href="/manage/ai#assistant-config" class="assistant-settings-link">{{ T.nav_ai_config }} →</a>{% endif %}
+  </div>
+  {% else %}
+  <div class="assistant-workspace">
+  <aside class="assistant-history" id="assistant-history" aria-label="{{ T.assistant_history }}">
+    <h2>{{ T.assistant_history }}</h2><p>{{ T.assistant_history_private }}</p>
+    <div id="assistant-history-list"></div>
+  </aside>
+  <div class="assistant-main">
+  <div class="assistant-chat" id="assistant-chat" aria-label="{{ T.assistant_conversation }}" tabindex="0">
+    <div class="assistant-thread" id="assistant-thread">
+      <div class="assistant-start" id="assistant-start">
+        <img src="/static/icons/favicon-96x96.png?v={{ g_asset_v }}" width="44" height="44" alt="">
+        <h2>{{ T.assistant_question }}</h2><p>{{ T.assistant_intro }}</p>
+        <div class="assistant-examples">
+          {% if context_path %}<button type="button" data-prompt="{{ T.assistant_example_ticket if context_path.startswith('/tickets/') else T.assistant_example_context }}"><i class="ti ti-sparkles" aria-hidden="true"></i><span>{{ T.assistant_example_ticket if context_path.startswith('/tickets/') else T.assistant_example_context }}</span></button>{% endif %}
+          {% if can_view('/tickets') %}<button type="button" data-prompt="{{ T.assistant_example_search }}"><i class="ti ti-search" aria-hidden="true"></i><span>{{ T.assistant_example_search }}</span></button>{% endif %}
+          {% if can_view('/overview') %}<button type="button" data-prompt="{{ T.assistant_example_workload }}"><i class="ti ti-chart-bar" aria-hidden="true"></i><span>{{ T.assistant_example_workload }}</span></button>{% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+  <footer class="assistant-footer">
+    <div class="assistant-feedback"><p id="assistant-status" class="assistant-status" role="status" aria-live="polite"></p>{% if can_view('/manage/ai') %}<a href="/manage/ai" id="assistant-error-settings" hidden>{{ T.nav_ai_config }} →</a>{% endif %}</div>
+    <form id="assistant-form" method="post" action="/assistant/chat" class="assistant-composer">
+      <label for="assistant-input" class="assistant-sr-only">{{ T.assistant_question }}</label>
+      {% if context_path %}<div class="assistant-context"><i class="ti ti-file-description" aria-hidden="true"></i>{{ T.assistant_context }}: {{ context_path }}</div>{% endif %}
+      <div id="assistant-files" class="assistant-files" aria-live="polite"></div>
+      <textarea id="assistant-input" rows="1" maxlength="2000" required placeholder="{{ T.assistant_placeholder }}" aria-describedby="assistant-keyboard" data-auto-grow-max="180"></textarea>
+      <input type="file" id="assistant-file-input" accept=".txt,.md,.csv,.json,.log,.docx" multiple hidden>
+      <div class="assistant-composer-tools"><button type="button" id="assistant-attach" aria-label="{{ T.assistant_attach }}" title="{{ T.assistant_file_help }}"><i class="ti ti-paperclip" aria-hidden="true"></i></button><span id="assistant-keyboard">{{ T.assistant_keyboard }}</span><button type="submit" class="assistant-primary" id="assistant-send" aria-label="{{ T.assistant_send }}" title="{{ T.assistant_send }}"><i class="ti ti-arrow-up" aria-hidden="true"></i></button></div>
+      <p class="assistant-file-help">{{ T.assistant_file_help }}</p>
+    </form>
+    <div class="assistant-footnote"><span>{{ T.assistant_review_hint }}</span><details><summary>{{ T.assistant_details }}</summary><div><p>{{ T.assistant_privacy }}</p><p>{{ T.assistant_limits }}</p></div></details></div>
+  </footer>
+  </div></div>
+  <dialog id="assistant-file-preview" class="assistant-file-preview"><header><h2 id="assistant-file-title"></h2><button type="button" id="assistant-file-close">{{ T.assistant_preview_close }}</button></header><p>{{ T.assistant_file_excerpt }}</p><pre id="assistant-file-text"></pre></dialog>
+  {% endif %}
+</section>
+{% endblock %}
+{% block scripts %}
+<script id="assistant-strings" type="application/json">{{ assistant_strings|tojson }}</script>
+<script src="/static/assistant-markdown.js?v={{ g_asset_v }}" defer></script>
+<script src="/static/assistant.js?v={{ g_asset_v }}" defer></script>
+{% endblock %}

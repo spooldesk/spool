@@ -4,7 +4,7 @@
 {% block content %}
 <div class="max-w-3xl">
   <h1 class="text-2xl font-semibold tracking-tight mb-1">{{ T.m_categories_title }}</h1>
-  <p class="text-sm text-zinc-500 mb-6">{{ T.m_categories_hint }}</p>
+  <p data-help class="text-sm text-zinc-500 mb-6">{{ T.m_categories_hint }}</p>
 
   {% if flash_sent %}
     <div class="mb-4 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm">
@@ -20,9 +20,7 @@
     <div class="flex items-start justify-between gap-4">
       <div>
         <div class="text-sm font-medium mb-1">{{ T.m_ask_category }}</div>
-        <p class="text-xs text-zinc-500 max-w-md">
-          {{ T.m_ask_category_hint }}
-        </p>
+        <p data-help class="text-xs text-zinc-500 max-w-md">{{ T.m_ask_category_hint }}</p>
       </div>
       <form method="post" action="/manage/categories/ask" class="shrink-0">
         <input type="hidden" name="ask_category" value="{{ '0' if ask_category else '1' }}">
@@ -108,7 +106,7 @@
       </tbody>
     </table>
   </div>
-  <p class="text-xs text-zinc-600 mt-3">
+  <p data-help class="text-xs text-zinc-600 mt-3">
     {{ T.m_categories_note }}
   </p>
 </div>

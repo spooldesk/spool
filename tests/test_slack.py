@@ -23,7 +23,7 @@ from src.channels.slack import NAME as SLACK, SlackChannel
 from src.dashboard.app import app
 from src.database.db import db_session
 from src.database.models import Message, Ticket
-from tests.conftest import next_tg_id
+from tests.conftest import RecordingChannel, next_tg_id
 
 SECRET = "test-signing-secret"
 
@@ -32,11 +32,17 @@ SECRET = "test-signing-secret"
 async def slack_env(initialized_db, monkeypatch):
     monkeypatch.setenv("SLACK_BOT_TOKEN", "xoxb-test")
     monkeypatch.setenv("SLACK_SIGNING_SECRET", SECRET)
-    # Event ids are remembered process-wide, so one test's ids would silently
-    # suppress another's.
-    slack_routes._seen.clear()
+    # Basic intake tests need the raw user id, not a real users.info call.
+    # Adapter/name tests replace this registration with their own fake/API
+    # transport, which startup preserves through channels.ensure().
+    channels.register(RecordingChannel(name=SLACK))
+    # Provider receipts are durable; isolate this file's reused synthetic ids.
+    from sqlalchemy import delete
+    from src.database.inbound_models import InboundEvent
+    async with db_session(write=True) as session:
+        await session.execute(delete(InboundEvent).where(InboundEvent.channel == SLACK))
     yield
-    slack_routes._seen.clear()
+    channels.reset()
 
 
 def _signed(c: TestClient, payload: dict, *, secret: str = SECRET,
@@ -597,7 +603,7 @@ async def test_a_network_failure_is_reported_rather_than_raised(slack_env, monke
         *a, **{**kw, "transport": httpx.MockTransport(handler)}))
 
     delivery = await SlackChannel(token="xoxb-secret").send_text("C0WIRE", "hello")
-    assert not delivery.ok and delivery.error_key == "e_send_failed"
+    assert not delivery.ok and delivery.error_key == "e_delivery_uncertain"
 
 
 async def test_the_composer_offers_what_the_channel_declares(slack_env):

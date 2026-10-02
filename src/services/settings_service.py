@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Optional
+from typing import Optional
 
 from sqlalchemy import select
 
@@ -279,7 +279,8 @@ async def set_ai_engine(*, provider: str, model: str, host: str = "",
 
     await set_value(KEY_AI_PROVIDER, provider, updated_by=updated_by)
     await set_value(KEY_AI_MODEL, chosen, updated_by=updated_by)
-    await set_value(KEY_AI_HOST, (host or "").strip(), updated_by=updated_by)
+    await set_value(KEY_AI_HOST, (host or "").strip() if registry.provider(provider).host_hint else "",
+                    updated_by=updated_by)
 
     if chosen != previous:
         if (prices := registry.prices_for(provider, chosen)) is not None:
@@ -442,12 +443,14 @@ async def set_ai_shadow_mode(enabled: bool, *, updated_by: int) -> None:
 # ---- Savings-report assumptions ----
 
 async def _get_float(key: str, fallback: float) -> float:
+    from math import isfinite
+
     raw = (await get_value(key, "")).strip()
     try:
         value = float(raw)
     except (TypeError, ValueError):
         return fallback
-    return value if value >= 0 else fallback
+    return value if isfinite(value) and value >= 0 else fallback
 
 
 async def get_ai_pricing() -> tuple[float, float]:
@@ -571,11 +574,17 @@ async def get_widget_identity_secret() -> str:
     normal way to run this — it is simply the difference between "says they
     are" and "is", and the ticket page says which one it is looking at.
     """
-    return (await get_value(KEY_WIDGET_IDENTITY_SECRET, "")).strip()
+    value = (await get_value(KEY_WIDGET_IDENTITY_SECRET, "")).strip()
+    if value.startswith('enc:'):
+        from src.services.secret_store import decrypt
+        return decrypt(value[4:]) or ''
+    return value  # Legacy plaintext is upgraded on the next owner save.
 
 
 async def set_widget_identity_secret(value: str, *, updated_by: int = 0) -> None:
-    await set_value(KEY_WIDGET_IDENTITY_SECRET, (value or "").strip()[:200],
+    from src.services.secret_store import encrypt
+    value = (value or '').strip()[:200]
+    await set_value(KEY_WIDGET_IDENTITY_SECRET, 'enc:' + encrypt(value) if value else '',
                     updated_by=updated_by)
 
 

@@ -1,12 +1,12 @@
-"""Managerial report queries — period-scoped, comparison-friendly.
+"""Managerial report queries вЂ” period-scoped, comparison-friendly.
 
 Deliberately DISJOINT from the Overview page: Overview is the operational
 "what's happening now" dashboard (snapshots, trends, heatmap). This module
 answers the manager's question "how did the period go, and versus the
-previous one?" — per-operator and per-team breakdowns based on ticket
+previous one?" вЂ” per-operator and per-team breakdowns based on ticket
 assignment, plus the AI contribution for the period.
 
-All ranges are [date_from, date_to) — from inclusive, to exclusive.
+All ranges are [date_from, date_to) вЂ” from inclusive, to exclusive.
 """
 
 from __future__ import annotations
@@ -113,32 +113,25 @@ async def report_summary(date_from: datetime, date_to: datetime) -> dict:
             "SELECT COUNT(id) FROM tickets WHERE closed_at >= :df AND closed_at < :dt"
         ), params)).scalar_one()
 
-        # Avg first response (minutes) — tickets CREATED in the period
+        # Avg first response (minutes) вЂ” tickets CREATED in the period
         avg_first_min = (await session.execute(text(f"""
             SELECT AVG({_sql_minutes('fa.first_at', 't.created_at')})
             FROM tickets t
             JOIN (
-                SELECT ticket_id, MIN(created_at) AS first_at
-                FROM messages WHERE sender_type = 'admin' AND is_internal = false
+                SELECT ticket_id, MIN(COALESCE(delivered_at, created_at)) AS first_at
+                FROM messages WHERE sender_type = 'admin' AND is_internal = false AND delivery_status = 'delivered'
                 GROUP BY ticket_id
             ) fa ON fa.ticket_id = t.id
             WHERE t.created_at >= :df AND t.created_at < :dt
         """), params)).scalar_one()
 
-        # Avg resolution (hours) — tickets CLOSED in the period, measured to the
-        # last meaningful message (same semantics as the Overview KPI).
+        # Resolution ends at the actual close timestamp, including waiting time.
         avg_close_hours = (await session.execute(text(f"""
-            SELECT AVG(sec) / 3600 FROM (
-                SELECT {_sql_seconds('MAX(m.created_at)', 't.created_at')} AS sec
-                FROM tickets t
-                JOIN messages m ON m.ticket_id = t.id
-                WHERE t.closed_at >= :df AND t.closed_at < :dt
-                  AND {_MEANINGFUL_MSG_FILTER}
-                GROUP BY t.id
-            )
+            SELECT AVG({_sql_hours('closed_at', 'created_at')}) FROM tickets
+            WHERE closed_at >= :df AND closed_at < :dt AND closed_at >= created_at
         """), params)).scalar_one()
 
-        # CSAT — ratings GIVEN in the period
+        # CSAT вЂ” ratings GIVEN in the period
         csat_avg, csat_count = (await session.execute(text("""
             SELECT AVG(csat_rating), COUNT(csat_rating)
             FROM tickets
@@ -147,7 +140,7 @@ async def report_summary(date_from: datetime, date_to: datetime) -> dict:
 
         # AI contribution. admin_categories is a JSON array; the ORM stores it
         # with \uXXXX escapes (json.dumps default), so a naive LIKE on the raw
-        # text never matches non-ASCII — json_each() decodes properly. Legacy
+        # text never matches non-ASCII вЂ” json_each() decodes properly. Legacy
         # markers are matched too, so reports over old data stay correct.
         ai_placeholders = ", ".join(f":r{i}" for i in range(len(_AI_REASONS)))
         ai_closed = (await session.execute(text(f"""
@@ -188,7 +181,7 @@ async def report_by_operator(date_from: datetime, date_to: datetime) -> list[dic
     """Assignment-based operator performance for the period.
 
     Rows for operators with any activity (closed in period or active now);
-    silent operators are omitted — an empty report row is noise, not signal.
+    silent operators are omitted вЂ” an empty report row is noise, not signal.
     """
     params = {"df": date_from, "dt": date_to}
     async with db_session() as session:
@@ -272,8 +265,8 @@ async def ai_savings(date_from: datetime, date_to: datetime) -> dict:
 
     - **Deflected**: the AI answered and the ticket closed without an operator
       opening it. The whole handling time is saved. Defensible.
-    - **Assisted**: an operator accepted a draft. Only the writing is saved —
-      not the reading, the diagnosis or the follow-up — so it is counted at a
+    - **Assisted**: an operator accepted a draft. Only the writing is saved вЂ”
+      not the reading, the diagnosis or the follow-up вЂ” so it is counted at a
       configurable few minutes, not at a full ticket.
 
     Reporting only the second as if it were the first is how these numbers get
@@ -296,7 +289,7 @@ async def ai_savings(date_from: datetime, date_to: datetime) -> dict:
             WHERE created_at >= :df AND created_at < :dt
         """), params)).one()
 
-        # Accepted suggestions that were NOT the deflection path — deflection is
+        # Accepted suggestions that were NOT the deflection path вЂ” deflection is
         # already counted as a whole ticket, and counting it twice is the
         # easiest way to produce a number nobody believes.
         assisted = (await session.execute(text("""

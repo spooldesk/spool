@@ -136,7 +136,7 @@ async def test_too_many_files_is_refused_before_sending(initialized_db, channel,
 
 
 async def test_a_failure_midway_reports_how_far_it_got(initialized_db, channel):
-    """Three of five delivered is not a failure to retry blindly."""
+    """Two delivered plus a failed intent must not look like five missing files."""
     channel.fail_on = 3
     tid = await _ticket()
 
@@ -146,8 +146,17 @@ async def test_a_failure_midway_reports_how_far_it_got(initialized_db, channel):
 
     assert "err=" in r.headers["location"]
     assert len(channel.files) == 2, "it must stop, not push on through"
-    # What did leave is recorded, or the operator would resend it.
-    assert [n for n, _ in await _files_on(tid)] == ["f0.txt", "f1.txt"]
+    from urllib.parse import parse_qs, urlparse
+    from src.dashboard.i18n import t
+    error = parse_qs(urlparse(r.headers["location"]).query)["err"][0]
+    assert error == t("e_files_partial", done=2, total=5, what=t("e_send_failed"))
+    # Persist the failed attempt and distinguish it from the two delivered
+    # files. The remaining unchecked sends were never queued.
+    async with db_session() as session:
+        states = (await session.execute(select(Message.file_name, Message.delivery_status)
+            .where(Message.ticket_id == tid, Message.file_name.is_not(None))
+            .order_by(Message.id))).all()
+    assert states == [("f0.txt", "delivered"), ("f1.txt", "delivered"), ("f2.txt", "failed")]
 
 
 async def test_a_text_reply_survives_the_empty_file_part(initialized_db, channel):

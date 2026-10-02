@@ -40,6 +40,7 @@ async def _owner_id() -> int:
 async def _clean(initialized_db):
     """Preferences persist on the shared account, so a test that sets one
     would otherwise be read by whichever test runs next."""
+    await preferences_service.save(await _owner_id(), {})
     yield
     async with db_session() as session:
         admin = await session.get(AdminUser, await _owner_id())
@@ -97,6 +98,36 @@ async def test_an_unknown_key_is_dropped_rather_than_carried(initialized_db):
     prefs = await preferences_service.for_operator(op)
     assert prefs["theme"] == "light"
     assert "colour_of_the_sky" not in prefs
+
+
+async def test_retired_global_settings_cannot_change_language(initialized_db):
+    from src.services import settings_service
+    before = await settings_service.get_dash_language()
+    with TestClient(app, base_url="http://testserver") as c:
+        token = _login(c)
+        page = c.get('/manage/settings').text
+        for suffix in ('dash-language', 'redirect', 'no-tag'):
+            assert f'action="/manage/settings/{suffix}"' not in page
+            assert c.post(f'/manage/settings/{suffix}', data={
+                'dash_language': 'ru', 'csrf_token': token}).status_code == 404
+        assert 'name="notify"' not in page
+        assert 'href="/manage/tags"' not in page
+        assert c.get('/manage/tags').status_code == 404
+        assert c.post('/manage/tags', data={'csrf_token': token}).status_code == 404
+    assert await settings_service.get_dash_language() == before
+
+
+async def test_notification_toggle_preserves_personal_language(initialized_db):
+    op = await _owner_id()
+    await preferences_service.save(op, {'language': 'ru', 'signature': 'My signature'})
+    with TestClient(app, base_url="http://testserver") as c:
+        token = _login(c)
+        assert c.post('/me/notifications', data={'enabled':'1'}).status_code == 403
+        r = c.post('/me/notifications', data={'enabled':'1', 'csrf_token':token})
+        assert r.status_code == 200 and r.json()['enabled']
+    prefs = await preferences_service.for_operator(op)
+    assert prefs['language'] == 'ru' and prefs['signature'] == 'My signature'
+    assert prefs['notify_new'] is True
 
 
 async def test_unchecking_a_box_actually_unchecks_it(initialized_db):

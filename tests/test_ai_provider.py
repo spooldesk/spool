@@ -13,6 +13,7 @@ that nothing puts the key on a page.
 """
 
 import json
+import httpx
 
 import pytest
 from fastapi.testclient import TestClient
@@ -129,6 +130,7 @@ def test_masking_never_shows_enough_to_use(secret):
 @pytest.mark.parametrize("provider_id,model,expected", [
     ("anthropic", "claude-sonnet-5", rest.AnthropicClient),
     ("openai", "gpt-4o-mini", rest.OpenAIClient),
+    ("openrouter", "anthropic/claude-opus-5.5", rest.OpenRouterClient),
 ])
 async def test_the_chosen_provider_is_the_one_built(provider_id, model, expected):
     await settings_service.set_ai_engine(provider=provider_id, model=model,
@@ -148,6 +150,38 @@ async def test_ollama_needs_no_key_at_all():
     built = await ai_client.get_client()
     assert isinstance(built, rest.OllamaClient)
     assert built._base_url == "http://box:11434"
+
+
+async def test_openrouter_cannot_inherit_another_providers_key_or_host():
+    await settings_service.set_ai_key("anthropic", KEY, updated_by=0)
+    await settings_service.set_ai_engine(provider="openrouter", model="anthropic/claude-opus-5.5",
+                                         host="https://wrong.example", updated_by=0)
+    assert await settings_service.get_ai_host() == ""
+    assert await ai_client.get_client() is None
+    router_key = "sk-or-v1-test-only-1234"
+    await settings_service.set_ai_key("openrouter", router_key, updated_by=0)
+    # Simulate a legacy stale host row, bypassing the normal settings writer.
+    await settings_service.set_value("ai_host", "https://wrong.example", updated_by=0)
+    built = await ai_client.get_client()
+    assert built._url() == "https://openrouter.ai/api/v1/chat/completions"
+    assert built._headers()["Authorization"] == "Bearer " + router_key
+    raw = await _stored("ai_key_openrouter")
+    assert router_key not in raw and raw.startswith("gAAAAA")
+    await settings_service.set_ai_key("openrouter", router_key + "changed", updated_by=0)
+    assert await ai_client.get_client() is not built
+
+
+@pytest.mark.parametrize("provider,model,url", [
+    ("anthropic", "claude-opus-5", "https://api.anthropic.com/v1/messages"),
+    ("openai", "gpt-4o", "https://api.openai.com/v1/chat/completions"),
+])
+async def test_cloud_credentials_do_not_follow_a_stale_local_host(provider, model, url):
+    await settings_service.set_ai_engine(provider=provider, model=model,
+        host="https://wrong.example", updated_by=0)
+    assert await settings_service.get_ai_host() == ""
+    await settings_service.set_ai_key(provider, KEY, updated_by=0)
+    await settings_service.set_value("ai_host", "https://wrong.example", updated_by=0)
+    assert (await ai_client.get_client())._url() == url
 
 
 async def test_no_key_means_no_client_rather_than_an_error():
@@ -256,6 +290,7 @@ class _FakeHTTP:
         self._response = response
 
     def __call__(self, *args, **kwargs):
+        self.timeout = kwargs.get("timeout")
         return self
 
     async def __aenter__(self):
@@ -266,6 +301,8 @@ class _FakeHTTP:
 
     async def post(self, url, headers=None, json=None):
         _FakeHTTP.sent = {"url": url, "headers": headers or {}, "body": json or {}}
+        if isinstance(self._response, Exception):
+            raise self._response
         return self._response
 
 
@@ -309,6 +346,55 @@ async def test_openai_reads_its_own_token_field_names(http):
     assert seen.sent["headers"]["Authorization"] == f"Bearer {KEY}"
 
 
+@pytest.mark.parametrize("model,reasoning", [
+    ("anthropic/claude-opus-5.5", {"effort": "low", "exclude": True}),
+    ("anthropic/claude-opus-5", {"enabled": False}),
+    ("vendor/custom-model", None),
+])
+async def test_openrouter_uses_gateway_protocol_and_only_final_text(http, model, reasoning):
+    seen = http(_Response(payload={
+        "choices": [{"finish_reason": "stop", "message": {
+            "content": "Final answer", "reasoning": "private reasoning"}}],
+        "usage": {"prompt_tokens": 17, "completion_tokens": 500},
+    }))
+    out = await rest.OpenRouterClient(api_key=KEY, model=model).complete(
+        system="s", user="u", max_output_tokens=4096, timeout_seconds=60)
+    assert out.text == "Final answer" and (out.tokens_in, out.tokens_out) == (17, 500)
+    assert seen.sent["url"] == "https://openrouter.ai/api/v1/chat/completions"
+    assert seen.sent["headers"]["Authorization"] == f"Bearer {KEY}"
+    assert "x-api-key" not in seen.sent["headers"]
+    body = seen.sent["body"]
+    assert body["model"] == model and body["max_tokens"] == 4096
+    assert "temperature" not in body and "max_completion_tokens" not in body
+    assert body.get("reasoning") == reasoning and body["stream"] is False
+
+
+@pytest.mark.parametrize("status,code", [(401, "auth"), (402, "billing"), (429, "rate_limit")])
+async def test_openrouter_error_inside_success_status_is_safe(http, caplog, status, code):
+    http(_Response(payload={"error": {"code": status, "message": KEY + " private prompt"},
+                            "choices": [{"message": {"content": "not a valid answer"}}]}))
+    with pytest.raises(LLMUnavailable) as caught:
+        await rest.OpenRouterClient(api_key=KEY, model="vendor/model").complete(system="s", user="u")
+    assert caught.value.code == code and caught.value.status_code == status
+    assert KEY not in str(caught.value) + caplog.text
+    assert "private prompt" not in str(caught.value) + caplog.text
+
+
+@pytest.mark.parametrize("choice,code", [
+    ({"finish_reason": "length", "message": {"content": '{"tools":[]}'}}, "truncated"),
+    ({"finish_reason": "content_filter", "message": {"content": "partial"}}, "refusal"),
+    ({"message": {"content": "partial", "refusal": "private explanation"}}, "refusal"),
+    ({"finish_reason": "error", "message": {"content": "partial"}}, "unavailable"),
+    ({"message": {"reasoning": "not an answer"}}, "empty"),
+    ({"message": {"content": {"unexpected": "object"}}}, "invalid_response"),
+])
+async def test_openrouter_never_uses_incomplete_or_reasoning_only_answers(http, choice, code):
+    http(_Response(payload={"choices": [choice]}))
+    with pytest.raises(LLMUnavailable) as caught:
+        await rest.OpenRouterClient(api_key=KEY, model="vendor/model").complete(system="s", user="u")
+    assert caught.value.code == code
+
+
 async def test_ollama_asks_for_one_answer_not_a_stream(http):
     """Nothing here renders tokens as they arrive; a stream would just be a
     response this code has to reassemble."""
@@ -322,13 +408,64 @@ async def test_ollama_asks_for_one_answer_not_a_stream(http):
     assert seen.sent["body"]["stream"] is False
 
 
-async def test_the_providers_own_words_reach_the_log(http):
-    """A wrong model name, an expired key and an exhausted quota all arrive
-    as an HTTP error, and the body is the only thing telling them apart."""
-    http(_Response(status_code=400, payload={}, text='{"error":"model not found"}'))
-    with pytest.raises(LLMUnavailable, match="model not found"):
+@pytest.mark.parametrize("status,code", [(400,"request"),(401,"auth"),(402,"billing"),
+    (403,"permission"),(404,"model"),(429,"rate_limit"),(504,"timeout"),(529,"unavailable")])
+async def test_provider_failures_are_categorized_without_echoing_bodies(http, caplog, status, code):
+    http(_Response(status_code=status, text=f'{{"error":"echoed {KEY} private question"}}'))
+    with pytest.raises(LLMUnavailable) as caught:
         await rest.AnthropicClient(api_key=KEY, model="claude-typo").complete(
             system="s", user="u")
+    assert caught.value.code == code
+    assert caught.value.status_code == status
+    assert KEY not in str(caught.value) + caplog.text
+    assert 'private question' not in str(caught.value) + caplog.text
+
+
+@pytest.mark.parametrize("failure,code", [(httpx.ReadTimeout('private response'), 'timeout'),
+    (httpx.ConnectError('private endpoint token'), 'network')])
+async def test_network_errors_do_not_echo_connection_details(http, caplog, failure, code):
+    http(failure)
+    with pytest.raises(LLMUnavailable) as caught:
+        await rest.AnthropicClient(api_key=KEY, model='claude-opus-5').complete(system='s',user='u')
+    assert caught.value.code == code
+    assert 'private' not in str(caught.value) + caplog.text
+
+
+async def test_interactive_timeout_does_not_change_background_budget(monkeypatch):
+    fake = _FakeHTTP(_Response(payload={'content':[{'type':'text','text':'ok'}]}))
+    monkeypatch.setattr(rest.httpx, 'AsyncClient', fake)
+    instance = rest.AnthropicClient(api_key=KEY, model='claude-opus-5')
+    await instance.complete(system='s', user='u', timeout_seconds=60)
+    assert fake.timeout.read == 60 and fake.timeout.connect == 8
+    await instance.complete(system='s', user='u')
+    assert fake.timeout.read == 8
+
+
+@pytest.mark.parametrize('model', ['claude-opus-5','claude-opus-5-5'])
+async def test_opus_request_and_thinking_response_are_supported(http, model):
+    seen = http(_Response(payload={'content':[{'type':'thinking','thinking':'private reasoning'},
+        {'type':'text','text':'Final answer'}], 'usage':{'input_tokens':11,'output_tokens':200}}))
+    out = await rest.AnthropicClient(api_key=KEY, model=model).complete(system='s', user='u', max_output_tokens=4096)
+    assert out.text == 'Final answer' and out.tokens_out == 200
+    assert 'temperature' not in seen.sent['body']
+    if model.endswith('5-5'):
+        assert seen.sent['body']['output_config'] == {'effort':'low'}
+        assert seen.sent['body']['max_tokens'] == 4096
+        assert 'thinking' not in seen.sent['body']
+    else:
+        assert seen.sent['body']['thinking'] == {'type':'disabled'}
+
+
+@pytest.mark.parametrize('payload,code', [([], 'invalid_response'),
+    ({'content':[None]},'invalid_response'),
+    ({'content':[{'type':'thinking','thinking':'hidden'}]}, 'empty'),
+    ({'stop_reason':'max_tokens','content':[{'type':'text','text':'{"partial"'}]},'truncated'),
+    ({'stop_reason':'refusal'},'refusal')])
+async def test_invalid_or_incomplete_responses_are_never_used(http, payload, code):
+    http(_Response(payload=payload))
+    with pytest.raises(LLMUnavailable) as caught:
+        await rest.AnthropicClient(api_key=KEY, model='claude-opus-5-5').complete(system='s', user='u')
+    assert caught.value.code == code
 
 
 async def test_an_empty_answer_is_unavailable_not_an_empty_suggestion(http):
@@ -405,6 +542,26 @@ async def test_clearing_is_a_deliberate_checkbox():
                follow_redirects=False)
 
     assert await settings_service.get_ai_key("anthropic") is None
+
+
+async def test_openrouter_settings_save_and_reload_without_echoing_key():
+    router_key = "sk-or-v1-test-only-6789"
+    with TestClient(app) as c:
+        token = _login(c)
+        response = c.post("/manage/ai/engine", data={
+            "provider": "openrouter", "model": "anthropic/claude-opus-5.5",
+            "api_key": router_key, "csrf_token": token}, follow_redirects=False)
+        assert response.status_code == 303
+        page = c.get("/manage/ai")
+        assert page.status_code == 200 and router_key not in page.text
+        assert 'value="openrouter" selected' in page.text
+        assert 'data-provider-note="openrouter"' in page.text
+        assert "openrouter.ai/api/v1" in page.text
+        c.post("/manage/ai/engine", data={"provider": "openrouter", "model": "vendor/custom-model",
+            "api_key": "", "csrf_token": token}, follow_redirects=False)
+    assert await settings_service.get_ai_key("openrouter") == router_key
+    assert await settings_service.get_ai_key("anthropic") is None
+    assert await settings_service.get_ai_model() == "vendor/custom-model"
 
 
 async def test_the_route_refuses_a_provider_it_does_not_know():

@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import List
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, LargeBinary, String, Text, JSON, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, JSON, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -43,6 +43,9 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    customer_profile_id: Mapped[int | None] = mapped_column(
+        ForeignKey("customer_profiles.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     tg_id: Mapped[int] = mapped_column(
         BigInteger, unique=True, nullable=False, index=True
     )
@@ -56,7 +59,7 @@ class User(Base):
     # The address on that channel, as the channel spells it. A chat id, an
     # email address, a widget session token — hence a string.
     channel_user_id: Mapped[str | None] = mapped_column(
-        String(255), nullable=True, index=True
+        String(320), nullable=True, index=True
     )
     username: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Who they say they are. On Telegram this comes from the account; on the
@@ -75,6 +78,7 @@ class User(Base):
     identity_verified: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False
     )
+    identity_verified_fields: Mapped[list | None] = mapped_column(JSON, default=list, nullable=True)
     # Work nickname. Bridges someone's personal Telegram account and the name
     # their organisation knows them by; shown on the ticket header.
     work_username: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
@@ -122,6 +126,7 @@ class Ticket(Base):
     )  # Denormalized for quick access
     category: Mapped[str] = mapped_column(String(50), nullable=False)  # user-selected category
     status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)  # active, closed, blocked
+    conversation_key: Mapped[str] = mapped_column(String(255), default="", server_default="", nullable=False)
     # Workflow stage WITHIN an active ticket. Deliberately separate from
     # `status`: status is the lifecycle (open vs closed) that the bot and every
     # existing query rely on, while stage adds board granularity on top without
@@ -177,6 +182,15 @@ class Message(Base):
     # for AI answers that go straight to a user (see src/ai/deflect.py).
     is_internal: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     sender_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    operator_id: Mapped[int | None] = mapped_column(
+        ForeignKey("admin_users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    admin_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
+    delivery_status: Mapped[str] = mapped_column(
+        String(20), default="delivered", server_default="delivered", nullable=False
+    )
+    delivery_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     # Who actually said it, when that differs from whose ticket it is.
     #
     # A conversation is normally one person, and this stays empty. But a Slack
@@ -186,7 +200,13 @@ class Message(Base):
     # conversation has the same problem.
     sender_label: Mapped[str | None] = mapped_column(String(80), nullable=True)
     text: Mapped[str] = mapped_column(Text, nullable=False, default="")
-    file_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    reply_to_id: Mapped[int | None] = mapped_column(
+        ForeignKey("messages.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    revision: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    mutation_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    file_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     file_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     file_name: Mapped[str | None] = mapped_column(String(512), nullable=True)
     file_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -210,7 +230,7 @@ class Message(Base):
     # A string, because Telegram's is a number, Slack's is a timestamp and
     # email's would be a Message-ID header. `tg_message_id` below is what this
     # replaced; it is backfilled from and no longer read.
-    channel_ref: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    channel_ref: Mapped[str | None] = mapped_column(String(998), nullable=True)
     # Superseded by `channel_ref`. Kept so an instance can be rolled back to
     # the previous release without losing the ability to unsend; safe to drop
     # once nobody is doing that.
@@ -225,6 +245,52 @@ class Message(Base):
 
     ticket: Mapped["Ticket"] = relationship(back_populates="messages")
     template: Mapped["ReplyTemplate | None"] = relationship()
+
+
+class MessageRevision(Base):
+    """Durable edit/withdrawal attempt; original transcript survives every outcome."""
+    __tablename__ = "message_revisions"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    message_id: Mapped[int] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"), index=True)
+    operator_id: Mapped[int | None] = mapped_column(ForeignKey("admin_users.id", ondelete="SET NULL"))
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    before_text: Mapped[str] = mapped_column(Text, nullable=False)
+    after_text: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class ConversationPresence(Base):
+    """Expiring shared presence: works across dashboard processes without Redis."""
+    __tablename__ = "conversation_presence"
+    ticket_id: Mapped[int] = mapped_column(ForeignKey("tickets.id", ondelete="CASCADE"), primary_key=True)
+    participant: Mapped[str] = mapped_column(String(64), primary_key=True)
+    operator_id: Mapped[int | None] = mapped_column(ForeignKey("admin_users.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    seen_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    typing_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    public_typing: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+
+
+class OperatorInvitation(Base):
+    __tablename__ = "operator_invitations"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    email: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id", ondelete="SET NULL"))
+    created_by: Mapped[int] = mapped_column(ForeignKey("admin_users.id", ondelete="CASCADE"))
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class OperatorTeam(Base):
+    """Routing membership inside one organization, not a tenant/security boundary."""
+    __tablename__ = "operator_teams"
+    operator_id: Mapped[int] = mapped_column(ForeignKey("admin_users.id", ondelete="CASCADE"), primary_key=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="CASCADE"), primary_key=True)
 
 
 class TicketCategory(Base):
@@ -284,6 +350,7 @@ class AdminUser(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     # argon2 hash string (algorithm + params + salt + digest, self-describing).
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    session_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     # Display name shown in the UI; falls back to the email's local part if empty.
     name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     # 'owner' | 'admin' | 'agent' — reserved for Phase 4 RBAC, not enforced yet.

@@ -22,11 +22,13 @@ from src.dashboard.auth import (
     _BOOTSTRAP_UID,
     clear_login_failures,
     current_user,
-    is_valid_session,
+    is_current_session,
     login_rate_limited,
     make_session_cookie,
     record_login_failure,
     require_auth,
+    safe_next_path,
+    session_claims,
     set_secret_key,
     verify_shared_password,
 )
@@ -60,7 +62,23 @@ _PKG_DIR = Path(__file__).parent
 
 def _current_user_context(request: Request) -> dict:
     """Expose the logged-in operator to every template (footer, etc.)."""
-    return {"current_user": current_user(request)}
+    from src.config import load_settings
+
+    from src.services.permissions import section_for
+    grants = getattr(request.state, "section_permissions", {})
+    actor = current_user(request)
+    def can_view(path):
+        if actor and actor.role in {"agent", "viewer"} and path.startswith("/manage/"):
+            return False
+        return grants.get(section_for(path)) in {"view", "edit"}
+    return {"current_user": actor, "has_telegram": load_settings().has_telegram,
+            "assistant_enabled": getattr(request.state, "assistant_enabled", False),
+            "assistant_context_available": section_for(request.url.path) in {
+                "tickets", "board", "users", "templates", "articles", "categories", "close_reasons",
+                "teams", "settings", "ai_settings", "overview", "reports", "ai", "integrations", "operators", "roles"},
+            "can_view": can_view,
+            "section_editable": grants.get(section_for(request.url.path)) == "edit",
+            "section_permissions": grants}
 
 
 def _preferences_context(request: Request) -> dict:
@@ -85,15 +103,11 @@ TEMPLATES = Jinja2Templates(
     context_processors=[csrf_context, _current_user_context, _preferences_context],
 )
 
-# Cache-busting version for static CSS: browsers cache /static/*.css heuristically,
-# so a deploy that changes styles would otherwise leave users on stale CSS.
-try:
-    TEMPLATES.env.globals["g_asset_v"] = str(int(max(
-        (_PKG_DIR / "static" / "tw.css").stat().st_mtime,
-        (_PKG_DIR / "static" / "app.css").stat().st_mtime,
-    )))
-except Exception:
-    TEMPLATES.env.globals["g_asset_v"] = "1"
+# Include every CSS/JS asset, including conversation and workspace changes.
+# Content hashes also work when a build preserves file timestamps.
+from src.dashboard.assets import asset_version
+
+TEMPLATES.env.globals["g_asset_v"] = asset_version(_PKG_DIR / "static")
 
 app = FastAPI(title="Spooldesk", docs_url=None, redoc_url=None)
 # Outermost, because everything below it — CSRF, the rate limits, the base URL
@@ -137,8 +151,9 @@ app.state.templates = TEMPLATES
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_form(request: Request, next: str = "/", error: str | None = None):
+    next = safe_next_path(next)
     # If already logged in, skip the form
-    if is_valid_session(request.cookies.get(SESSION_COOKIE)):
+    if await is_current_session(request.cookies.get(SESSION_COOKIE)):
         return RedirectResponse(url=next or "/", status_code=status.HTTP_302_FOUND)
     return TEMPLATES.TemplateResponse(
         request,
@@ -176,16 +191,25 @@ async def login_submit(
     if await admin_user_service.count_admins() > 0:
         admin = await admin_user_service.authenticate(email, password)
         uid = admin.id if admin else None
+        generation = admin.session_version if admin else 0
     else:
         uid = _BOOTSTRAP_UID if verify_shared_password(password) else None
+        generation = 0
 
     if uid is None:
         record_login_failure(request)
         return _fail(dash_t("login_bad_credentials"), status.HTTP_401_UNAUTHORIZED)
 
     clear_login_failures(request)
-    cookie = make_session_cookie(uid)
-    safe_next = next if next.startswith("/") else "/"
+    cookie = make_session_cookie(uid, generation)
+    safe_next = safe_next_path(next)
+    if uid != _BOOTSTRAP_UID:
+        from src.services.permissions import for_role, section_for
+        grants = await for_role(admin.role)
+        path = safe_next.split('?', 1)[0]
+        if (not grants.get(section_for(path)) or
+                (admin.role in {'agent', 'viewer'} and path.startswith('/manage/'))):
+            safe_next = '/'
     resp = RedirectResponse(url=safe_next, status_code=status.HTTP_303_SEE_OTHER)
     resp.set_cookie(
         SESSION_COOKIE,
@@ -201,17 +225,24 @@ async def login_submit(
     return resp
 
 
-@app.post("/logout")
-async def logout():
+@app.post("/logout", dependencies=[Depends(csrf_protect)])
+async def logout(request: Request):
+    from src.services import admin_user_service
+
+    claims = session_claims(request.cookies.get(SESSION_COOKIE))
+    if claims and claims[0] != _BOOTSTRAP_UID:
+        # Compare-and-revoke: replaying an old cookie cannot sign out a newer
+        # login. Logging out revokes this operator's entire current generation.
+        await admin_user_service.revoke_sessions(claims[0], expected_version=claims[1])
     resp = RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
     resp.delete_cookie(SESSION_COOKIE)
     return resp
 
 
-# Convenience GET for logout link in nav
+# Older bookmarks remain safe: a GET must never revoke an operator's sessions.
 @app.get("/logout")
 async def logout_get():
-    return await logout()
+    return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
 
 
 # ==================== Health ====================
@@ -249,7 +280,8 @@ def _wants_json(request: Request) -> bool:
     """JSON for fetch()/API-style endpoints, HTML page for normal navigation."""
     if ".json" in request.url.path or request.url.path.endswith("/ai-suggest"):
         return True
-    return "application/json" in request.headers.get("accept", "")
+    return (request.headers.get("x-requested-with") == "Spooldesk"
+            or "application/json" in request.headers.get("accept", ""))
 
 
 @app.exception_handler(StarletteHTTPException)
@@ -317,6 +349,8 @@ app.include_router(overview_routes.router, dependencies=_ANY_ROLE)
 app.include_router(tickets_routes.router, dependencies=_ANY_ROLE)
 app.include_router(users_routes.router, dependencies=_ANY_ROLE)
 app.include_router(ai_routes.router, dependencies=_ANY_ROLE)
+from src.dashboard.routes import assistant as assistant_routes
+app.include_router(assistant_routes.router, dependencies=_ANY_ROLE)
 app.include_router(templates_routes.router, dependencies=_ANY_ROLE)
 app.include_router(reports_routes.router, dependencies=_ADMIN_UP)
 # Broadcast reaches every user at once and cannot be undone — admin+ only.
@@ -328,6 +362,10 @@ app.include_router(manage_articles_routes.router, dependencies=_ADMIN_UP)
 app.include_router(manage_settings_routes.router, dependencies=_ADMIN_UP)
 app.include_router(manage_ai_routes.router, dependencies=_ADMIN_UP)
 app.include_router(admin_users_routes.router, dependencies=_OWNER_ONLY)
+from src.dashboard.routes import workspace as workspace_routes
+app.include_router(workspace_routes.router, dependencies=_OWNER_ONLY)
+from src.dashboard.routes import invitations as invitation_routes
+app.include_router(invitation_routes.router)
 # Personal settings: authenticated, but no role check. Nothing here affects
 # anybody else, so an agent may choose their own language and shortcuts.
 app.include_router(preferences_routes.router, dependencies=_ANY_ROLE)
@@ -364,7 +402,12 @@ async def root(request: Request):
     open is several times a day.
     """
     prefs = getattr(request.state, "prefs", None) or {}
-    return RedirectResponse(url=prefs.get("landing") or "/tickets",
+    from src.services.permissions import SECTIONS, section_for
+    grants = getattr(request.state, "section_permissions", {})
+    destination = prefs.get("landing") or "/tickets"
+    if not grants.get(section_for(destination)):
+        destination = next((path for section, (_, path) in SECTIONS.items() if grants.get(section)), "/me")
+    return RedirectResponse(url=destination,
                             status_code=status.HTTP_302_FOUND)
 
 
@@ -381,6 +424,8 @@ async def _startup() -> None:
     try:
         from src.database.db import init_db
         await init_db()
+        from src.services import integrations
+        await integrations.refresh()
         logger.info("Dashboard: DB schema ensured on startup")
         # Apply the configured fallback language to this process.
         from src.services import settings_service
@@ -388,6 +433,7 @@ async def _startup() -> None:
         set_runtime_default_language(await settings_service.get_default_language())
     except Exception as e:
         logger.error(f"Dashboard startup migration failed: {e}", exc_info=True)
+        raise
 
     # Which pipes this process can reach customers through. Telegram is
     # registered against the send-only client the dashboard already builds;
@@ -427,7 +473,7 @@ async def _startup() -> None:
     # in a process that might never start would quietly make it not one.
     try:
         from src.channels.email import is_configured as mail_ready
-        if mail_ready():
+        if os.getenv("TESTING") != "1":
             import asyncio
 
             from src.services import email_ingest
@@ -445,7 +491,7 @@ async def _startup() -> None:
         import asyncio
 
         from src.services import watchdog
-        if watchdog.should_run():
+        if os.getenv("TESTING") != "1":
             app.state.watchdog_task = asyncio.create_task(watchdog.loop())
         else:
             logger.info(
@@ -454,6 +500,18 @@ async def _startup() -> None:
             )
     except Exception as e:  # noqa: BLE001 — a watchdog must never be the outage
         logger.warning(f"Could not start the health watchdog: {e}")
+
+    if os.getenv("TESTING") != "1":
+        import asyncio
+        from src.services import channel_runtime
+        app.state.channel_config_task = asyncio.create_task(channel_runtime.refresh_loop())
+        app.state.telegram_task = asyncio.create_task(channel_runtime.telegram_loop())
+        from src.services import announce_service, inbound_service, outbound, sla_service
+        from src.dashboard.bot_client import get_bot
+        app.state.inbound_task = asyncio.create_task(inbound_service.poll_loop())
+        app.state.outbound_task = asyncio.create_task(outbound.poll_loop())
+        app.state.sla_task = asyncio.create_task(sla_service.poll_loop())
+        app.state.mirror_task = asyncio.create_task(announce_service.poll_loop())
 
     # Expose brand_name as a Jinja2 global so every template can reference
     # {{ g_brand_name }} without each route having to pass it explicitly.
@@ -466,14 +524,14 @@ async def _startup() -> None:
         TEMPLATES.env.globals["g_brand_name"] = "Support"
         logger.warning(f"Dashboard: could not load brand_name global, using default: {e}")
 
-    # Install the stable secret used to sign session cookies. Falls back to a
-    # password-derived secret inside auth.py if this fails.
+    # Install the stable session-signing secret; refuse startup on failure.
     try:
         from src.services import settings_service as _ss2
         set_secret_key(await _ss2.get_or_create_secret_key())
         logger.info("Dashboard: session secret key installed")
     except Exception as e:
-        logger.warning(f"Dashboard: could not load session secret key, using fallback: {e}")
+        logger.error("Dashboard: could not load session secret key")
+        raise
 
     # Dashboard UI language: instance-level, en by default (global product).
     # T is the translations dict every template reads; refreshed on save.
@@ -501,7 +559,7 @@ async def _shutdown() -> None:
     # already in flight does not fail against a bot session that has gone.
     # Neither was cancelled before, which is where "Task was destroyed but it
     # is pending" on every restart came from.
-    for name in ("mail_task", "watchdog_task"):
+    for name in ("channel_config_task", "telegram_task", "mail_task", "watchdog_task", "inbound_task", "outbound_task", "sla_task", "mirror_task"):
         task = getattr(app.state, name, None)
         if task is not None and not task.done():
             task.cancel()

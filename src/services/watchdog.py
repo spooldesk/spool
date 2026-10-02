@@ -50,7 +50,7 @@ async def _announce(text: str) -> None:
         from src.dashboard.bot_client import get_bot
 
         bot = get_bot()
-        if bot is None:
+        if bot is None or not load_settings().admin_chat_id:
             return
         await bot.send_message(
             chat_id=load_settings().admin_chat_id, text=text,
@@ -121,6 +121,8 @@ async def loop() -> None:
     while True:
         try:
             await asyncio.sleep(INTERVAL_SECONDS)
+            if not should_run():
+                continue
             result = await health.check()
             if not result.ok:
                 logger.warning("Health check failing (%s in a row): %s",
@@ -140,4 +142,5 @@ def should_run() -> bool:
     nobody to tell. Saying so at startup is more useful than a silent task.
     """
     from src.config import load_settings
-    return bool(load_settings().has_telegram)
+    settings = load_settings()
+    return bool(settings.has_telegram and settings.admin_chat_id)

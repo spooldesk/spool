@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import bindparam, exists, func, or_, select, text
+from sqlalchemy import bindparam, case, exists, func, or_, select, text
 
 from sqlalchemy.orm import selectinload
 
@@ -28,8 +28,10 @@ from src.database.models import (
 )
 from src.channels import DEFAULT as CHANNEL_DEFAULT
 from src.channels.identity import channel_of, display_address
+from src.services.customer_profiles import label as customer_label
 from src.dashboard.formatting import EMPTY
 from src.dashboard.i18n import t as _dash_t
+from src.services.response_clock import WAITING_SINCE_SQL
 from src.services import close_reason_service, message_service, work_hours_service
 from src.services.workflow_service import board_column
 from src.utils.i18n import CLOSURE_SYSTEM_TEXT
@@ -66,6 +68,7 @@ def is_sensitive_category(category: str | None) -> bool:
 # That gives a much more honest "time to resolution" metric.
 _MEANINGFUL_MSG_FILTER = f"""
     m.is_internal = false
+    AND (m.sender_type != 'admin' OR m.delivery_status = 'delivered')
     AND NOT (
         m.sender_type = 'admin'
         AND (
@@ -77,9 +80,7 @@ _MEANINGFUL_MSG_FILTER = f"""
 
 
 async def _effective_close_seconds_map(session, ticket_ids: list[int]) -> dict[int, float]:
-    """For each given closed ticket, return seconds from creation to last
-    meaningful message. Empty dict if `ticket_ids` is empty.
-    """
+    """Elapsed time to recorded closure, identical to the lead report metric."""
     if not ticket_ids:
         return {}
     # Build inline IN clause — SQLite parameter expansion for IN is awkward
@@ -88,12 +89,10 @@ async def _effective_close_seconds_map(session, ticket_ids: list[int]) -> dict[i
     rows = (await session.execute(text(f"""
         SELECT
             t.id,
-            {_sql_seconds('MAX(m.created_at)', 't.created_at')} AS sec
+            {_sql_seconds('t.closed_at', 't.created_at')} AS sec
         FROM tickets t
-        JOIN messages m ON m.ticket_id = t.id
         WHERE t.id IN ({ids_csv})
-          AND {_MEANINGFUL_MSG_FILTER}
-        GROUP BY t.id
+          AND t.status='closed' AND t.closed_at >= t.created_at
     """))).all()
     return {int(r[0]): float(r[1]) for r in rows if r[1] is not None}
 
@@ -175,7 +174,7 @@ async def overview_stats() -> dict:
         avg_close_seconds = (await session.execute(text(f"""
             SELECT AVG(close_sec) FROM (
                 SELECT
-                    {_sql_seconds('MAX(m.created_at)', 't.created_at')} AS close_sec
+                    {_sql_seconds('MAX(COALESCE(m.delivered_at, m.created_at))', 't.created_at')} AS close_sec
                 FROM tickets t
                 JOIN messages m ON m.ticket_id = t.id
                 WHERE t.status = 'closed'
@@ -190,9 +189,9 @@ async def overview_stats() -> dict:
             SELECT AVG({_sql_minutes('first_admin.first_at', 't.created_at')})
             FROM tickets t
             JOIN (
-                SELECT ticket_id, MIN(created_at) AS first_at
+                SELECT ticket_id, MIN(COALESCE(delivered_at, created_at)) AS first_at
                 FROM messages
-                WHERE sender_type = 'admin' AND is_internal = false
+                WHERE sender_type = 'admin' AND is_internal = false AND delivery_status = 'delivered'
                 GROUP BY ticket_id
             ) first_admin ON first_admin.ticket_id = t.id
         """))).scalar_one()
@@ -223,14 +222,9 @@ async def _awaiting_response_count(session) -> int:
     Internal notes do not count: writing a note to your colleagues is not
     answering the person who is still waiting.
     """
-    val = (await session.execute(text("""
+    val = (await session.execute(text(f"""
         SELECT COUNT(t.id) FROM tickets t
-        WHERE t.status = 'active'
-          AND NOT EXISTS (
-              SELECT 1 FROM messages m
-              WHERE m.ticket_id = t.id
-                AND m.sender_type = 'admin' AND m.is_internal = false
-          )
+        WHERE t.status = 'active' AND {WAITING_SINCE_SQL} IS NOT NULL
     """))).scalar_one()
     return int(val or 0)
 
@@ -310,9 +304,9 @@ async def avg_first_response_per_day(days: int = 30) -> list[tuple[str, float | 
                 AVG({_sql_minutes('first_admin.first_at', 't.created_at')}) AS avg_min
             FROM tickets t
             JOIN (
-                SELECT ticket_id, MIN(created_at) AS first_at
+                SELECT ticket_id, MIN(COALESCE(delivered_at, created_at)) AS first_at
                 FROM messages
-                WHERE sender_type = 'admin' AND is_internal = false
+                WHERE sender_type = 'admin' AND is_internal = false AND delivery_status = 'delivered'
                 GROUP BY ticket_id
             ) first_admin ON first_admin.ticket_id = t.id
             WHERE t.created_at >= :cutoff
@@ -331,7 +325,7 @@ async def avg_first_response_per_day(days: int = 30) -> list[tuple[str, float | 
 
 async def avg_close_time_per_day(days: int = 30) -> list[tuple[str, float | None]]:
     """For each day in the window (bucketed by ticket creation date), average
-    HOURS from creation to last meaningful message — same definition as the
+    HOURS from creation to recorded closure — same definition as the
     KPI on top of the page. Days without closed tickets return None.
     """
     async with db_session() as session:
@@ -344,13 +338,11 @@ async def avg_close_time_per_day(days: int = 30) -> list[tuple[str, float | None
                 SELECT
                     t.id,
                     t.created_at,
-                    {_sql_seconds('MAX(m.created_at)', 't.created_at')} AS close_sec
+                    {_sql_seconds('t.closed_at', 't.created_at')} AS close_sec
                 FROM tickets t
-                JOIN messages m ON m.ticket_id = t.id
                 WHERE t.status = 'closed'
                   AND t.created_at >= :cutoff
-                  AND {_MEANINGFUL_MSG_FILTER}
-                GROUP BY t.id
+                  AND t.closed_at >= t.created_at
             ) sub
             GROUP BY {_sql_day('sub.created_at')}
             ORDER BY {_sql_day('sub.created_at')}
@@ -377,42 +369,6 @@ async def tickets_by_category() -> list[tuple[str, int]]:
 
 
 # ==================== Admins & activity ====================
-
-
-async def admins_by_replies(limit: int | None = None) -> list[tuple[str, int]]:
-    """All admins by reply count, descending. Pass `limit` to cap.
-
-    Display label: @username if we know it from the users table, else `id:NNN`.
-    There's no separate admin table — admins are tg_ids appearing as
-    message.sender_id with sender_type='admin'.
-    """
-    async with db_session() as session:
-        stmt = (
-            select(MessageRecord.sender_id, func.count(MessageRecord.id))
-            .where(MessageRecord.sender_type == "admin", MessageRecord.sender_id != 0)
-            .group_by(MessageRecord.sender_id)
-            .order_by(func.count(MessageRecord.id).desc())
-        )
-        if limit is not None:
-            stmt = stmt.limit(limit)
-        rows = (await session.execute(stmt)).all()
-
-        sender_ids = [int(r[0]) for r in rows]
-        # Look up display names from the users table where possible
-        usernames: dict[int, str] = {}
-        if sender_ids:
-            ur = (await session.execute(
-                select(User.tg_id, User.username).where(User.tg_id.in_(sender_ids))
-            )).all()
-            usernames = {int(t): (u or "") for t, u in ur}
-
-    out: list[tuple[str, int]] = []
-    for tg_id, cnt in rows:
-        tg_id = int(tg_id)
-        uname = usernames.get(tg_id, "")
-        label = f"@{uname}" if uname else f"id:{tg_id}"
-        out.append((label, int(cnt)))
-    return out
 
 
 async def activity_heatmap() -> tuple[list[list[int]], int]:
@@ -561,6 +517,23 @@ def _search_condition(q: str):
     return or_(*parts)
 
 
+async def ticket_status_counts(*, team_id=None, category=None, date_from=None,
+                               date_to=None, q=None, assigned=None) -> dict[str, int]:
+    """Counts for the active/archive navigation, with the same common filters."""
+    conditions = _ticket_filter_conditions(
+        status=None, team_id=team_id, category=category, date_from=date_from,
+        date_to=date_to, q=q, assigned=assigned,
+    )
+    async with db_session() as session:
+        rows = (await session.execute(
+            select(Ticket.status, func.count(Ticket.id)).where(*conditions)
+            .group_by(Ticket.status)
+        )).all()
+    counts = {"active": 0, "closed": 0}
+    counts.update({state: int(count) for state, count in rows if state in counts})
+    return counts
+
+
 async def list_tickets(
     *,
     status: str | None = None,
@@ -613,16 +586,6 @@ async def list_tickets(
         closed_ids = [t.id for t in tickets if t.status == "closed"]
         close_secs = await _effective_close_seconds_map(session, closed_ids)
 
-        # Resolve "work account" labels for users writing from a personal account
-        work_ids = {u.linked_to_user_id for t in tickets if (u := t.user) and u.linked_to_user_id}
-        work_labels: dict[int, str] = {}
-        if work_ids:
-            wr = (await session.execute(
-                select(User.id, User.username, User.tg_id).where(User.id.in_(work_ids))
-            )).all()
-            for wid, wuname, wtg in wr:
-                work_labels[int(wid)] = f"@{wuname}" if wuname else f"id {wtg}"
-
         # Operator names for the "Оператор" column (one query for the page)
         assigned_ids = {t.assigned_admin_id for t in tickets if t.assigned_admin_id}
         operator_names: dict[int, str] = {}
@@ -638,7 +601,6 @@ async def list_tickets(
         u = t.user
         username = (u.username if u else None) or ""
         eff_seconds = close_secs.get(t.id) if t.status == "closed" else None
-        work_label = work_labels.get(u.linked_to_user_id) if (u and u.linked_to_user_id) else None
         out.append({
             "id": t.id,
             "status": t.status,
@@ -646,12 +608,11 @@ async def list_tickets(
             "board_column": board_column(t.status, t.stage),
             "category": t.category,
             "team": team_names.get(t.team_id, "—") if t.team_id else "—",
-            "user_label": (f"@{username}" if username else f"id:{display_address(u)}") if u else "—",
+            "user_label": customer_label(u) if u else "—",
             "user_tg_id": u.tg_id if u else None,
             "channel": channel_of(u) if u else CHANNEL_DEFAULT,
             "user_db_id": u.id if u else None,
             "local_user_id": u.local_user_id if u else None,
-            "linked_work": work_label,  # set → this ticket is from a personal account
             "created_at": t.created_at,
             "closed_at": t.closed_at,
             "processing_time_seconds": int(eff_seconds) if eff_seconds is not None else None,
@@ -751,18 +712,9 @@ async def board_columns(
         ]
         awaiting_since: dict[int, datetime] = {}
         if active_ids:
-            rows = (await session.execute(text("""
-                SELECT t.id, MIN(m.created_at)
-                  FROM tickets t
-                  JOIN messages m ON m.ticket_id = t.id
-                 WHERE t.id IN :ids
-                   AND m.is_internal = false
-                   AND m.sender_type = 'user'
-                   AND m.id > COALESCE((SELECT MAX(a.id) FROM messages a
-                                         WHERE a.ticket_id = t.id
-                                           AND a.is_internal = false
-                                           AND a.sender_type = 'admin'), 0)
-                 GROUP BY t.id
+            rows = (await session.execute(text(f"""
+                SELECT t.id, {WAITING_SINCE_SQL}
+                  FROM tickets t WHERE t.id IN :ids
             """).bindparams(bindparam("ids", expanding=True)), {"ids": active_ids})).all()
             for tid, since in rows:
                 if since is not None:
@@ -798,7 +750,7 @@ async def board_columns(
                 "status": t.status,
                 "stage": t.stage,
                 "category": t.category or "",
-                "user_label": (f"@{username}" if username else f"id:{u.tg_id}") if u else "—",
+                "user_label": customer_label(u) if u else "—",
                 "operator": operator,
                 "initials": _initials(operator),
                 "age_seconds": int((now - since).total_seconds()) if since else None,
@@ -821,6 +773,7 @@ async def list_tickets_for_export(
     date_from: datetime | None = None,
     date_to: datetime | None = None,
     q: str | None = None,
+    assigned: int | str | None = None,
     stage: str | None = None,
 ) -> list[dict]:
     """Same filters as `list_tickets` but no pagination, with extra columns
@@ -828,7 +781,7 @@ async def list_tickets_for_export(
     """
     conds = _ticket_filter_conditions(
         status=status, team_id=team_id, category=category,
-        date_from=date_from, date_to=date_to, q=q, stage=stage,
+        date_from=date_from, date_to=date_to, q=q, assigned=assigned, stage=stage,
     )
     async with db_session() as session:
         stmt = select(Ticket).options(selectinload(Ticket.user))
@@ -858,8 +811,8 @@ async def list_tickets_for_export(
                 SELECT
                     ticket_id,
                     SUM(CASE WHEN sender_type='user' THEN 1 ELSE 0 END) AS u,
-                    SUM(CASE WHEN sender_type='admin' AND is_internal=false THEN 1 ELSE 0 END) AS a,
-                    SUM(CASE WHEN template_id IS NOT NULL THEN 1 ELSE 0 END) AS via_tpl
+                    SUM(CASE WHEN sender_type='admin' AND is_internal=false AND delivery_status='delivered' THEN 1 ELSE 0 END) AS a,
+                    SUM(CASE WHEN template_id IS NOT NULL AND delivery_status='delivered' THEN 1 ELSE 0 END) AS via_tpl
                 FROM messages
                 WHERE ticket_id IN ({ids_csv})
                 GROUP BY ticket_id
@@ -926,15 +879,18 @@ async def messages_after(ticket_id: int, after_id: int = 0) -> dict | None:
 
     Returns None if the ticket does not exist.
     """
+    from src.database.delivery_models import OutboundJob
+    from src.dashboard.conversations import metadata, live_message
     async with db_session() as session:
         row = (await session.execute(
-            select(Ticket.status, Ticket.stage, User.username, User.tg_id)
+            select(Ticket.status, Ticket.stage, User, Ticket.category).select_from(Ticket)
             .join(User, User.id == Ticket.user_id, isouter=True)
             .where(Ticket.id == ticket_id)
         )).first()
         if row is None:
             return None
-        status, stage, username, tg_id = row
+        status, stage, user, category = row
+        channel = channel_of(user) if user else CHANNEL_DEFAULT
 
         msgs = (await session.execute(
             select(MessageRecord)
@@ -942,37 +898,40 @@ async def messages_after(ticket_id: int, after_id: int = 0) -> dict | None:
             .order_by(MessageRecord.id.asc())
         )).scalars().all()
 
+        changed = (await session.execute(select(MessageRecord).where(
+            MessageRecord.ticket_id == ticket_id, MessageRecord.id <= after_id,
+            (MessageRecord.edited_at.is_not(None) | MessageRecord.deleted_at.is_not(None)
+             | MessageRecord.mutation_status.is_not(None) | MessageRecord.delivered_at.is_not(None)),
+        ).order_by(
+            case((MessageRecord.mutation_status.is_not(None), 1), else_=0).desc(),
+            func.coalesce(MessageRecord.deleted_at, MessageRecord.edited_at,
+                          MessageRecord.delivered_at, MessageRecord.created_at).desc(),
+            MessageRecord.id.desc(),
+        ).limit(100))).scalars().all()
+        meta = await metadata(session, [*msgs, *changed], channel or "telegram")
+
+        # An existing message can finish sending without creating a new id.
+        # Keep the incremental transcript and return a small status snapshot.
+        deliveries = (await session.execute(select(
+            MessageRecord.id, OutboundJob.status, MessageRecord.deleted_at,
+        ).join(OutboundJob, OutboundJob.message_id == MessageRecord.id).where(
+            MessageRecord.ticket_id == ticket_id,
+        ))).all()
+
     # No separate max() query: an empty batch means nothing exists past the
     # cursor, so the cursor already IS the newest id the client should hold.
     latest_id = msgs[-1].id if msgs else after_id
 
-    sensitive = is_sensitive_category(None)
+    sensitive = is_sensitive_category(category)
     return {
         "status": status,
         "stage": stage,
         "latest_id": int(latest_id),
-        "user_label": (f"@{username}" if username else f"id:{tg_id}") if tg_id else "—",
-        "messages": [
-            {
-                "id": m.id,
-                "sender_type": m.sender_type,
-                "sender_label": m.sender_label,
-                "text": _dash_t("msg_masked_credentials") if sensitive else (m.text or ""),
-                "is_template": m.template_id is not None,
-                "is_internal": bool(m.is_internal),
-                "deleted_at": m.deleted_at.isoformat() if m.deleted_at else None,
-                "has_attachment": bool(m.file_id),
-                "file_name": m.file_name,
-                "attachment_url": f"/tickets/attachment/{m.id}" if m.file_id else None,
-                "is_image": bool(m.file_id) and (
-                    "photo" in (m.file_type or "").lower()
-                    or (m.file_name or "").lower().endswith(
-                        (".jpg", ".jpeg", ".png", ".webp", ".gif"))
-                ),
-                "created_at": m.created_at.strftime("%m-%d %H:%M") if m.created_at else "",
-            }
-            for m in msgs
-        ],
+        "user_label": customer_label(user) if user else "—",
+        "deliveries": [{"message_id": mid, "status": state, "can_retry": not deleted}
+                       for mid, state, deleted in deliveries],
+        "messages": [live_message(m, meta[m.id], sensitive=sensitive) for m in msgs],
+        "updates": [live_message(m, meta[m.id], sensitive=sensitive) for m in changed],
     }
 
 
@@ -1002,6 +961,7 @@ async def ticket_detail(ticket_id: int) -> dict | None:
         # inside the driver.
         return None
 
+    from src.database.delivery_models import OutboundJob
     async with db_session() as session:
         ticket = (await session.execute(
             select(Ticket)
@@ -1013,6 +973,12 @@ async def ticket_detail(ticket_id: int) -> dict | None:
         )).scalar_one_or_none()
         if ticket is None:
             return None
+
+        delivery_states = dict((await session.execute(select(
+            OutboundJob.message_id, OutboundJob.status,
+        ).join(MessageRecord, MessageRecord.id == OutboundJob.message_id).where(
+            MessageRecord.ticket_id == ticket_id,
+        ))).all())
 
         team_name = "—"
         if ticket.team_id:
@@ -1029,21 +995,10 @@ async def ticket_detail(ticket_id: int) -> dict | None:
             v = secs_map.get(ticket.id)
             eff_close = int(v) if v is not None else None
 
-        # Account linking (personal ↔ work) for this ticket's author
+        from src.dashboard.conversations import metadata
+        message_meta = await metadata(session, ticket.messages, channel_of(ticket.user))
+
         u = ticket.user
-        linked_work_label = None
-        linked_personals = []
-        if u is not None:
-            if u.linked_to_user_id:
-                w = (await session.execute(
-                    select(User).where(User.id == u.linked_to_user_id)
-                )).scalar_one_or_none()
-                if w:
-                    linked_work_label = f"@{w.username}" if w.username else f"id {w.tg_id}"
-            ps = (await session.execute(
-                select(User).where(User.linked_to_user_id == u.id)
-            )).scalars().all()
-            linked_personals = [(f"@{p.username}" if p.username else f"id{p.tg_id}") for p in ps]
 
     sensitive = is_sensitive_category(ticket.category)
     username = (u.username if u else None) or ""
@@ -1067,6 +1022,8 @@ async def ticket_detail(ticket_id: int) -> dict | None:
             or fname.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif"))
         )
         messages.append({
+            **message_meta[m.id],
+            **({"reply": None, "can_edit": False, "can_reply": False} if sensitive else {}),
             "id": m.id,
             "sender_type": m.sender_type,
             "sender_id": m.sender_id,
@@ -1087,6 +1044,7 @@ async def ticket_detail(ticket_id: int) -> dict | None:
             "is_internal": bool(m.is_internal),
             "deleted_at": m.deleted_at,
             "can_delete": message_service.can_delete(m, channel=user_channel),
+            "delivery_status": delivery_states.get(m.id),
             "created_at": m.created_at,
         })
 
@@ -1099,14 +1057,15 @@ async def ticket_detail(ticket_id: int) -> dict | None:
         "board_column": board_column(ticket.status, ticket.stage),
         "category": ticket.category,
         "team": team_name,
-        "user_label": (f"@{username}" if username else f"id:{u.tg_id}") if u else "—",
+        "user_label": customer_label(u) if u else "—",
         # Contact details a customer gave us, and whether anyone vouched for
         # them. The flag travels with the values rather than being looked up
         # separately, because the one place it must never be missing is the
         # place the values are displayed.
         "user_email": (u.email or None) if u else None,
         "user_external_id": (u.external_id or None) if u else None,
-        "user_identity_verified": bool(u.identity_verified) if u else False,
+        "user_identity_verified": bool(u.identity_verified_fields) if u else False,
+        "user_identity_verified_fields": list(u.identity_verified_fields or []) if u else [],
         "user_tg_id": u.tg_id if u else None,
         "local_user_id": u.local_user_id if u else None,
         "created_at": ticket.created_at,
@@ -1119,8 +1078,6 @@ async def ticket_detail(ticket_id: int) -> dict | None:
         ],
         "custom_reason": ticket.custom_reason if not sensitive else None,
         "is_sensitive": sensitive,
-        "linked_work": linked_work_label,     # set → author writes from a personal acct
-        "linked_personals": linked_personals, # set → author is a work acct with personals
         "user_db_id": u.id if u else None,
         "csat_rating": ticket.csat_rating,
         "assigned_admin_id": ticket.assigned_admin_id,
@@ -1304,9 +1261,9 @@ async def templates_with_usage(include_archived: bool = False) -> list[dict]:
 
         # Last used per template
         last_used = (await session.execute(text("""
-            SELECT template_id, MAX(created_at)
+            SELECT template_id, MAX(COALESCE(delivered_at, created_at))
             FROM messages
-            WHERE template_id IS NOT NULL
+            WHERE template_id IS NOT NULL AND delivery_status = 'delivered'
             GROUP BY template_id
         """))).all()
         last_used_map = {int(r[0]): r[1] for r in last_used}
@@ -1344,207 +1301,16 @@ USER_SORTS = {
 DEFAULT_USER_SORT = "last"
 
 
-async def users_with_ticket_stats(
-    limit: int | None = None,
-    *,
-    team_id: int | None = None,
-    unassigned_only: bool = False,
-    sort: str = DEFAULT_USER_SORT,
-    direction: str = "desc",
-) -> list[dict]:
-    """All users, with stats: total tickets, active/closed, top-3 categories,
-    last activity.
-
-    LEFT JOIN, not JOIN: a user who registered but has not opened a ticket yet
-    must still be listed — that is exactly the person an operator is looking
-    for when they need to assign a team.
-
-    Default order is most recent activity, with people who have never written
-    last — said explicitly rather than relied upon. SQLite happens to sort
-    NULLs last under DESC and PostgreSQL sorts them first, so the behaviour
-    this list was built around was an accident of the engine. The id tiebreak
-    then puts the newest registrations first, which is the useful order when
-    the list is filtered down to those very people.
-
-    `unassigned_only` narrows to users with no team; `team_id` to one team.
-    """
-    where = []
-    if unassigned_only:
-        where.append("u.team_id IS NULL")
-    elif team_id:
-        where.append(f"u.team_id = {int(team_id)}")
-    where_sql = ("WHERE " + " AND ".join(where)) if where else ""
-
-    order_col = USER_SORTS.get(sort, USER_SORTS[DEFAULT_USER_SORT])
-    order_dir = "ASC" if str(direction).lower() == "asc" else "DESC"
-    # NULLS LAST in both directions: "has never written" belongs at the
-    # bottom whichever way the column is sorted, and the engines disagree
-    # about where a NULL goes by default.
-    order_sql = f"{order_col}{order_dir} NULLS LAST, u.id DESC"
-
-    async with db_session() as session:
-        # One round-trip: aggregate tickets per user
-        rows = (await session.execute(text(f"""
-            SELECT
-                u.id, u.tg_id, u.username, u.team_id, u.local_user_id,
-                COUNT(t.id) AS total,
-                SUM(CASE WHEN t.status = 'active' THEN 1 ELSE 0 END) AS active,
-                SUM(CASE WHEN t.status = 'closed' THEN 1 ELSE 0 END) AS closed,
-                MAX(t.created_at) AS last_ticket_at,
-                tm.name AS team_name
-            FROM users u
-            LEFT JOIN tickets t ON t.user_id = u.id
-            LEFT JOIN teams tm ON tm.id = u.team_id
-            {where_sql}
-            GROUP BY u.id, u.tg_id, u.username, u.team_id, u.local_user_id, tm.name
-            ORDER BY {order_sql}
-        """))).all()
-
-        if limit is not None:
-            rows = rows[:limit]
-
-        # Top categories per user — fetched in one query, grouped in Python
-        user_db_ids = [int(r[0]) for r in rows]
-        cats_per_user: dict[int, list[tuple[str, int]]] = {uid: [] for uid in user_db_ids}
-        if user_db_ids:
-            ids_csv = ",".join(str(i) for i in user_db_ids)
-            cat_rows = (await session.execute(text(f"""
-                SELECT user_id, category, COUNT(*) AS cnt
-                FROM tickets
-                WHERE user_id IN ({ids_csv})
-                GROUP BY user_id, category
-                ORDER BY user_id, cnt DESC
-            """))).all()
-            for uid, cat, cnt in cat_rows:
-                cats_per_user[int(uid)].append(((cat or "—"), int(cnt)))
-
-    out: list[dict] = []
-    for r in rows:
-        u_db_id = int(r[0])
-        username = (r[2] or "")
-        team_name = r[9] or "—"
-        # SQLite via raw text() returns timestamps as strings — normalise to datetime
-        last_ticket_at = r[8]
-        if isinstance(last_ticket_at, str):
-            try:
-                last_ticket_at = datetime.fromisoformat(last_ticket_at)
-            except ValueError:
-                last_ticket_at = None
-        out.append({
-            "user_db_id": u_db_id,
-            "tg_id": int(r[1]),
-            "username": username,
-            "label": f"@{username}" if username else f"id:{int(r[1])}",
-            "team": team_name,
-            "local_user_id": r[4],
-            "total": int(r[5] or 0),
-            "active": int(r[6] or 0),
-            "closed": int(r[7] or 0),
-            "last_ticket_at": last_ticket_at,
-            "top_categories": cats_per_user.get(u_db_id, [])[:3],
-        })
-    return out
+async def users_with_ticket_stats(limit=None, *, team_id=None, unassigned_only=False,
+                                  sort=DEFAULT_USER_SORT, direction="desc"):
+    from src.dashboard.customer_queries import listing
+    return await listing(limit, team_id=team_id, unassigned_only=unassigned_only,
+                         sort=sort, direction=direction)
 
 
 async def user_detail(user_db_id: int) -> dict | None:
-    """Full per-user card: profile, all tickets, full category breakdown."""
-    if not is_row_id(user_db_id):
-        # Wider than the column. Not found, rather than a 500 from
-        # inside the driver.
-        return None
-
-    async with db_session() as session:
-        user = (await session.execute(
-            select(User).where(User.id == user_db_id)
-        )).scalar_one_or_none()
-        if user is None:
-            return None
-
-        team_name = "—"
-        if user.team_id:
-            tn = (await session.execute(
-                select(Team.name).where(Team.id == user.team_id)
-            )).scalar_one_or_none()
-            if tn:
-                team_name = tn
-
-        tickets = (await session.execute(
-            select(Ticket)
-            .where(Ticket.user_id == user_db_id)
-            .order_by(Ticket.id.desc())
-        )).scalars().all()
-
-        # Effective close time for closed ones (batched)
-        closed_ids = [t.id for t in tickets if t.status == "closed"]
-        close_secs = await _effective_close_seconds_map(session, closed_ids)
-
-        # Category breakdown
-        cat_rows = (await session.execute(text("""
-            SELECT category, COUNT(*) AS cnt
-            FROM tickets
-            WHERE user_id = :uid
-            GROUP BY category
-            ORDER BY cnt DESC
-        """), {"uid": user_db_id})).all()
-
-    categories = [((c or "—"), int(n)) for c, n in cat_rows]
-
-    ticket_rows: list[dict] = []
-    for t in tickets:
-        eff = close_secs.get(t.id) if t.status == "closed" else None
-        ticket_rows.append({
-            "id": t.id,
-            "status": t.status,
-            "category": t.category,
-            "created_at": t.created_at,
-            "closed_at": t.closed_at,
-            "processing_time_seconds": int(eff) if eff is not None else None,
-            "is_sensitive": is_sensitive_category(t.category),
-        })
-
-    # Account linking info (re-open the session briefly for the lookups)
-    async with db_session() as session:
-        linked_work = None
-        if user.linked_to_user_id:
-            w = (await session.execute(
-                select(User).where(User.id == user.linked_to_user_id)
-            )).scalar_one_or_none()
-            if w:
-                linked_work = f"@{w.username}" if w.username else f"id {w.tg_id}"
-        personals = (await session.execute(
-            select(User).where(User.linked_to_user_id == user.id)
-        )).scalars().all()
-        personals_labels = [
-            (f"@{p.username}" if p.username else f"id{p.tg_id}") for p in personals
-        ]
-        all_teams = [(t.id, t.name) for t in (await session.execute(
-            select(Team).order_by(Team.name.asc())
-        )).scalars().all()]
-
-    username = user.username or ""
-    return {
-        "user_db_id": user.id,
-        "tg_id": user.tg_id,
-        "username": username,
-        "label": f"@{username}" if username else f"id:{user.tg_id}",
-        "team": team_name,
-        "team_id": user.team_id,
-        "local_user_id": user.local_user_id,
-        "is_verified": user.is_verified,
-        "is_active": user.is_active,
-        "language": user.language,
-        "created_at": user.created_at,
-        "tickets": ticket_rows,
-        "categories": categories,
-        "total": len(ticket_rows),
-        "active_count": sum(1 for t in ticket_rows if t["status"] == "active"),
-        "closed_count": sum(1 for t in ticket_rows if t["status"] == "closed"),
-        # Management extras
-        "linked_work": linked_work,
-        "pending_work": user.pending_work_username,
-        "personals": personals_labels,
-        "all_teams": all_teams,
-    }
+    from src.dashboard.customer_queries import detail
+    return await detail(user_db_id)
 
 
 async def template_admin_matrix() -> dict:
@@ -1562,6 +1328,7 @@ async def template_admin_matrix() -> dict:
             SELECT m.sender_id, m.template_id, COUNT(*) AS cnt
             FROM messages m
             WHERE m.sender_type = 'admin'
+              AND m.delivery_status = 'delivered'
               AND m.sender_id != 0
               AND m.template_id IS NOT NULL
             GROUP BY m.sender_id, m.template_id
@@ -1648,6 +1415,7 @@ async def template_csat() -> dict[int, dict]:
               FROM messages m
               JOIN tickets t ON t.id = m.ticket_id
               WHERE m.template_id IS NOT NULL
+                AND m.delivery_status = 'delivered'
                 AND m.is_internal = false
                 AND t.csat_rating IS NOT NULL
             )
@@ -1753,20 +1521,10 @@ async def ai_csat_by_category() -> list[dict]:
 # order, so the queue and the colours on the board never disagree.
 
 # Everything a customer is waiting on, oldest wait first. Callers narrow it.
-_QUEUE_SQL = """
-    SELECT t.id,
-           (SELECT MIN(m.created_at) FROM messages m
-             WHERE m.ticket_id = t.id
-               AND m.is_internal = false
-               AND m.sender_type = 'user'
-               AND m.id > COALESCE((SELECT MAX(a.id) FROM messages a
-                                     WHERE a.ticket_id = t.id
-                                       AND a.is_internal = false
-                                       AND a.sender_type = 'admin'), 0)
-           ) AS waiting_since
+_QUEUE_SQL = f"""
+    SELECT t.id, {WAITING_SINCE_SQL} AS waiting_since
       FROM tickets t
-     WHERE t.status = 'active'
-       AND {scope}
+     WHERE t.status = 'active' AND {{scope}}
 """
 
 
@@ -1855,9 +1613,10 @@ async def shadow_comparisons(limit: int = 40) -> list[dict]:
                    (SELECT m.text FROM messages m
                      WHERE m.ticket_id = a.ticket_id
                        AND m.sender_type = 'admin'
+                       AND m.delivery_status = 'delivered'
                        AND m.is_internal = false
-                       AND m.created_at >= a.created_at
-                     ORDER BY m.created_at ASC LIMIT 1) AS human_reply
+                       AND COALESCE(m.delivered_at, m.created_at) >= a.created_at
+                     ORDER BY COALESCE(m.delivered_at, m.created_at) ASC LIMIT 1) AS human_reply
               FROM ai_calls a
              WHERE a.shadow = true
                AND a.success = true

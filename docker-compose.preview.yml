@@ -1,0 +1,90 @@
+# Local UI preview only. Separate from deployment, real .env and customer data.
+# docker compose -f docker-compose.preview.yml up -d --build
+name: spooldesk-preview
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: spooldesk_preview
+      POSTGRES_USER: spooldesk_preview
+      POSTGRES_PASSWORD: local-preview-only
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U spooldesk_preview -d spooldesk_preview"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  dashboard:
+    build: .
+    image: spooldesk:preview
+    command: python -m uvicorn src.dashboard.app:app --host 0.0.0.0 --port 8000 --no-proxy-headers
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PYTHON_DOTENV_DISABLED: "1"
+      DATABASE_URL: ""
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: spooldesk_preview
+      POSTGRES_USER: spooldesk_preview
+      POSTGRES_PASSWORD: local-preview-only
+      ACCESS_PASSWORD: admin
+      DASH_SECRET_KEY: local-preview-session-key-not-for-production
+      SECRETS_KEY: local-preview-encryption-key-not-for-production
+      DASH_COOKIE_SECURE: "false"
+      TRUSTED_PROXY_HOPS: "0"
+      BOT_TOKEN: ""
+      ADMIN_CHAT_ID: "0"
+      DEMO_MODE: "1"
+      ATTACHMENTS_DIR: /app/data/attachments
+    ports:
+      - "127.0.0.1:8011:8000"
+    volumes:
+      # Serve current UI/code rather than an old release-check snapshot.
+      - ./src:/app/src:ro
+      - data:/app/data
+      - logs:/app/logs
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=5)"]
+      interval: 10s
+      timeout: 6s
+      retries: 6
+      start_period: 15s
+    restart: unless-stopped
+    logging: *logging
+
+  landing:
+    image: spooldesk:preview
+    command: python -m http.server 8000 --bind 0.0.0.0 --directory /site
+    ports:
+      - "127.0.0.1:8765:8000"
+    volumes:
+      - ./docs:/site:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ru/', timeout=5)"]
+      interval: 10s
+      timeout: 6s
+      retries: 3
+    restart: unless-stopped
+    logging: *logging
+
+networks:
+  default:
+    # Docker Desktop needs a regular bridge to publish the two loopback ports.
+    # Live channel credentials are absent; PostgreSQL has no published port.
+    driver: bridge
+
+volumes:
+  pgdata:
+  data:
+  logs:

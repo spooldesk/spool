@@ -72,12 +72,14 @@ async def remove(session: AsyncSession, user_id: int) -> RemoveResult:
 
     Deliberately not a DELETE. Their tickets are history — the reports and the
     operator stats they contribute to have to keep adding up, so the row stays
-    and only `is_verified` is cleared.
+    and access is revoked on every channel.
 
     Account links are cut in BOTH directions. Leaving a personal account
     pointing at a retired work account is what produces "writes from personal"
     badges referring to somebody who no longer exists.
     """
+    from src.database.db import acquire_write_lock
+    await acquire_write_lock(session)
     user = await session.get(User, user_id)
     if user is None:
         raise UserServiceError(_t("e_user_not_found_id", id=user_id))
@@ -98,6 +100,9 @@ async def remove(session: AsyncSession, user_id: int) -> RemoveResult:
     user.linked_to_user_id = None
     user.pending_work_username = None
     user.is_verified = False
+    user.is_active = False
+    user.identity_verified = False
+    user.identity_verified_fields = []
 
     logger.info(
         f"User #{user_id} removed: closed {len(open_tickets)} tickets, "

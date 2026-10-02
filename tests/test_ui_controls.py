@@ -145,7 +145,7 @@ async def test_every_page_gets_the_same_left_gutter(initialized_db):
 
     padded = ["/tickets", "/board", "/users", "/overview", "/ai", "/templates",
               "/reports", "/manage/templates", "/manage/categories",
-              "/manage/close-reasons", "/manage/teams", "/manage/tags",
+              "/manage/close-reasons", "/manage/teams", "/me",
               "/manage/settings", "/manage/ai", "/manage/admins", "/broadcast"]
 
     with TestClient(app, base_url="http://testserver") as c:

@@ -4,7 +4,7 @@
 {% block content %}
 <div class="mb-6">
   <h1 class="text-2xl font-semibold tracking-tight">{{ T.sh_title }}</h1>
-  <p class="text-sm text-zinc-500 mt-1 max-w-3xl">{{ T.sh_subtitle }}</p>
+  <p data-help class="text-sm text-zinc-500 mt-1 max-w-3xl">{{ T.sh_subtitle }}</p>
 </div>
 
 {% if not shadow_on and not summary.calls %}
@@ -53,7 +53,7 @@
       {# No accuracy score on purpose: two support answers can mean the same
          thing in no shared words, and share most words while meaning the
          opposite. Reading twenty pairs beats trusting one number. #}
-      <p class="text-xs text-zinc-500 mt-0.5">{{ T.sh_pairs_hint }}</p>
+      <p data-help class="text-xs text-zinc-500 mt-0.5">{{ T.sh_pairs_hint }}</p>
     </div>
 
     {% for c in comparisons %}

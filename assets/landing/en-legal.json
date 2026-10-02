@@ -1,0 +1,20 @@
+{
+  "title": "License, services and data",
+  "intro": "How the self-hosted product, optional services and this website fit together.",
+  "updated": "Updated 1 October 2026",
+  "status": "Spooldesk is a self-hosted product. Paid service arrangements are being prepared; this website has no checkout and does not accept payment.",
+  "license_title": "Software licence",
+  "license_body": "The licensor named in the project licence is Kostiantyn Boiko. Spooldesk is source-available under BSL 1.1. Its Additional Use Grant permits production use within its terms, but excludes offering a hosted or managed service to third parties with a substantial set of the product’s features. Separate rights are needed for uses outside that grant. This summary does not change the licence or third-party notices.",
+  "license_download": "Read the complete current licence",
+  "services_title": "Installation and maintenance",
+  "services_body": "Self-hosting does not require buying services from us. Published service amounts are indicative planning figures. Availability, work scope, seller identity and registration details, price and applicable taxes, payment, cancellation and acceptance must be settled in a separate written agreement before paid work. Sending an enquiry does not place an order.",
+  "services_scope": "The customer operates the installation on their own infrastructure. Any support access needs explicit authorization and agreed confidentiality and data-processing terms. Maintenance does not imply 24/7 monitoring, a recovery deadline or included third-party hosting and AI charges.",
+  "data_title": "Website and contact data",
+  "data_site": "The site code has no analytics tracker, advertising cookie or submission form. A theme preference is stored in your browser. The interactive demonstration uses fictional data and does not send its messages to a helpdesk. Hosting and network providers may still process connection information such as your IP address and request logs; their handling depends on the deployed hosting configuration.",
+  "data_email": "If you choose to email hello@spooldesk.net, your address, message and any attachments are delivered through email providers, including our Fastmail mailbox, so the maintainer can respond to your enquiry. Send only the details needed for that purpose. Do not include API keys, passwords or customer conversations. A retention schedule, full controller details and applicable service-provider terms must be finalized before commercial contact processing is launched; this page is not a completed commercial privacy policy.",
+  "data_instance": "A customer’s self-hosted database and attachments are separate from the public website. This page does not govern that customer’s own helpdesk: its operator must provide the relevant privacy information, retention and access rules. Connected email, messaging and AI services receive data needed for the enabled functions; self-hosting is not a blanket guarantee that data never leaves the installation.",
+  "data_rights": "For questions about an enquiry you sent, or to request access, correction or deletion, contact the maintainer below. Requests must be assessed under the applicable law; no blanket compliance certification or exception to statutory rights is implied.",
+  "contact_title": "Project contact",
+  "contact_body": "Project maintained by Kostiantyn Boiko in Ukraine. Product, licensing and contact-data enquiries:",
+  "back": "Back to Spooldesk"
+}

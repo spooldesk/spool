@@ -11,18 +11,7 @@ import re
 
 _REDACTED = "[REDACTED]"
 
-# Order matters — more specific patterns first.
-_PATTERNS = [
-    # Telegram bot tokens: "1234567:ABC...." (39+ chars after colon)
-    (re.compile(r"\b\d{6,}:[A-Za-z0-9_-]{30,}\b"), _REDACTED),
-    # JWT-like tokens (3 base64url segments separated by dots, starts with eyJ)
-    (re.compile(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b"), _REDACTED),
-    # "password: X" / "пароль: X" / "пароль X" — until whitespace/EOL
-    (re.compile(r"(?i)\b(?:password|пароль|пасс|pwd)\s*[:=]?\s*(\S{4,})"), r"\g<0>".replace("\\g<0>", "")),
-]
-
-# The "password:" pattern above is special — we want to keep the label but
-# nuke the value. Do it with a function.
+# Keep the password label but redact its value using a replacement function.
 _PASSWORD_LABEL = re.compile(
     r"(?i)\b(?P<label>password|пароль|пасс|pwd)\s*[:=]?\s*(?P<value>\S{4,})"
 )

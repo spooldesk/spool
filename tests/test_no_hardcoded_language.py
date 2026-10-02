@@ -24,6 +24,9 @@ REPO = pathlib.Path(__file__).resolve().parents[1]
 ALLOWED = {
     # The catalogs themselves.
     "src/dashboard/i18n.py",
+    "src/dashboard/workspace_i18n.py",
+    "src/dashboard/connection_i18n.py",
+    "src/dashboard/assistant_i18n.py",
     "src/utils/i18n.py",
     # Legacy sentinels kept only so old databases keep rendering. They are
     # matched, never displayed — see LEGACY_CUSTOM_VALUES / LEGACY_AI_VALUES.

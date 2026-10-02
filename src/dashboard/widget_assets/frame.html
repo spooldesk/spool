@@ -5,10 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Support chat</title>
 <!--
-  The panel. Served into an iframe on somebody else's site, so it is one
-  file with no external requests: a widget that pulls a font or a script
-  from a CDN is a widget that fails on any page with a strict CSP, and
-  those are exactly the pages worth having as customers.
+  The panel is served in an iframe on the customer's site. Shared UI
+  assets come from this same origin; no fonts or scripts require a CDN.
 
   Three views in one document, not three documents. Switching screens must
   not cost a round trip on a network that is already someone's mobile
@@ -20,11 +18,14 @@
   looks broken either way. Matching the operating system is at least a
   choice the visitor made.
 -->
+<style>__SPOOL_ASSET_message-menu.css__</style>
+<script>__SPOOL_ASSET_message-menu.js__</script>
+<script>__SPOOL_ASSET_auto-grow.js__</script>
 <style>
   :root {
     --bg: #ffffff; --panel: #f6f6f7; --text: #18181b; --muted: #71717a;
-    --line: #e4e4e7; --brand: #7c5cff; --brand-2: #5b3df0; --brand-text: #ffffff;
-    --mine: #7c5cff; --mine-text: #ffffff; --theirs: #ffffff;
+    --line: #e4e4e7; --brand: #7c3aed; --brand-2: #6d28d9; --brand-text: #ffffff;
+    --mine: #7c3aed; --mine-text: #ffffff; --theirs: #ffffff;
     --card: #ffffff; --hover: #f1f1f3; --danger: #e11d48;
     --shadow: 0 1px 2px rgba(0,0,0,.06), 0 8px 24px rgba(0,0,0,.06);
   }
@@ -185,10 +186,12 @@
   }
   #composer { display: flex; gap: 8px; align-items: flex-end; }
   #composer.off { display: none; }
+  .transcript-row .msg { position:relative; padding-right:42px; }
   textarea {
+    box-sizing:border-box; max-height:min(35dvh,280px);
     flex: 1 1 auto; resize: none; border: 1px solid var(--line); border-radius: 12px;
     padding: 9px 12px; font: inherit; color: inherit; background: var(--bg);
-    max-height: 120px; min-height: 40px;
+    min-height: 40px;
   }
   textarea:focus { outline: 2px solid var(--brand); outline-offset: -1px;
                    border-color: transparent; }
@@ -288,6 +291,23 @@
      absent, because the message itself is already on screen. */
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden;
         clip: rect(0 0 0 0); white-space: nowrap; }
+  .transcript-row { display:flex;flex-direction:column;gap:6px; }
+  .compose-context button,.queued-file button {padding:5px 7px;background:transparent;border:1px solid transparent;border-radius:5px;cursor:pointer;color:var(--muted);font:inherit;}
+  .compose-context button:hover,.queued-file button:hover {background:var(--hover);color:var(--text);}
+  .widget-confirm {width:min(360px,calc(100vw - 32px));background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:12px;padding:22px;}
+  .widget-confirm::backdrop {background:#0008;}
+  .widget-confirm h2 {font-size:16px;line-height:1.5;margin:0 0 18px;}
+  .widget-confirm button {padding:8px 12px;margin:0 8px 0 0;border:1px solid var(--line);border-radius:6px;background:var(--panel);cursor:pointer;}
+  #log[data-closed="true"] .message-menu-trigger {display:none;}
+  .msg blockquote {border-left:2px solid currentColor;font-size:12px;margin:0 0 8px;padding:4px 8px;opacity:.8;}
+  .msg small {display:block;font-size:10px;opacity:.7;margin-top:6px;}
+  .compose-context,.typing-line {padding:4px 14px;font-size:12px;color:var(--muted);}
+  .compose-context {display:flex;justify-content:space-between;gap:10px;}
+  .compose-context[hidden] {display:none;}
+  .queued-previews {display:flex;gap:6px;overflow:auto;padding:0 12px;}
+  .queued-file {display:flex;gap:6px;align-items:center;max-width:280px;flex-shrink:0;padding:6px;font-size:11px;border:1px solid var(--line);border-radius:7px;}
+  .queued-file img {width:48px;height:42px;object-fit:cover;}
+  .queued-file span {overflow-wrap:anywhere;}
 </style>
 </head>
 <body>
@@ -482,7 +502,7 @@
 
   var BASE = location.origin;
   var KEY = "spooldesk.session";
-  var POLL_IDLE = 8000;    // nothing has happened for a while
+  var POLL_IDLE = 3000;    // below the shared six-second typing expiry
   var POLL_LIVE = 3000;    // the visitor just wrote something
 
   var log = document.getElementById("log");
@@ -502,6 +522,11 @@
   var tabs = document.getElementById("tabs");
 
   var strings = {};
+  var queuedFiles = [], replying = null, editing = null;
+  var contextBar = document.createElement('div'); contextBar.className = 'compose-context'; contextBar.hidden = true;
+  var previews = document.createElement('div'); previews.className = 'queued-previews';
+  var typingLine = document.createElement('div'); typingLine.className = 'typing-line'; typingLine.setAttribute('aria-live','polite');
+  composer.before(typingLine, contextBar, previews);
   var seen = {};           // message ids already on screen
   var timer = null;
   var pollMs = POLL_IDLE;
@@ -638,9 +663,9 @@
         img.addEventListener("load", function () {
           log.scrollTop = log.scrollHeight;
         });
-        wrap.replaceChildren(img);
+        hold.replaceWith(img);
       }).catch(function () {
-        wrap.replaceChildren(chipFor(m));
+        hold.replaceWith(chipFor(m));
       });
     } else {
       wrap.appendChild(chipFor(m));
@@ -748,13 +773,42 @@
 
   function render(messages) {
     var fresh = 0;
+    var visible = new Set((messages || []).map(function(m){return String(m.id);}));
+    log.querySelectorAll('[data-transcript-id]').forEach(function(n){
+      if (!visible.has(n.dataset.transcriptId)) { n.remove(); delete seen[n.dataset.transcriptId]; }
+    });
     (messages || []).forEach(function (m) {
-      if (seen[m.id]) return;
-      seen[m.id] = true;
-      if (m.file) fileBubble(m);
-      else bubble("msg " + (m.from === "you" ? "you" : "agent"), m.text);
+      var fingerprint = JSON.stringify(m);
+      if (seen[m.id] === fingerprint) return;
+      var old = log.querySelector('[data-transcript-id="'+ Number(m.id) +'"]');
+      var isNew = !seen[m.id]; seen[m.id] = fingerprint;
+      var before = log.childNodes.length;
+      var main = m.file ? fileBubble(m) : bubble("msg " + (m.from === "you" ? "you" : "agent"), m.text);
+      if (m.reply) {
+        var quote = document.createElement('blockquote'); quote.textContent = m.reply.text;
+        main.prepend(quote);
+      }
+      if (m.edited) { var tag = document.createElement('small'); tag.textContent = strings.edited || 'Edited'; main.append(tag); }
       if (m.options && m.options.length) picks(m);
-      if (m.from !== "you") fresh++;
+      var group = document.createElement('div'); group.className = 'transcript-row'; group.dataset.transcriptId = m.id;
+      Array.from(log.childNodes).slice(before).forEach(function(n){group.append(n);});
+      var controls = [];
+      function action(label, fn, danger) {controls.push({label:label,action:fn,danger:!!danger});}
+      action(strings.reply || 'Reply', function(){ editing=null;replying=m.id;showContext(m.text);box.focus(); });
+      if(m.from === 'you') {
+        action(strings.edit || 'Edit', function(){
+          if(queuedFiles.length) return;
+          function begin(){editing=m; replying=null; box.value=m.text;SpAutoGrow.resize(box);showContext(strings.edit || 'Edit');box.focus();}
+          if(box.value) confirmAction(strings.edit || 'Edit message?',begin); else begin();
+        });
+        action(strings.delete || 'Delete', function(){confirmAction((strings.delete || 'Delete')+'?',function(){mutate(m,'delete','');});},true);
+      }
+      SpMessageMenu.attach(main,controls,strings.message_actions || 'Message actions');
+      if(old) {
+        if(old.querySelector('.message-menu-trigger[aria-expanded="true"]')) SpMessageMenu.close();
+        old.replaceWith(group);
+      } else log.append(group);
+      if (m.from !== "you" && isNew) fresh++;
     });
     if (fresh) {
       announce.textContent = strings.replied || "New reply";
@@ -767,14 +821,17 @@
   }
 
   function clearLog() {
+    resetContext();
     seen = {};
     log.innerHTML = "";
   }
 
   function setWritable(open) {
     composer.classList.toggle("off", !open);
+    log.dataset.closed = String(!open);
     closedBar.classList.toggle("on", !open);
     if (!open) {
+      SpMessageMenu.close();
       document.getElementById("closedSaid").textContent =
         strings.closed || "This conversation is closed.";
       document.getElementById("newChatLabel").textContent =
@@ -909,6 +966,7 @@
     show("chat");
     clearLog();
     shownTicket = null;
+    liveTicket = null;
     setWritable(true);
     if (strings.greeting) bubble("greet", strings.greeting);
     if (strings.ask_identity && !token() && !identity.email && !identity.external_id) ask();
@@ -1028,16 +1086,25 @@
     // A hidden tab has nobody looking at it. Polling it anyway is how a
     // chat widget ends up in somebody's battery report.
     if (document.hidden) { schedule(); return; }
-    fetch(BASE + "/widget/api/poll", { headers: auth({}) })
+    // Keep watching the displayed conversation after it closes: the closing
+    // notice and CSAT choices arrive on that same thread, no longer in /poll.
+    var watchedTicket = view === "chat" ? (shownTicket || liveTicket) : null;
+    var pollPath = watchedTicket ? "/widget/api/thread/" + watchedTicket : "/widget/api/poll";
+    fetch(BASE + pollPath, { headers: auth({}) })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (data) {
         if (!data) return;
-        liveTicket = data.ticket;
+        liveTicket = data.open === false ? null : data.ticket;
         // Only paint into the view that is showing this conversation. A
         // visitor reading last month's thread must not have today's replies
         // appended to it.
         if (view === "chat" && (shownTicket === null || shownTicket === data.ticket)) {
           render(data.messages);
+          typingLine.textContent = (data.typing || []).length ? (strings.typing || '{who} is typing…').replace('{who}', data.typing.join(', ')) : '';
+          if (data.ticket) {
+            shownTicket = data.ticket;
+            setWritable(data.open !== false);
+          }
         } else if ((data.messages || []).some(function (m) {
           return m.from !== "you" && !seen[m.id];
         })) {
@@ -1143,7 +1210,7 @@
 
   function afterSend(data) {
     if (data.session) token(data.session);
-    shownTicket = null;      // we are on the active conversation again
+    shownTicket = data.ticket;
     liveTicket = data.ticket;
     presence();
     render(data.messages);
@@ -1158,50 +1225,67 @@
       : (strings.offline || "Could not send. Please try again."));
   }
 
-  composer.addEventListener("submit", function (e) {
+  function resetContext() { replying=null;editing=null;contextBar.hidden=true;contextBar.replaceChildren(); }
+  function confirmAction(label, callback) {
+    var dialog=document.createElement('dialog');dialog.className='widget-confirm';
+    var title=document.createElement('h2');title.textContent=label;title.id='widget-confirm-title';dialog.setAttribute('aria-labelledby',title.id);
+    var cancel=document.createElement('button');cancel.type='button';cancel.textContent=strings.cancel || 'Cancel';
+    var apply=document.createElement('button');apply.type='button';apply.textContent=label;
+    cancel.addEventListener('click',function(){dialog.close();});
+    apply.addEventListener('click',function(){dialog.close();callback();});
+    dialog.addEventListener('close',function(){dialog.remove();},{once:true});
+    dialog.append(title,cancel,apply);document.body.append(dialog);dialog.showModal();cancel.focus();
+  }
+  function showContext(text) {
+    contextBar.hidden=false; contextBar.replaceChildren();
+    var label=document.createElement('span');label.textContent=(text || '').slice(0,200);
+    var cancel=document.createElement('button');cancel.type='button';cancel.textContent=strings.cancel || 'Cancel';
+    cancel.addEventListener('click',function(){if(editing)box.value='';SpAutoGrow.resize(box);resetContext();});contextBar.append(label,cancel);
+  }
+  function mutate(m,action,text) {
+    return fetch(BASE+'/widget/api/message/'+m.id+'/'+action, {
+      method:'POST',headers:auth({'content-type':'application/json'}),body:JSON.stringify({text:text,revision:m.revision || 0})
+    }).then(function(r){if(!r.ok)throw new Error('conflict');return r.json();})
+      .then(function(data){render(data.messages);resetContext();return true;})
+      .catch(function(err){failed(err);return false;});
+  }
+  composer.addEventListener("submit", async function (e) {
     e.preventDefault();
-    var text = box.value.trim();
-    if (!text) return;
-
-    box.value = "";
-    box.style.height = "auto";
-    send.disabled = true;
-    presence(strings.sending || "…");
-
-    var body = identityFields();
-    body.text = text;
-    body.lang = navigator.language || "";
-
-    fetch(BASE + "/widget/api/message", {
-      method: "POST",
-      headers: auth({ "content-type": "application/json" }),
-      body: JSON.stringify(body),
-    }).then(function (r) {
-      if (r.status === 429) throw new Error("slow_down");
-      if (!r.ok) throw new Error("failed");
-      return r.json();
-    }).then(afterSend).catch(function (err) {
-      failed(err);
-      // The text is gone from the box, so it has to come back somewhere or
-      // the visitor has simply lost what they wrote.
-      box.value = text;
-    }).then(function () {
-      send.disabled = false;
-      box.focus();
-    });
+    if(send.disabled) return;
+    var text=box.value.trim();
+    if(!text && !queuedFiles.length) return;
+    send.disabled=true;
+    try {
+      if(editing) {if(await mutate(editing,'edit',text))box.value='';return;}
+      if(text) {
+        var body=identityFields(); body.text=text;body.lang=navigator.language || '';body.reply_to_id=replying;
+        var response=await fetch(BASE+'/widget/api/message',{method:'POST',headers:auth({'content-type':'application/json'}),body:JSON.stringify(body)});
+        if(!response.ok)throw new Error(response.status===429?'slow_down':'failed');
+        afterSend(await response.json());box.value='';box.style.height='auto';
+      }
+      while(queuedFiles.length) {
+        if(!await upload(queuedFiles[0]))return;
+        queuedFiles.shift();showPreviews();
+      }
+      resetContext();
+    } catch(err) {failed(err);}
+    finally {send.disabled=false;SpAutoGrow.resize(box);box.focus();}
   });
 
   // Enter sends, Shift+Enter breaks the line — the convention every chat
   // uses, and getting it backwards is noticed immediately.
   box.addEventListener("keydown", function (e) {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
       composer.requestSubmit();
     }
   });
+  var lastTyping=0;
   box.addEventListener("input", function () {
-    box.style.height = "auto";
-    box.style.height = Math.min(box.scrollHeight, 120) + "px";
+    if(token() && liveTicket && Date.now()-lastTyping>3000) {
+      lastTyping=Date.now();fetch(BASE+'/widget/api/typing',{method:'POST',headers:auth({})}).catch(function(){});
+    }
+    SpAutoGrow.resize(box);
   });
 
   // --------------------------------------------------------- attachments
@@ -1222,10 +1306,11 @@
     var form = new FormData();
     form.append("file", file, file.name);
     form.append("lang", navigator.language || "");
+    if(replying)form.append("reply_to_id", replying);
     var id = identityFields();
     Object.keys(id).forEach(function (k) { form.append(k, id[k]); });
 
-    fetch(BASE + "/widget/api/upload", {
+    return fetch(BASE + "/widget/api/upload", {
       method: "POST",
       headers: auth({}),          // no content-type: the browser sets the boundary
       body: form,
@@ -1237,6 +1322,7 @@
     }).then(function (data) {
       pending.remove();
       afterSend(data);
+      return true;
     }).catch(function (err) {
       pending.remove();
       if (err.message === "too_large") {
@@ -1246,13 +1332,30 @@
       } else {
         bubble("note", strings.file_failed || "Could not upload that file.");
       }
+      return false;
     });
   }
 
+  function showPreviews() {
+    previews.querySelectorAll('[data-blob]').forEach(function(n){URL.revokeObjectURL(n.dataset.blob);});
+    previews.replaceChildren();
+    queuedFiles.forEach(function(file,index){
+      var card=document.createElement('div');card.className='queued-file';
+      var url=URL.createObjectURL(file);card.dataset.blob=url;
+      if(/^image\/(png|jpeg|gif|webp)$/.test(file.type)){var image=document.createElement('img');image.src=url;image.alt=file.name;card.append(image);}
+      var label=document.createElement('a');label.textContent=file.name+' · '+humanSize(file.size);label.href=url;label.target='_blank';label.rel='noopener';
+      if(!/^(image\/(png|jpeg|gif|webp)|application\/pdf)$/.test(file.type))label.download=file.name;
+      var remove=document.createElement('button');remove.type='button';remove.textContent='×';remove.setAttribute('aria-label',(strings.delete || 'Remove')+' '+file.name);
+      remove.addEventListener('click',function(){queuedFiles.splice(index,1);showPreviews();});card.append(label,remove);previews.append(card);
+    });
+  }
   function uploadAll(files) {
-    // One request each, so one oversized file does not lose the others, and
-    // each arrives as its own message the way Telegram albums do.
-    Array.prototype.slice.call(files || []).forEach(upload);
+    if(editing || send.disabled) return;
+    Array.prototype.slice.call(files || []).forEach(function(file){
+      if(queuedFiles.length>=10 || (strings.max_file_bytes && file.size>strings.max_file_bytes)) {bubble('note',strings.file_too_large || 'File limit reached.');return;}
+      queuedFiles.push(file);
+    });
+    showPreviews();
   }
 
   fileInput.addEventListener("change", function () {

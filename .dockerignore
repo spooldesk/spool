@@ -10,6 +10,10 @@
 *.db-wal
 *.sqlite
 *.sqlite3
+data/
+backups/
+secrets.key
+**/secrets.key
 
 # Python caches / envs
 __pycache__/
@@ -21,6 +25,7 @@ __pycache__/
 .ruff_cache/
 venv/
 .venv/
+.venv-tools/
 env/
 ENV/
 
@@ -37,10 +42,17 @@ logs/
 .idea/
 .vscode/
 .claude/
+.agent-runs/
+agents/
 *.swp
 
 # Docs & build files not needed at runtime
 *.md
+docs/
+demo_screenshots/
+assets/
+tests/
+.github/
 Dockerfile
 docker-compose.yml
 .dockerignore

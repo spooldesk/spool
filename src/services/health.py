@@ -134,6 +134,32 @@ async def check() -> Health:
     and some arithmetic over values another loop already recorded.
     """
     checks = [await _database()]
+    if checks[0].ok:
+        checks.append(await _queues())
     if (mail := _mailbox()) is not None:
         checks.append(mail)
     return Health(tuple(checks))
+
+
+async def _queues() -> Check:
+    """Notice durable work that stopped progressing, without exposing payloads."""
+    from datetime import datetime, timedelta
+    from sqlalchemy import func, select
+    from src.database.db import db_session
+    from src.database.delivery_models import OutboundJob
+    from src.database.inbound_models import InboundEvent
+    cutoff = datetime.utcnow() - timedelta(minutes=15)
+    try:
+        async with db_session() as session:
+            incoming = (await session.execute(select(func.count()).select_from(InboundEvent).where(
+                InboundEvent.status == "pending", InboundEvent.created_at < cutoff,
+            ))).scalar_one()
+            outgoing = (await session.execute(select(func.count()).select_from(OutboundJob).where(
+                OutboundJob.status.not_in(["delivered", "cancelled"]),
+                OutboundJob.created_at < cutoff,
+            ))).scalar_one()
+        if incoming or outgoing:
+            return Check("delivery_queues", False, "messages need delivery recovery; inspect the queues")
+        return Check("delivery_queues", True)
+    except Exception:
+        return Check("delivery_queues", False, "queue state unavailable")

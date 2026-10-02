@@ -1,19 +1,8 @@
-"""Every Tailwind class on the landing page has to exist in its stylesheet.
+"""Both generated landing pages must use classes present in the shipped CSS.
 
-The landing has no build step. `docs/style.css` is a compiled Tailwind file,
-committed, and Cloudflare Pages serves the two of them as they are — so a
-class that is not already in that CSS does nothing, and says nothing about
-doing nothing. There is no console warning and no visual hint that a rule was
-expected.
-
-That is not hypothetical. `sm:grid-cols-3` is not in the build (the file has
-`sm:grid-cols-2`, `sm:grid-cols-4`, `md:grid-cols-3`, `lg:grid-cols-3`), so a
-three-column gallery rendered as one column of 928px-wide images and the
-section became five thousand pixels tall. `whitespace-nowrap` is not in it
-either, so a code snippet that was supposed to scroll wrapped instead.
-
-Both are the sort of thing you find by looking at the page on the day you
-happen to look at the page. This finds them on the next commit.
+The old landing silently relied on absent Tailwind utilities. The new landing
+uses a handwritten stylesheet and a shared bilingual template, but an undefined
+class still silently loses its layout. Keep the original regression guard.
 """
 
 import re
@@ -45,8 +34,8 @@ def _escape(cls: str) -> str:
     return cls
 
 
-def _classes_used() -> set[str]:
-    html = LANDING.read_text(encoding="utf-8")
+def _classes_used(landing=LANDING) -> set[str]:
+    html = landing.read_text(encoding="utf-8")
     used: set[str] = set()
     for attr in re.findall(r'class="([^"]*)"', html):
         for cls in attr.split():
@@ -56,11 +45,12 @@ def _classes_used() -> set[str]:
     return used
 
 
-def test_the_landing_uses_only_classes_its_stylesheet_has():
-    assert LANDING.exists() and STYLESHEET.exists()
+@pytest.mark.parametrize("landing", [LANDING, Path("docs/ru/index.html")])
+def test_the_landing_uses_only_classes_its_stylesheet_has(landing):
+    assert landing.exists() and STYLESHEET.exists()
 
     css = STYLESHEET.read_text(encoding="utf-8")
-    used = _classes_used()
+    used = _classes_used(landing)
     assert len(used) > 40, "the class scraper stopped matching anything"
 
     missing = sorted(
@@ -88,15 +78,16 @@ def test_the_check_would_have_caught_the_ones_that_got_through(known_absent):
     )
 
 
-def test_no_template_syntax_survives_on_the_landing():
+@pytest.mark.parametrize("landing", [LANDING, Path("docs/ru/index.html")])
+def test_no_template_syntax_survives_on_the_landing(landing):
     """The landing is served raw, so a Jinja tag is just text on the page.
 
-    Everything else in docs/ and src/dashboard/templates/ is a Jinja
-    template, and a comment written out of habit renders as a paragraph of
+    The application's src/dashboard/templates/ files use Jinja, and a
+    comment copied from there can render as a paragraph of
     developer notes in the middle of the pricing table. It did — between the
     self-hosted feature list and its button, in production font size.
     """
-    html = LANDING.read_text(encoding="utf-8")
+    html = landing.read_text(encoding="utf-8")
     strays = re.findall(r"\{[#{%].{0,50}", html, re.S)
     assert not strays, (
         "docs/index.html is static HTML served as-is, but it contains template "

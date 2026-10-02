@@ -15,7 +15,9 @@
 services:
   caddy:
     image: caddy:2-alpine
-    depends_on: [dashboard]
+    depends_on:
+      dashboard:
+        condition: service_healthy
     ports:
       - "80:80"
       - "443:443"
@@ -50,7 +52,8 @@ services:
     logging: *logging
     # A helpdesk on the smallest VPS anyone will run this on. The limit is
     # not tuning — it is so that one runaway request takes the container down
-    # instead of the host, and the healthcheck brings it back.
+    # instead of the host. Restart policy handles process exits; an unhealthy
+    # status alone needs monitoring and does not restart a Compose container.
     deploy:
       resources:
         limits:

@@ -22,7 +22,7 @@ from aiogram.exceptions import (
     TelegramNotFound,
     TelegramRetryAfter,
 )
-from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup, ReplyParameters
 
 from collections.abc import Sequence
 
@@ -72,12 +72,14 @@ class TelegramChannel:
     # -- outbound ---------------------------------------------------------
 
     async def send_text(
-        self, address: str, text: str, *, options: Sequence[Option] | None = None
+        self, address: str, text: str, *, options: Sequence[Option] | None = None,
+        reply_ref: str | None = None,
     ) -> Delivery:
         try:
             sent = await self._bot.send_message(
                 chat_id=self._chat(address), text=text,
                 reply_markup=_keyboard(options),
+                reply_parameters=ReplyParameters(message_id=int(reply_ref)) if reply_ref else None,
             )
         except TelegramRetryAfter as e:
             # Flood control. Telegram names the delay it wants; the caller
@@ -93,27 +95,35 @@ class TelegramChannel:
             return Delivery.failed("e_user_chat_not_found", address, blocked=True)
         except TelegramBadRequest as e:
             return Delivery.failed("e_send_rejected", str(e))
-        except (TelegramAPIError, ValueError) as e:
-            return Delivery.failed("e_send_failed", f"{type(e).__name__}: {e}")
+        except TelegramAPIError:
+            return Delivery.failed("e_delivery_uncertain")
+        except ValueError:
+            return Delivery.failed("e_send_failed")
         return Delivery.sent(sent.message_id)
 
     async def send_file(
-        self, address: str, *, filename: str, content: bytes, caption: str | None = None
+        self, address: str, *, filename: str, content: bytes, caption: str | None = None,
+        reply_ref: str | None = None,
     ) -> Delivery:
         try:
             sent = await self._bot.send_document(
                 chat_id=self._chat(address),
                 document=BufferedInputFile(content, filename=filename),
                 caption=caption,
+                reply_parameters=ReplyParameters(message_id=int(reply_ref)) if reply_ref else None,
             )
+        except TelegramRetryAfter as e:
+            return Delivery.failed("e_send_rate_limited", retry_after=float(e.retry_after))
         except TelegramForbiddenError:
             return Delivery.failed("e_user_blocked_bot", address, blocked=True)
         except TelegramNotFound:
             return Delivery.failed("e_user_chat_not_found", address, blocked=True)
         except TelegramBadRequest as e:
             return Delivery.failed("e_send_rejected", str(e))
-        except (TelegramAPIError, ValueError) as e:
-            return Delivery.failed("e_send_failed", f"{type(e).__name__}: {e}")
+        except TelegramAPIError:
+            return Delivery.failed("e_delivery_uncertain")
+        except ValueError:
+            return Delivery.failed("e_send_failed")
 
         # Two references, for two different jobs: the message id addresses
         # this message for an unsend, and the file_id lets the same upload be
@@ -123,6 +133,25 @@ class TelegramChannel:
             ref=str(sent.message_id),
             file_ref=sent.document.file_id if sent.document else None,
         )
+
+    async def edit_message(self, address: str, ref: str, text: str, *, caption=False) -> Delivery:
+        try:
+            kwargs = dict(chat_id=self._chat(address), message_id=int(ref), parse_mode=None)
+            if caption:
+                await self._bot.edit_message_caption(**kwargs, caption=text)
+            else:
+                await self._bot.edit_message_text(**kwargs, text=text)
+            return Delivery.sent(ref)
+        except TelegramBadRequest as exc:
+            if "message is not modified" in str(exc).lower():
+                return Delivery.sent(ref)
+            return Delivery.failed("chat_edit_refused")
+        except TelegramRetryAfter:
+            return Delivery.failed("e_send_rate_limited")
+        except (TelegramForbiddenError, TelegramNotFound):
+            return Delivery.failed("chat_edit_refused")
+        except Exception:
+            return Delivery.failed("chat_edit_uncertain")
 
     async def fetch_file(self, ref: str) -> bytes | None:
         """A file_id back into bytes. Two calls, because Telegram says so:

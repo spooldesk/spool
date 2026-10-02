@@ -1,55 +1,43 @@
-"""Reading the support mailbox.
+"""IMAP UID intake with a durable inbox and commit-before-Seen semantics.
 
-Runs in the dashboard process, not the bot's. The bot needs a Telegram token
-and an instance may not have one — a helpdesk on the widget and email alone
-is a supported configuration, and putting the mail loop where it might never
-start would quietly make it not one.
-
-Three things this has to get right, and the third is the one that bites.
-
-**Not reprocessing.** Messages are fetched UNSEEN and marked seen once they
-have landed in a ticket. A message that fails to parse is marked seen anyway
-and logged, because the alternative is a poison message the loop retries
-every minute forever.
-
-**Not blocking.** `imaplib` is synchronous and a mail server may take half a
-minute to answer, so the whole exchange happens in a worker thread. An event
-loop waiting on somebody else's IMAP is a dashboard that has stopped serving
-pages.
-
-**Not talking to itself.** This is the failure mode that turns a support
-mailbox into an outage. Our own reply lands back in the mailbox on some
-hosts; an out-of-office autoresponder answers it; that answer is a new
-ticket; closing the ticket sends a message; the autoresponder answers again.
-Four separate guards below, and they are cheap compared to the incident.
+Every fetched RFC822 body is persisted before marking the IMAP message Seen.
+A receipt changes from pending to processed in the same transaction as all
+ticket messages; failed processing retries the durable original input.
 """
 
 from __future__ import annotations
 
 import asyncio
 import email as email_lib
-import time
+import hashlib
 import imaplib
 import logging
+import re
+import ssl
+import time
+from dataclasses import dataclass
 from email.message import Message
 
-from src.channels import email as email_channel
-from src.channels import email_parse
+from src.channels import email as email_channel, email_parse
 from src.database.db import db_session
-from src.services import file_store, intake_service
+from src.services import file_store, intake_service, inbound_service, email_thread_service
 
 logger = logging.getLogger(__name__)
-
-#: How often the mailbox is checked. A minute is invisible to somebody who
-#: has just sent an email and cheap enough to run forever.
 POLL_SECONDS = 60
-
-#: Never fetch more than this in one pass. A mailbox that has been collecting
-#: for a month should not turn its first poll into a thousand tickets and a
-#: timeout; the rest arrive on the next pass, a minute later.
 MAX_PER_PASS = 25
-
+MAX_BATCH_BYTES = 32 * 1024 * 1024
 _TIMEOUT = 60.0
+
+
+@dataclass(frozen=True)
+class FetchedMail:
+    uid: bytes
+    uidvalidity: str
+    payload: bytes
+
+
+class FetchedBatch(list[FetchedMail]):
+    error: str | None = None
 
 
 def _looks_automated(message: Message, our_address: str) -> bool:
@@ -76,205 +64,228 @@ def _looks_automated(message: Message, our_address: str) -> bool:
     return bool(sender) and sender == (our_address or "").lower()
 
 
-def _fetch_unseen(settings) -> list[tuple[bytes, bytes]]:
-    """(uid, raw message) for everything unread. Blocking; called in a thread."""
-    with imaplib.IMAP4_SSL(settings.email_imap_host, settings.email_imap_port) as box:
-        box.socket().settimeout(_TIMEOUT)
-        box.login(settings.email_user, settings.email_password)
-        box.select("INBOX")
 
-        ok, data = box.search(None, "UNSEEN")
+def _open(settings):
+    return imaplib.IMAP4_SSL(settings.email_imap_host, settings.email_imap_port,
+                            timeout=_TIMEOUT, ssl_context=ssl.create_default_context())
+
+
+def _select(box, settings) -> str:
+    box.login(settings.email_user, settings.email_password)
+    ok, _ = box.select("INBOX")
+    if ok != "OK":
+        raise OSError("IMAP inbox cannot be selected")
+    _, values = box.response("UIDVALIDITY")
+    value = (values or [None])[0]
+    validity = value.decode("ascii") if isinstance(value, bytes) else str(value or "")
+    if not validity.isdigit():
+        raise OSError("IMAP server did not provide UIDVALIDITY")
+    return validity
+
+
+def _fetch_unseen(settings) -> list[FetchedMail]:
+    with _open(settings) as box:
+        validity = _select(box, settings)
+        ok, data = box.uid("SEARCH", None, "UNSEEN")
         if ok != "OK":
-            return []
-        uids = (data[0] or b"").split()[:MAX_PER_PASS]
-
-        out: list[tuple[bytes, bytes]] = []
-        for uid in uids:
-            # BODY.PEEK, so fetching does not mark it read behind our back —
-            # a message must not be considered handled until it is in a
-            # ticket, or a crash mid-pass loses it silently.
-            ok, payload = box.fetch(uid, "(BODY.PEEK[])")
-            if ok != "OK" or not payload or not isinstance(payload[0], tuple):
+            raise OSError("IMAP UID SEARCH failed")
+        out = FetchedBatch()
+        total_bytes = 0
+        for uid in (data[0] or b"").split():
+            if len(out) >= MAX_PER_PASS:
+                break
+            if not uid.isdigit():
+                raise OSError("invalid IMAP UID")
+            ok, sizes = box.uid("FETCH", uid, "(RFC822.SIZE)")
+            if ok != "OK":
+                raise OSError("IMAP UID FETCH size failed")
+            match = re.search(rb"RFC822.SIZE\s+(\d+)", b" ".join(
+                entry for entry in (sizes or []) if isinstance(entry, bytes)))
+            if match and int(match.group(1)) > inbound_service.MAX_EVENT_BYTES:
+                # Leave the original unread for operator attention, but do
+                # not let one oversized message hide later valid messages.
+                out.error = "InboxFull"
                 continue
-            out.append((uid, payload[0][1]))
+            if out and match and total_bytes + int(match.group(1)) > MAX_BATCH_BYTES:
+                break
+            ok, parts = box.uid("FETCH", uid, "(BODY.PEEK[])")
+            if ok != "OK":
+                raise OSError("IMAP UID FETCH failed")
+            literal = next((part[1] for part in (parts or [])
+                            if isinstance(part, tuple) and isinstance(part[1], bytes)), None)
+            if literal is None:
+                # An expunge between SEARCH/FETCH means there is no message;
+                # absence is safe, but an actual IMAP failure above is not.
+                continue
+            if len(literal) > inbound_service.MAX_EVENT_BYTES:
+                out.error = "InboxFull"
+                continue
+            if out and total_bytes + len(literal) > MAX_BATCH_BYTES:
+                break
+            out.append(FetchedMail(uid, validity, literal))
+            total_bytes += len(literal)
         return out
 
 
-def _mark_seen(settings, uids: list[bytes]) -> None:
-    """Blocking; called in a thread. Failure here means a message is handled
-    twice, so it is worth its own connection rather than riding on one that
-    may already have timed out."""
-    if not uids:
+def _mark_seen(settings, messages: list[FetchedMail]) -> None:
+    if not messages:
         return
-    with imaplib.IMAP4_SSL(settings.email_imap_host, settings.email_imap_port) as box:
-        box.socket().settimeout(_TIMEOUT)
-        box.login(settings.email_user, settings.email_password)
-        box.select("INBOX")
-        for uid in uids:
-            box.store(uid, "+FLAGS", "\\Seen")
+    with _open(settings) as box:
+        validity = _select(box, settings)
+        for message in messages:
+            if validity != message.uidvalidity:
+                raise OSError("IMAP UIDVALIDITY changed; no messages marked seen")
+            ok, _ = box.uid("STORE", message.uid, "+FLAGS.SILENT", r"(\Seen)")
+            if ok != "OK":
+                raise OSError("IMAP UID STORE failed")
+
+
+async def prepare_event(raw: bytes, context: dict):
+    message = email_lib.message_from_bytes(raw)
+    if _looks_automated(message, context.get("our_address", "")):
+        return None
+    return email_parse.parse(message)
+
+
+async def record_event(session, prepared, context: dict, *, event_id: int):
+    from src.services.inbound_service import Recorded
+
+    if prepared is None or not prepared.from_address or prepared.is_empty:
+        return Recorded(rejected="automated_or_empty")
+    return await _record_in_session(session, prepared, mailbox=context["mailbox"],
+                                    fallback=context.get("source_key") or str(event_id))
+
+
+async def _record_in_session(session, inbound, *, mailbox: str, fallback: str):
+    from src.services.inbound_service import Recorded
+
+    prior = await email_thread_service.find(session, mailbox, inbound.from_address, inbound.message_id)
+    if prior is not None and prior.direction == "inbound":
+        return Recorded(prior.ticket_id or 0, prior.message_row_id or 0)
+    conversation_key = await email_thread_service.conversation_for(
+        session, inbound, mailbox=mailbox, fallback=fallback)
+    stored = []
+    try:
+        # Every part belongs to the same transaction and ticket. A disk error
+        # is a retryable failure, never permission to discard an attachment.
+        for attachment in inbound.attachments:
+            stored.append((await asyncio.to_thread(file_store.put, attachment.content), attachment))
+        text = inbound.text or inbound.subject
+
+        def incoming(body, entry=None):
+            ref, part = entry if entry else (None, None)
+            return intake_service.Inbound(
+                channel=email_channel.NAME, address=inbound.from_address, text=body,
+                display_name=inbound.from_name or None, email=inbound.from_address,
+                conversation_key=conversation_key,
+                attachment=intake_service.Attachment(
+                    ref=ref, name=part.filename, mime_type=part.mime_type,
+                    size=len(part.content), kind="photo" if part.mime_type.startswith("image/") else "document",
+                ) if part else None,
+            )
+        first = await intake_service.receive(session, incoming(text, stored[0] if stored else None))
+        if first.rejected:
+            for ref, _ in stored:
+                file_store.delete(ref)
+            return Recorded(rejected=first.rejected)
+        ids = [first.message_id]
+        for entry in stored[1:]:
+            result = await intake_service.receive(session, incoming("", entry))
+            if result.rejected:
+                raise RuntimeError("attachment intake refused after first message")
+            ids.append(result.message_id)
+        await email_thread_service.remember(
+            session, mailbox=mailbox, address=inbound.from_address, message_id=inbound.message_id,
+            conversation_key=conversation_key, ticket_id=first.ticket_id, subject=inbound.subject,
+            message_row_id=first.message_id,
+        )
+        return Recorded(first.ticket_id, first.message_id, first.opened_ticket, message_ids=tuple(ids))
+    except BaseException:
+        for ref, _ in stored:
+            file_store.delete(ref)
+        raise
 
 
 async def _record(inbound: email_parse.Inbound) -> int | None:
-    """Put one email into a ticket. Returns the ticket id, or None."""
-    stored: list[tuple[str, email_parse.Attachment]] = []
-    for attachment in inbound.attachments:
-        try:
-            stored.append((file_store.put(attachment.content), attachment))
-        except OSError as e:  # noqa: BLE001 — a full or read-only disk
-            logger.error(f"Could not store a mail attachment: {e}")
-
-    # The subject carries the question often enough to be worth keeping when
-    # the body is a screenshot and the word "this".
-    text = inbound.text
-    if inbound.subject and not text:
-        text = inbound.subject
-
-    first_ref, first = (stored[0] if stored else (None, None))
-    async with db_session() as session:
-        result = await intake_service.receive(session, intake_service.Inbound(
-            channel=email_channel.NAME,
-            address=inbound.from_address,
-            text=text,
-            display_name=inbound.from_name or None,
-            email=inbound.from_address,
-            attachment=intake_service.Attachment(
-                ref=first_ref, name=first.filename,
-                mime_type=first.mime_type, size=len(first.content),
-                kind="photo" if first.mime_type.startswith("image/") else "document",
-            ) if first_ref else None,
-        ))
-        await session.commit()
-
-    if result.rejected:
-        for ref, _ in stored:
-            file_store.delete(ref)
-        return None
-
-    # The rest of the attachments, each as its own message. One email with
-    # four files is four things to look at, which is how Telegram albums
-    # arrive too — and `receive` takes one attachment because that is what a
-    # message is.
-    for ref, attachment in stored[1:]:
-        async with db_session() as session:
-            await intake_service.receive(session, intake_service.Inbound(
-                channel=email_channel.NAME,
-                address=inbound.from_address,
-                text="",
-                attachment=intake_service.Attachment(
-                    ref=ref, name=attachment.filename,
-                    mime_type=attachment.mime_type, size=len(attachment.content),
-                    kind="photo" if attachment.mime_type.startswith("image/") else "document",
-                ),
-            ))
-            await session.commit()
-
-    if result.opened_ticket:
-        await _announce(result.ticket_id)
-    return result.ticket_id
-
-
-async def _announce(ticket_id: int) -> None:
-    """Put it in front of the operators. Swallowed: the mail is recorded
-    either way, and failing the pass because the operators' chat was
-    unreachable would have the priorities backwards."""
-    try:
-        from src.dashboard.bot_client import get_bot
-        from src.services import announce_service
-
-        await announce_service.announce_ticket(get_bot(), ticket_id)
-    except Exception as e:  # noqa: BLE001
-        logger.warning(f"Ticket #{ticket_id} not announced: {e}")
+    """Local intake helper; the IMAP path uses the durable event processor."""
+    from src.config import load_settings
+    async with db_session(write=True) as session:
+        result = await _record_in_session(session, inbound,
+            mailbox=email_thread_service.mailbox_key(load_settings()), fallback=hashlib.sha256(
+                (inbound.from_address + inbound.subject + inbound.full_text).encode()).hexdigest())
+    return result.ticket_id or None
 
 
 async def run_once() -> dict:
-    """One pass over the mailbox. Never raises."""
     from src.config import load_settings
 
     settings = load_settings()
     if not settings.has_email:
         return {"fetched": 0, "opened": 0, "skipped": 0}
-
+    result = {"fetched": 0, "opened": 0, "skipped": 0}
+    mailbox = email_thread_service.mailbox_key(settings)
     try:
-        raw = await asyncio.to_thread(_fetch_unseen, settings)
-    except Exception as e:  # noqa: BLE001 — imaplib raises a wide family
-        logger.warning(f"Could not read the mailbox: {e}")
-        return {"fetched": 0, "opened": 0, "skipped": 0, "error": str(e)}
+        # Restart recovery still works if the original has since been read or
+        # removed by another mailbox client. Accepted raw data is ours now.
+        retried = await inbound_service.run_once(channel="email")
+        if retried["failed"] or await inbound_service.has_failed_pending(channel="email"):
+            result["error"] = "inbound processing failed; messages retained for retry"
+        fetched = await asyncio.to_thread(_fetch_unseen, settings)
+        result["fetched"] = len(fetched)
+        if getattr(fetched, "error", None):
+            result["error"] = fetched.error
+    except Exception as exc:
+        result["error"] = type(exc).__name__
+        logger.warning("Mailbox pass failed (%s)", type(exc).__name__)
+        return result
 
-    handled: list[bytes] = []
-    opened = skipped = 0
-
-    for uid, payload in raw:
+    handled = []
+    for message in fetched:
         try:
-            message = email_lib.message_from_bytes(payload)
-            if _looks_automated(message, settings.email_address):
-                logger.info("Skipped an automated message")
-                skipped += 1
-                handled.append(uid)
-                continue
-
-            inbound = email_parse.parse(message)
-            if not inbound.from_address or inbound.is_empty:
-                skipped += 1
-                handled.append(uid)
-                continue
-
-            ticket_id = await _record(inbound)
-            if ticket_id:
-                opened += 1
-                logger.info(f"Mail from {inbound.from_address} → ticket #{ticket_id}")
-            handled.append(uid)
-        except Exception as e:  # noqa: BLE001 — one bad message must not stop the rest
-            # Marked seen anyway. A message that cannot be parsed will not
-            # parse next minute either, and a poison message retried forever
-            # is a mailbox that stops working entirely.
-            logger.error(f"Could not handle a message, skipping it: {e}", exc_info=True)
-            skipped += 1
-            handled.append(uid)
-
+            source_key = hashlib.sha256(f"{mailbox}:{message.uidvalidity}:{message.uid.decode('ascii')}".encode()).hexdigest()
+            event_id = await inbound_service.enqueue(
+                channel="email", source_key=source_key, payload=message.payload,
+                context={"mailbox": mailbox, "source_key": source_key,
+                         "our_address": settings.email_address},
+            )
+            # The raw message is committed now. Even a parser/disk failure
+            # can be retried without IMAP, and cannot block the next batch.
+            handled.append(message)
+            processed = await inbound_service.process(event_id)
+            if processed.status in ("processed", "ignored"):
+                result["opened"] += processed.opened_ticket
+                result["skipped"] += processed.status == "ignored"
+            else:
+                result["error"] = processed.error or "inbound processing pending"
+        except Exception as exc:
+            result["error"] = type(exc).__name__
+            logger.warning("Email UID could not be persisted/processed (%s)", type(exc).__name__)
     try:
         await asyncio.to_thread(_mark_seen, settings, handled)
-    except Exception as e:  # noqa: BLE001
-        # The messages are in tickets; failing to flag them means they arrive
-        # again next pass. Worth a warning and not worth losing sleep: the
-        # duplicate lands on the same open ticket.
-        logger.warning(f"Could not mark messages read: {e}")
-
-    return {"fetched": len(raw), "opened": opened, "skipped": skipped}
+    except Exception as exc:
+        result["error"] = type(exc).__name__
+        logger.warning("Could not mark committed email receipts seen; retry is deduplicated")
+    return result
 
 
-#: When a pass last worked, and what went wrong if the most recent one did
-#: not. Swallowing every failure is right — see the docstring below — but it
-#: leaves nobody able to tell a mailbox that is quiet from one that has been
-#: refusing the password for three days. src/services/health.py reads these.
 last_success: float | None = None
 last_error: str | None = None
 started_at: float | None = None
 
 
 async def poll_loop() -> None:
-    """Check the mailbox until cancelled.
-
-    Every failure is swallowed and retried on the next pass, for the same
-    reason the SLA loop does it: a background loop that dies quietly is worse
-    than one that logs and keeps going, because nobody notices until the day
-    it mattered.
-
-    What it records as it goes is the other half of that. A loop that keeps
-    going and tells nobody it is failing looks exactly like a loop that is
-    working, which is the failure this product cannot afford to sell.
-    """
     global last_success, last_error, started_at
     started_at = time.monotonic()
-    logger.info(f"Mailbox polling every {POLL_SECONDS}s")
     while True:
         try:
             await asyncio.sleep(POLL_SECONDS)
             result = await run_once()
-            last_success, last_error = time.monotonic(), None
-            if result.get("opened") or result.get("skipped"):
-                logger.info(f"Mail pass: {result}")
+            if result.get("error"):
+                last_error = str(result["error"])
+            else:
+                last_success, last_error = time.monotonic(), None
         except asyncio.CancelledError:
             raise
-        except Exception as e:  # noqa: BLE001
-            last_error = f"{type(e).__name__}: {e}"
-            logger.warning(f"Mail pass failed, will retry: {e}")
+        except Exception as exc:
+            last_error = type(exc).__name__
+            logger.warning("Mailbox pass failed; retained work will be retried")

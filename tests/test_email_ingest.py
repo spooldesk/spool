@@ -19,6 +19,7 @@ from src.channels import email as email_channel
 from src.database.db import db_session
 from src.services import article_service  # noqa: F401 — keeps table creation ordered
 from src.services import email_ingest, intake_service
+from tests.conftest import next_tg_id
 
 
 def _raw(*, frm="Ann Fowler <ann@shop.example>", subject="Card declined",
@@ -27,7 +28,7 @@ def _raw(*, frm="Ann Fowler <ann@shop.example>", subject="Card declined",
     m["From"] = frm
     m["To"] = "support@ours.example"
     m["Subject"] = subject
-    m["Message-ID"] = "<abc123@shop.example>"
+    m["Message-ID"] = f"<mail-{next_tg_id()}@shop.example>"
     for key, value in (headers or {}).items():
         m[key] = value
     m.set_content(text)
@@ -118,12 +119,12 @@ async def test_the_sender_becomes_a_customer_with_their_address(initialized_db):
 
 
 async def test_a_reply_continues_the_same_conversation(initialized_db):
-    """Not by threading headers — by who sent it, which is how every channel
-    here works and is what makes "one active ticket per customer" true across
-    all of them."""
-    first = await _record(_raw(text="It fails at checkout."))
+    """The reply's parent header identifies its topic, not just the sender."""
+    original = _raw(text="It fails at checkout.")
+    first = await _record(original)
     second = await _record(_raw(subject="Re: Card declined",
-                                text="Still failing this morning."))
+                                text="Still failing this morning.",
+                                headers={"In-Reply-To": original["Message-ID"]}))
     assert first == second
     assert "Still failing this morning." in await _transcript(first)
 
@@ -259,9 +260,9 @@ async def test_a_message_that_cannot_be_parsed_is_still_marked_read(
 
     marked: list[bytes] = []
     monkeypatch.setattr(email_ingest, "_fetch_unseen",
-                        lambda settings: [(b"7", b"this is not a mime message at all")])
+                        lambda settings: [email_ingest.FetchedMail(b"7", "123", b"this is not a mime message at all")])
     monkeypatch.setattr(email_ingest, "_mark_seen",
-                        lambda settings, uids: marked.extend(uids))
+                        lambda settings, messages: marked.extend(m.uid for m in messages))
 
     result = await email_ingest.run_once()
     assert result["fetched"] == 1
@@ -278,7 +279,7 @@ async def test_a_real_message_goes_all_the_way_through(initialized_db, monkeypat
 
     raw = _raw(frm="Bob <bob@shop.example>", text="The invoice is wrong.").as_bytes()
     monkeypatch.setattr(email_ingest, "_fetch_unseen",
-                        lambda settings: [(b"11", raw)])
+                        lambda settings: [email_ingest.FetchedMail(b"11", "123", raw)])
     monkeypatch.setattr(email_ingest, "_mark_seen", lambda settings, uids: None)
 
     result = await email_ingest.run_once()
@@ -296,7 +297,7 @@ async def test_an_autoresponder_in_the_mailbox_opens_nothing(
     reply = _raw(subject="Out of office",
                  headers={"Auto-Submitted": "auto-replied"}).as_bytes()
     monkeypatch.setattr(email_ingest, "_fetch_unseen",
-                        lambda settings: [(b"12", reply)])
+                        lambda settings: [email_ingest.FetchedMail(b"12", "123", reply)])
     monkeypatch.setattr(email_ingest, "_mark_seen", lambda settings, uids: None)
 
     result = await email_ingest.run_once()

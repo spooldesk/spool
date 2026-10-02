@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Optional, Any
 
 from aiogram import Bot
@@ -176,16 +175,34 @@ def _from_video_note(video_note: VideoNote) -> AttachmentData:
 
 
 def _from_sticker(sticker: Sticker) -> AttachmentData:
-    extension = Path(sticker.file_unique_id).suffix or ""
-    file_name = f"{sticker.emoji or 'sticker'}{extension}"
+    # Bot API Sticker has is_animated/is_video, not mime_type. Its opaque
+    # file_unique_id does not contain an extension either.
+    extension, mime = ("webm", "video/webm") if sticker.is_video else (
+        ("tgs", "application/x-tgsticker") if sticker.is_animated
+        else ("webp", "image/webp")
+    )
     return _build_attachment(
         content_type=ContentType.STICKER,
         file_id=sticker.file_id,
         file_unique_id=sticker.file_unique_id,
-        file_name=file_name,
+        file_name=f"sticker.{extension}",
         file_size=sticker.file_size,
-        mime_type=sticker.mime_type,
+        mime_type=mime,
     )
+
+
+def attachment_filename(attachment: AttachmentData) -> str:
+    """A portable filename when Telegram's media object has no name."""
+    if attachment.file_name:
+        name = attachment.file_name.replace("\\", "/").rpartition("/")[2]
+        name = "".join(c for c in name if c.isprintable() and c != '"')
+        if name:
+            return name[:120]
+    return {
+        "photo": "photo.jpg", "voice": "voice.ogg", "audio": "audio.mp3",
+        "video": "video.mp4", "video_note": "video-note.mp4",
+        "animation": "animation.mp4", "sticker": "sticker.webp",
+    }.get(attachment.content_type, "attachment.bin")
 
 
 async def send_attachment(
@@ -256,5 +273,3 @@ async def send_attachment(
     else:
         # Fallback: treat as a generic document.
         return await bot.send_document(document=attachment.file_id, **kwargs)
-
-

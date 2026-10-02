@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import Optional
 
 from fastapi import APIRouter, Request
@@ -109,28 +108,28 @@ async def overview(request: Request, days: int | None = None):
                              if stats["csat_count"] else dt("kpi_csat_hint_none")),
                 },
             ],
-            # Pass data to JS as JSON strings — Jinja's |tojson handles escaping.
-            "trend_labels_json": json.dumps([d for d, _ in trend]),
-            "trend_values_json": json.dumps([n for _, n in trend]),
+            # Pass data, not serialized strings: |tojson escapes script delimiters.
+            "trend_labels_json": [d for d, _ in trend],
+            "trend_values_json": [n for _, n in trend],
             # Time-series for both metrics, BOTH IN HOURS (uniform unit).
             # Days without data come through as None → Chart.js breaks the line
             # there instead of dropping to zero, which would lie about the metric.
-            "first_response_labels_json": json.dumps([d for d, _ in first_response_trend]),
-            "first_response_values_json": json.dumps(
-                [round(v, 2) if v is not None else None for v in first_response_hours_values]
-            ),
-            "close_time_labels_json": json.dumps([d for d, _ in close_time_trend]),
-            "close_time_values_json": json.dumps(
-                [round(v, 2) if v is not None else None for v in close_time_hours_values]
-            ),
+            "first_response_labels_json": [d for d, _ in first_response_trend],
+            "first_response_values_json": [
+                round(v, 2) if v is not None else None for v in first_response_hours_values
+            ],
+            "close_time_labels_json": [d for d, _ in close_time_trend],
+            "close_time_values_json": [
+                round(v, 2) if v is not None else None for v in close_time_hours_values
+            ],
             # Period-level summaries shown above each line chart
             "avg_first_response_hours_period": avg_first_response_hours_period,
             "avg_close_hours_period": avg_close_hours_period,
             "fmt_hours": _fmt_hours,
-            "category_labels_json": json.dumps([c for c, _ in by_category]),
-            "category_values_json": json.dumps([n for _, n in by_category]),
-            "users_labels_json": json.dumps([u["label"] for u in top_users]),
-            "users_values_json": json.dumps([u["total"] for u in top_users]),
+            "category_labels_json": [c for c, _ in by_category],
+            "category_values_json": [n for _, n in by_category],
+            "users_labels_json": [u["label"] for u in top_users],
+            "users_values_json": [u["total"] for u in top_users],
             "users_chart_height": users_chart_height,
             "heatmap_rows": heatmap,
             "heatmap_max": heatmap_max,

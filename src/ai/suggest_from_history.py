@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from src.ai.client import LLMUnavailable, get_client
+from src.ai import policy
 from src.ai.prompts import (
     SUGGEST_FROM_HISTORY_SYSTEM,
     build_suggest_from_history_user_prompt,
@@ -28,9 +29,6 @@ from src.utils.i18n import CLOSURE_SYSTEM_PREFIX
 
 logger = logging.getLogger(__name__)
 
-# Blacklist enforced in ai/notifier.py from settings; kept empty to avoid a
-# second source of truth.
-_BLACKLISTED_CATEGORY_FRAGMENTS: list[str] = []
 _MAX_USER_TEXT_CHARS = 2000
 _MAX_REPLY_CHARS = 600  # cap each historical admin reply to keep prompt sane
 _MAX_EXAMPLES = 5
@@ -80,13 +78,6 @@ class HistorySuggestResult:
     ai_call_id: Optional[int]
 
 
-def _is_category_blacklisted(category: str | None) -> bool:
-    if not category:
-        return False
-    low = category.lower()
-    return any(frag in low for frag in _BLACKLISTED_CATEGORY_FRAGMENTS)
-
-
 def _clean_reply(text: str) -> str:
     """Strip mirror prefixes and template/system markers from an admin reply."""
     text = (text or "").strip()
@@ -132,7 +123,8 @@ async def _gather_examples(session, team_id: int, category: str, exclude_ticket_
     for ticket in tickets:
         # First user message = the original question
         user_msgs = sorted(
-            (m for m in ticket.messages if m.sender_type == "user"),
+            (m for m in ticket.messages if m.sender_type == "user"
+             and not m.deleted_at and not m.is_internal),
             key=lambda m: m.created_at,
         )
         admin_msgs = sorted(
@@ -140,7 +132,8 @@ async def _gather_examples(session, team_id: int, category: str, exclude_ticket_
             # things there ("escalate, this one is trouble"), and this text can
             # end up paraphrased into a reply the USER reads.
             (m for m in ticket.messages
-             if m.sender_type == "admin" and not getattr(m, "is_internal", False)),
+             if m.sender_type == "admin" and not m.is_internal and not m.deleted_at
+             and getattr(m, "delivery_status", "delivered") == "delivered"),
             key=lambda m: m.created_at,
         )
         if not user_msgs:
@@ -200,7 +193,8 @@ async def _gather_full_transcript(session, ticket_id: int) -> str:
     from src.database.models import Message as MessageRecord
     result = await session.execute(
         select(MessageRecord)
-        .where(MessageRecord.ticket_id == ticket_id)
+        .where(MessageRecord.ticket_id == ticket_id,
+               MessageRecord.deleted_at.is_(None))
         .order_by(MessageRecord.created_at.asc())
     )
     msgs = result.scalars().all()
@@ -209,6 +203,8 @@ async def _gather_full_transcript(session, ticket_id: int) -> str:
         # Same reason as in _gather_examples: an operator note must never
         # become source material for text the user ends up reading.
         if getattr(m, "is_internal", False):
+            continue
+        if m.sender_type == "admin" and getattr(m, "delivery_status", "delivered") != "delivered":
             continue
         text = _clean_reply(m.text) if m.sender_type == "admin" else (m.text or "").strip()
         if not text:
@@ -229,10 +225,6 @@ async def suggest_from_history_for_ticket(
 
     Safe for fire-and-forget — never raises, always logs.
     """
-    client = await get_client()
-    if client is None:
-        return HistorySuggestResult(None, None)
-
     # Load ticket + gather examples + full user-side transcript in one session
     examples: list[dict] = []
     category: str = ""
@@ -242,18 +234,14 @@ async def suggest_from_history_for_ticket(
             ticket = (await session.execute(
                 select(Ticket).where(Ticket.id == ticket_id)
             )).scalar_one_or_none()
-            if ticket is None or ticket.status != "active":
-                return HistorySuggestResult(None, None)
-            if _is_category_blacklisted(ticket.category):
+            if not await policy.allows(ticket):
                 return HistorySuggestResult(None, None)
 
             category = ticket.category or ""
-            if not ticket.team_id:
-                return HistorySuggestResult(None, None)
-
-            examples = await _gather_examples(
-                session, ticket.team_id, category, exclude_ticket_id=ticket_id,
-            )
+            if ticket.team_id:
+                examples = await _gather_examples(
+                    session, ticket.team_id, category, exclude_ticket_id=ticket_id,
+                )
             # Pull the FULL dialogue (user + admin) so the LLM doesn't repeat
             # questions that the user has already answered.
             transcript = await _gather_full_transcript(session, ticket_id)
@@ -263,10 +251,16 @@ async def suggest_from_history_for_ticket(
         logger.error(f"history suggest: failed to load context for #{ticket_id}: {e}", exc_info=True)
         return HistorySuggestResult(None, None)
 
-    if not examples:
+    from src.ai import company_context
+    company = await company_context.load()
+    if not examples and not company.enabled:
         logger.info(
             f"history suggest #{ticket_id}: no closed examples in team+category — skip"
         )
+        return HistorySuggestResult(None, None)
+
+    client = await get_client()
+    if client is None:
         return HistorySuggestResult(None, None)
 
     safe_user_text = scrub(full_user_text)[:_MAX_USER_TEXT_CHARS]
@@ -281,7 +275,7 @@ async def suggest_from_history_for_ticket(
     try:
         response = await client.complete(
             system=SUGGEST_FROM_HISTORY_SYSTEM,
-            user=user_prompt,
+            user=user_prompt + company.reference(),
             max_output_tokens=400,  # short reply, but allow some headroom
             temperature=0.4,        # a bit of stylistic flexibility
         )
@@ -289,6 +283,8 @@ async def suggest_from_history_for_ticket(
         error_msg = str(e)
         logger.info(f"history suggest #{ticket_id} unavailable: {e}")
 
+    if response and not await company_context.current(company):
+        response, error_msg = None, 'company_reference_changed'
     draft: Optional[str] = None
     if response is not None:
         raw = (response.text or "").strip()

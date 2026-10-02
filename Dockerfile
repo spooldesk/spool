@@ -1,18 +1,12 @@
 # syntax=docker/dockerfile:1
 #
-# Multi-stage build for the Telegram support bot + dashboard.
+# Multi-stage build for Spooldesk's channels and dashboard.
 # Both processes (bot polling and the FastAPI dashboard) run from this one image
 # — docker-compose picks which to run per service via `command`.
 #
-# Python is pinned to 3.12, and the reason is worth keeping: aiogram 3.10 pins
-# aiohttp to ~=3.9.0, and aiohttp 3.9.5 publishes no Linux wheel for CPython
-# 3.13 or newer. On 3.13 pip therefore compiles it from source — which worked
-# until the base image moved to a patch release whose C API those 2024 sources
-# no longer match, and the deploy failed with a gcc error.
-#
-# So this is not "an older Python". It is the newest one every pinned
-# dependency actually ships a wheel for. Raising it means bumping aiogram
-# first and checking the wheels again.
+# Python 3.12 is the release target and is also used in CI. Dependencies,
+# including transitives, come from a hashed lock. Missing wheels fail the
+# build instead of silently compiling a different artifact from source.
 
 # ---------- Stage 1: build dependencies into a venv ----------
 FROM python:3.12-slim AS builder
@@ -20,18 +14,12 @@ FROM python:3.12-slim AS builder
 ENV PIP_NO_CACHE_DIR=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-# A safety net, not an expectation: on this Python every pinned dependency has
-# a wheel, so nothing should compile. If a build ever starts invoking gcc, that
-# is the signal the Python version and the dependency set have drifted apart.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends gcc libffi-dev \
-    && rm -rf /var/lib/apt/lists/*
-
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 COPY requirements.txt .
-RUN pip install --upgrade pip && pip install -r requirements.txt
+RUN python -m pip install --require-hashes --only-binary=:all: -r requirements.txt \
+    && python -m pip check
 
 # ---------- Stage 2: slim runtime ----------
 FROM python:3.12-slim
@@ -53,6 +41,7 @@ COPY --from=builder /opt/venv /opt/venv
 
 WORKDIR /app
 COPY src ./src
+COPY LICENSE /app/LICENSE
 
 # Persistent locations (mounted as volumes in docker-compose).
 RUN mkdir -p /app/data /app/logs && chown -R appuser:appuser /app

@@ -1,0 +1,12 @@
+# Expose only Slack callbacks; keep the local operator dashboard private.
+# Slack request signatures are verified by Spooldesk before processing input.
+on_http_request:
+  - expressions:
+      - "req.method != 'POST' || !(req.url.path in ['/slack/events', '/slack/interactive'])"
+    actions:
+      - type: custom-response
+        config:
+          status_code: 404
+          body: "Not found"
+          headers:
+            content-type: "text/plain; charset=utf-8"

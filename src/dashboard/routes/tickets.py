@@ -93,10 +93,9 @@ async def tickets_list(
     templates = request.app.state.templates
 
     # Normalise & validate
-    if status not in ("active", "closed"):
-        status = None
+    status = "closed" if status == "closed" else "active"
     from src.services.workflow_service import STAGES
-    if stage not in STAGES:
+    if stage not in STAGES or status == "closed":
         stage = None
     team_id_int = _parse_int(team_id)
     if team_id_int is not None and team_id_int <= 0:
@@ -156,6 +155,15 @@ async def tickets_list(
     prev_url = _build_page_url(page_int - 1, base_params) if page_int > 0 else None
     next_url = _build_page_url(page_int + 1, base_params) if page_int + 1 < total_pages else None
     export_url = _build_export_url(base_params)
+    # Switching queues preserves search/filter context and starts at page one.
+    # Stage describes live work and must never hide records in the archive.
+    tab_params = {k: v for k, v in base_params.items() if v and k not in {"status", "stage"}}
+    status_urls = {state: "/tickets?" + urlencode({**tab_params, "status": state})
+                   for state in ("active", "closed")}
+    status_counts = await queries.ticket_status_counts(
+        team_id=team_id_int, category=category, date_from=df, date_to=dt,
+        q=q, assigned=assigned_norm,
+    )
 
     return templates.TemplateResponse(
         request,
@@ -183,6 +191,9 @@ async def tickets_list(
             "prev_url": prev_url,
             "next_url": next_url,
             "export_url": export_url,
+            "status_urls": status_urls,
+            "status_counts": status_counts,
+            "reset_url": "/tickets?" + urlencode({"status": status}),
             "saved_views": await _views_for(request, "/tickets"),
             "current_query": request.url.query,
             "fmt_seconds": _fmt_seconds,
@@ -275,6 +286,8 @@ async def ticket_presence(
     ticket_id: int,
     typing: str = Form(""),
     leaving: str = Form(""),
+    audience: str = Form("public"),
+    client_id: str = Form("", max_length=32),
 ):
     """Heartbeat: say I am here, learn who else is.
 
@@ -282,24 +295,29 @@ async def ticket_presence(
     somebody is composing — that direction works; the reverse does not, since a
     bot is never told when a user is typing.
     """
-    from src.dashboard import presence
+    from src.services import presence_service as presence
     from src.dashboard.auth import current_user
 
     me = current_user(request)
     if me is None:
         return JSONResponse({"ok": False}, status_code=403)
 
+    if client_id and (len(client_id) != 32 or any(c not in '0123456789abcdef' for c in client_id)):
+        return JSONResponse({"ok": False}, status_code=400)
     name = me.name or me.email.split("@")[0]
+    participant = f"operator:{me.id}" + (f":{client_id}" if client_id else "")
     if leaving == "1":
-        presence.leave(ticket_id, me.id)
+        await presence.heartbeat(ticket_id, participant, name, operator_id=me.id, leaving=True)
         return JSONResponse({"ok": True, "others": []})
 
-    is_typing = typing == "1"
-    presence.touch(ticket_id, me.id, name, typing=is_typing)
-    if is_typing:
+    is_typing = typing == "1" and getattr(request.state, 'section_permissions', {}).get('tickets') == 'edit'
+    others = await presence.heartbeat(ticket_id, participant, name,
+                                     operator_id=me.id, typing=is_typing,
+                                     public=audience == "public")
+    if is_typing and audience == "public":
         await _show_typing_to_customer(ticket_id)
 
-    return JSONResponse({"ok": True, "others": presence.others(ticket_id, me.id)})
+    return JSONResponse({"ok": True, "others": others})
 
 
 # Telegram shows "typing…" for about five seconds per call, so repeating any
@@ -353,12 +371,14 @@ async def tickets_version():
 
 @router.get("/tickets/export.xlsx")
 async def tickets_export_xlsx(
+    request: Request,
     status: str | None = None,
     team_id: str | None = None,
     category: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
     q: str | None = None,
+    assigned: str | None = None,
     stage: str | None = None,
 ):
     """Excel export of tickets matching the same filters as /tickets.
@@ -385,6 +405,16 @@ async def tickets_export_xlsx(
     dt = _parse_date(date_to)
     q = (q or "").strip()[:200] or None
 
+    from src.dashboard.auth import current_user
+    me = current_user(request)
+    assigned_norm: int | str | None = None
+    if assigned == "me" and me is not None:
+        assigned_norm = me.id
+    elif assigned == "none":
+        assigned_norm = "none"
+    elif assigned and assigned.isdigit() and _parse_int(assigned) is not None:
+        assigned_norm = int(assigned)
+
     rows = await queries.list_tickets_for_export(
         status=status,
         team_id=team_id_int,
@@ -392,6 +422,7 @@ async def tickets_export_xlsx(
         date_from=df,
         date_to=dt,
         q=q,
+        assigned=assigned_norm,
         stage=stage,
     )
 
@@ -460,6 +491,8 @@ async def tickets_export_xlsx(
 
     # Stream the workbook back without writing a temp file
     buf = io.BytesIO()
+    from src.dashboard.exporting import literal_strings
+    literal_strings(wb)
     wb.save(buf)
     buf.seek(0)
 
@@ -513,7 +546,7 @@ async def ticket_detail_page(request: Request, ticket_id: int,
     from src.services import assignment_service
     operators = [
         {"id": a.id, "label": a.name or a.email.split("@")[0]}
-        for a in await assignment_service.list_active_operators()
+        for a in await assignment_service.list_active_operators(ticket_id)
     ]
 
     return templates.TemplateResponse(
@@ -582,7 +615,8 @@ async def ticket_add_note(request: Request, ticket_id: int, text: str = Form("")
     from urllib.parse import quote
     from src.services import workflow_service
 
-    note_id = await workflow_service.add_internal_note(ticket_id, text=text)
+    note_id = await workflow_service.add_internal_note(
+        ticket_id, text=text, operator_id=_current_operator_id(request))
     if note_id is None:
         return RedirectResponse(
             f"/tickets/{ticket_id}?err={quote(tr('note_empty'))}", status_code=303)
@@ -598,7 +632,7 @@ async def ticket_add_note(request: Request, ticket_id: int, text: str = Form("")
 _DUPLICATE_WINDOW_SEC = 8
 
 
-async def _is_duplicate_send(ticket_id: int, text: str) -> bool:
+async def _is_duplicate_send(ticket_id: int, text: str, reply_to_id: int | None = None) -> bool:
     """True if this exact text just went to this ticket from an operator."""
     from sqlalchemy import select as _select
 
@@ -617,25 +651,95 @@ async def _is_duplicate_send(ticket_id: int, text: str) -> bool:
             .order_by(MessageRecord.id.desc())
             .limit(1)
         )).scalar_one_or_none()
-    if last is None or (last.text or "").strip() != text:
+    if (last is None or (last.text or "").strip() != text
+            or last.reply_to_id != reply_to_id):
         return False
     age = (datetime.utcnow() - last.created_at).total_seconds() if last.created_at else None
     return age is not None and 0 <= age < _DUPLICATE_WINDOW_SEC
 
 
 @router.post("/tickets/{ticket_id}/message/{message_id}/delete")
-async def ticket_delete_message(ticket_id: int, message_id: int):
+async def ticket_delete_message(request: Request, ticket_id: int, message_id: int):
     """Withdraw a delivered message from the customer's chat."""
     from urllib.parse import quote
 
     from src.dashboard.bot_client import get_bot
     from src.services import message_service
 
-    result = await message_service.delete_for_user(get_bot(), message_id)
+    from src.database.db import db_session
+    from src.database.models import Message as MessageRecord
+    async with db_session() as session:
+        message = await session.get(MessageRecord, message_id)
+        if message is None or message.ticket_id != ticket_id:
+            raise HTTPException(status_code=404, detail=tr("e_ticket_not_found"))
+        from src.dashboard.auth import current_user
+        actor = current_user(request)
+        if actor and actor.role not in {"owner", "admin"} and message.operator_id != actor.id:
+            raise HTTPException(status_code=403, detail=tr("chat_edit_forbidden"))
+
+    result = await message_service.delete_for_user(get_bot(), message_id, actor_id=actor.id if actor else None)
     if not result.ok:
         return RedirectResponse(
             f"/tickets/{ticket_id}?err={quote(tr(result.error_key))}", status_code=303)
     return RedirectResponse(f"/tickets/{ticket_id}?sent=deleted", status_code=303)
+
+
+@router.post("/tickets/{ticket_id}/message/{message_id}/edit")
+async def ticket_edit_message(request: Request, ticket_id: int, message_id: int,
+                              text: str = Form(...), revision: int = Form(...)):
+    from src.dashboard.auth import current_user
+    from src.services.conversation_service import edit_message
+    actor = current_user(request)
+    if actor is None:
+        raise HTTPException(status_code=403)
+    result = await edit_message(ticket_id, message_id, actor.id, text, revision)
+    return JSONResponse({"ok": result.ok, "error": tr(result.error_key) if not result.ok else ""},
+                        status_code=200 if result.ok else 409)
+
+
+@router.post('/tickets/{ticket_id}/message/{message_id}/reconcile')
+async def reconcile_message(request: Request, ticket_id: int, message_id: int,
+                            revision: int = Form(...), applied: str = Form(...)):
+    from src.dashboard.auth import current_user
+    from src.services.conversation_service import reconcile_mutation
+    actor = current_user(request)
+    if actor is None or applied not in {'yes','no'}:
+        raise HTTPException(status_code=403)
+    result = await reconcile_mutation(ticket_id,message_id,actor.id,revision,applied=='yes')
+    return JSONResponse({'ok':result.ok,'error':tr(result.error_key) if not result.ok else ''},
+                        status_code=200 if result.ok else 409)
+
+
+@router.post("/tickets/{ticket_id}/message/{message_id}/retry")
+async def ticket_retry_message(request: Request, ticket_id: int, message_id: int,
+                               acknowledge_duplicate: str = Form("")):
+    """Retry only this ticket's intent; ambiguous sends require explicit consent."""
+    from sqlalchemy import select
+    from src.dashboard.auth import require_role
+    from src.database.db import db_session
+    from src.database.delivery_models import OutboundJob
+    from src.database.models import Message as MessageRecord, Ticket
+    from src.services import outbound
+
+    await require_role("owner", "admin", "agent")(request)
+    async with db_session() as session:
+        message = await session.get(MessageRecord, message_id)
+        ticket = await session.get(Ticket, ticket_id)
+        if (message is None or message.ticket_id != ticket_id or ticket is None
+                or message.sender_type != "admin" or message.is_internal
+                or message.deleted_at):
+            raise HTTPException(status_code=404, detail=tr("e_ticket_not_found"))
+        job = (await session.execute(select(OutboundJob).where(
+            OutboundJob.message_id == message_id,
+        ))).scalar_one_or_none()
+        if job is None:
+            raise HTTPException(status_code=404, detail=tr("e_attachment_not_found"))
+        if job.status == "uncertain" and acknowledge_duplicate != "yes":
+            raise HTTPException(status_code=409, detail=tr("delivery_duplicate_risk"))
+        job_id = job.id
+    result = await outbound.retry(job_id, allow_uncertain=acknowledge_duplicate == "yes")
+    suffix = "sent=1" if result.ok else "err=" + quote(tr(result.error_key or "e_send_failed"))
+    return RedirectResponse(f"/tickets/{ticket_id}?{suffix}", status_code=303)
 
 
 
@@ -660,14 +764,14 @@ async def ticket_reply(
     # with no filename arrives as a plain string, which that type rejects with
     # a 422 — breaking the ordinary text-only reply.
     attachments: list[UploadFile | str] = File(default=[]),
+    reply_to_id: str = Form(""),
     # Set when the operator arrived from the queue: sending should hand
     # them the next one, not the conversation they just finished.
     queue: str = Form(""),
 ):
     """Send an admin reply (text and/or a file) to the ticket's user from web.
 
-    Text path reuses template_service.apply_text. File path sends the upload via
-    the Bot API and records it as an admin message, mirroring into the thread.
+    Every reply is recorded as a durable intent before contacting the channel.
     """
     from urllib.parse import quote
     from src.config import load_settings
@@ -675,7 +779,7 @@ async def ticket_reply(
     from src.channels.identity import address_of, channel_of
     from src.dashboard.bot_client import get_bot
     from src.database.db import db_session
-    from src.services import template_service, workflow_service
+    from src.services import outbound, template_service
 
     text = (text or "").strip()
     # The operator's own sign-off, if they set one. Applied before the
@@ -690,10 +794,21 @@ async def ticket_reply(
     # name quietly matches nothing and every upload falls into the text branch.
     files = [f for f in (attachments or []) if getattr(f, "filename", None)]
     has_file = bool(files)
+    parent_id = None
+    if reply_to_id:
+        from src.services.conversation_service import reply_context
+        try:
+            parent_id = int(reply_to_id)
+            if not 0 < parent_id <= 2147483647:
+                raise ValueError("Invalid reply")
+            async with db_session() as session:
+                await reply_context(session, ticket_id, parent_id)
+        except ValueError:
+            return RedirectResponse(f"/tickets/{ticket_id}?err={quote(tr('chat_reply_unavailable'))}", status_code=303)
 
     # Silently succeed rather than error: the operator meant to send this once,
     # and it was sent once. Telling them off for a stutter would be noise.
-    if not has_file and await _is_duplicate_send(ticket_id, text):
+    if not has_file and await _is_duplicate_send(ticket_id, text, parent_id):
         logger.info(f"Ignored duplicate reply to ticket #{ticket_id}")
         return RedirectResponse(f"/tickets/{ticket_id}?sent=1", status_code=303)
     if not text and not has_file:
@@ -706,10 +821,8 @@ async def ticket_reply(
     if has_file:
         from sqlalchemy import select
         from sqlalchemy.orm import selectinload
-        from aiogram.types import BufferedInputFile
 
-        from src.channels import DEFAULT as CHANNEL_DEFAULT
-        from src.database.models import Message as MessageRecord, Ticket
+        from src.database.models import Ticket
 
         if len(files) > _MAX_UPLOAD_FILES:
             return RedirectResponse(
@@ -722,7 +835,7 @@ async def ticket_reply(
         payloads: list[tuple[str, bytes]] = []
         total = 0
         for f in files:
-            content = await f.read()
+            content = await f.read(_MAX_UPLOAD_BYTES + 1)
             if len(content) > _MAX_UPLOAD_BYTES:
                 return RedirectResponse(
                     f"/tickets/{ticket_id}?err={quote(tr('e_file_too_large_x', name=f.filename))}",
@@ -757,55 +870,32 @@ async def ticket_reply(
                         f"/tickets/{ticket_id}?err={quote(tr("e_no_files_on_channel"))}",
                         status_code=303)
 
-                for name, content in payloads:
-                    # The text is a caption on the first file only — repeating it
-                    # under every attachment would read like five separate replies.
-                    caption = text if (text and sent_count == 0) else None
-                    delivery = await channel.send_file(
-                        address, filename=name, content=content, caption=caption,
+            for name, content in payloads:
+                # The text is a caption on the first file only — repeating it
+                # under every attachment would read like five separate replies.
+                caption = text if (text and sent_count == 0) else None
+                async with db_session(write=True) as session:
+                    job = await outbound.enqueue(
+                        session, ticket_id=ticket_id, channel=channel.name, address=address,
+                        filename=name, content=content, text=caption or "",
+                        operator_id=_current_operator_id(request),
+                        reply_to_id=parent_id,
+                        require_active=True,
                     )
-                    if not delivery.ok:
-                        # Whatever already left is real and stays recorded below.
-                        failure = delivery.error_detail or tr(delivery.error_key or "e_send_failed")
-                        break
-                    # What the ticket page will fetch this back with, and what
-                    # the mirror below forwards instead of re-uploading the
-                    # bytes. Channels that hand back nothing store nothing, and
-                    # the transcript simply shows no link.
-                    file_id = delivery.file_ref
+                    job_id, message_id = job.id, job.message_id
+                delivery = await outbound.deliver(job_id)
+                if not delivery.ok:
+                    # Whatever already left is real and stays recorded below.
+                    failure = tr(delivery.error_key or "e_send_failed")
+                    break
+                # The mirror uses the durable row and records its forum id.
+                from src.services.announce_service import announce_message
+                try:
+                    await announce_message(bot, ticket_id, message_id)
+                except Exception:
+                    logger.warning("Could not mirror delivered attachment %s", message_id)
 
-                    # Mirror into admin thread
-                    try:
-                        if not file_id:
-                            raise ValueError("no reusable id to mirror with")
-                        # Only Telegram can be handed a reference. Every other
-                        # channel's is meaningless there — the widget's is a
-                        # key into our own store — so those get the bytes.
-                        document = (
-                            file_id if channel.name == CHANNEL_DEFAULT
-                            else BufferedInputFile(content, filename=name)
-                        )
-                        kwargs = {"chat_id": settings.admin_chat_id, "document": document,
-                                  "caption": f'{tr("src_web_dashboard")} 📎 {name}' + (f"\n{caption}" if caption else "")}
-                        if ticket.thread_id is not None:
-                            kwargs["message_thread_id"] = ticket.thread_id
-                            if ticket.header_message_id is not None:
-                                kwargs["reply_to_message_id"] = ticket.header_message_id
-                        elif ticket.header_message_id is not None:
-                            kwargs["reply_to_message_id"] = ticket.header_message_id
-                        await bot.send_document(**kwargs)
-                    except Exception:
-                        pass
-
-                    session.add(MessageRecord(
-                        ticket_id=ticket.id, sender_type="admin", sender_id=0,
-                        text=caption or tr("msg_file"),
-                        file_id=file_id, file_type="document", file_name=name,
-                        file_size=len(content),
-                    ))
-                    sent_count += 1
-
-                await session.commit()
+                sent_count += 1
         except Exception as e:
             return RedirectResponse(
                 f"/tickets/{ticket_id}?err={quote(tr("e_file_error", what=type(e).__name__))}",
@@ -813,7 +903,6 @@ async def ticket_reply(
 
         if sent_count:
             await _auto_assign_to_me(request, ticket_id)
-            await workflow_service.advance_on_admin_reply(ticket_id)
             nxt = await _queue_redirect(
                 request, queue or _standing_queue(request), ticket_id)
             if nxt and not failure:
@@ -837,8 +926,10 @@ async def ticket_reply(
                 ticket_id=ticket_id,
                 text=text,
                 admin_tg_id=0,
+                operator_id=_current_operator_id(request),
                 admin_chat_id=settings.admin_chat_id,
                 source_label=tr("src_web_dashboard"),
+                reply_to_id=parent_id,
             )
             await session.commit()
     except Exception as e:
@@ -977,6 +1068,7 @@ async def queue_take_next(request: Request, source: str = Form("open")):
 
 @router.post("/tickets/{ticket_id}/close")
 async def ticket_close(
+    request: Request,
     ticket_id: int,
     categories: list[str] = Form(default=[]),
     custom_reason: str = Form(""),
@@ -1000,8 +1092,9 @@ async def ticket_close(
 
     user_tg_id = None
     user_lang = None
+    from src.services import csat_service
     try:
-        async with db_session() as session:
+        async with db_session(write=True) as session:
             ticket = (await session.execute(
                 select(Ticket).where(Ticket.id == ticket_id, Ticket.status == "active")
                 .options(selectinload(Ticket.user))
@@ -1012,22 +1105,11 @@ async def ticket_close(
                     status_code=303)
             user_tg_id = ticket.user.tg_id if ticket.user else None
             user_lang = ticket.user.language if ticket.user else None
-            if ticket.created_at:
-                ticket.processing_time_seconds = int((_dt.utcnow() - ticket.created_at).total_seconds())
-            ticket.status = "closed"
-            ticket.closed_at = _dt.utcnow()
-            ticket.notification_sent = False
-            ticket.admin_categories = categories or None
-            ticket.custom_reason = custom_reason or None
-            reason_txt = ", ".join(categories)
-            if custom_reason:
-                reason_txt = (reason_txt + " — " if reason_txt else "") + custom_reason
-            # Stable internal closure marker + optional reason suffix
-            session.add(MessageRecord(
-                ticket_id=ticket.id, sender_type="admin", sender_id=0,
-                text=f"{CLOSURE_SYSTEM_TEXT}"
-                     f"{(tr('msg_reason_prefix') + reason_txt) if reason_txt else ''}",
-            ))
+            from src.services.ticket_closure import close_in_session
+            job = await close_in_session(session, ticket, ticket.user,
+                operator_id=_current_operator_id(request), categories=categories,
+                custom_reason=custom_reason, reason_prefix=tr('msg_reason_prefix'))
+            closing_job_id = job.id
             await session.commit()
     except Exception as e:
         return RedirectResponse(
@@ -1037,7 +1119,7 @@ async def ticket_close(
         # Closure notice + CSAT rating request (never raises)
         from src.services import csat_service
         await csat_service.send_close_notification(
-            bot, user_tg_id=user_tg_id, ticket_id=ticket_id, lang=user_lang,
+            bot, user_tg_id=user_tg_id, ticket_id=ticket_id, lang=user_lang, job_id=closing_job_id,
         )
     return RedirectResponse(f"/tickets/{ticket_id}?sent=closed", status_code=303)
 
@@ -1073,15 +1155,25 @@ async def ticket_set_category(ticket_id: int, category: str = Form("")):
 
 @router.post("/tickets/{ticket_id}/ai-suggest", response_class=JSONResponse)
 async def ticket_ai_suggest(ticket_id: int):
-    """Generate an AI draft reply for this ticket (history-based). Returns JSON."""
+    """Draft from published knowledge; operator reviews before sending."""
     try:
-        from src.ai.suggest_from_history import suggest_from_history_for_ticket
-        result = await suggest_from_history_for_ticket(ticket_id, "")
+        from sqlalchemy import select
+        from src.database.db import db_session
+        from src.database.models import Message
+        from src.ai.knowledge import suggest_from_knowledge
+        async with db_session() as session:
+            question = (await session.execute(select(Message.text).where(
+                Message.ticket_id == ticket_id, Message.sender_type == "user",
+                Message.deleted_at.is_(None),
+            ).order_by(Message.id.desc()).limit(1))).scalar_one_or_none()
+        result = await suggest_from_knowledge(ticket_id, question or "")
         if result.suggested_text:
-            return JSONResponse({"ok": True, "draft": result.suggested_text})
+            return JSONResponse({"ok": True, "draft": result.suggested_text,
+                                 "sources": result.sources, "ai_call_id": result.ai_call_id})
         return JSONResponse({"ok": False, "error": tr("e_ai_no_answer")})
-    except Exception as e:
-        return JSONResponse({"ok": False, "error": f"{type(e).__name__}: {e}"})
+    except Exception:
+        logger.warning("Knowledge draft unavailable for ticket %s", ticket_id)
+        return JSONResponse({"ok": False, "error": tr("e_ai_no_answer")})
 
 
 @router.get("/tickets/attachment/{msg_id}")
@@ -1100,8 +1192,11 @@ async def ticket_attachment(msg_id: int):
     from src.channels import get as get_channel
     from src.channels.identity import channel_of
     from src.dashboard import queries as _q
+    from src.dashboard.routes.widget import _attachment_headers, _content_type, _safe_filename
     from src.database.db import db_session
     from src.database.models import Message as MessageRecord, Ticket
+    from src.database.delivery_models import OutboundJob
+    from src.services import file_store
 
     async with db_session() as session:
         m = (await session.execute(
@@ -1117,19 +1212,21 @@ async def ticket_attachment(msg_id: int):
         author = m.ticket.user if m.ticket else None
         channel = channel_of(author) if author is not None else None
         file_id = m.file_id
-        file_name = m.file_name or "attachment"
         ftype = (m.file_type or "").lower()
-        # Telegram photos usually have no mime_type stored → default to jpeg so
-        # the browser renders them in <img> instead of offering a download.
-        if m.mime_type:
-            mime = m.mime_type
-        elif "photo" in ftype:
-            mime = "image/jpeg"
-        else:
-            mime = "application/octet-stream"
+        file_name = _safe_filename(m.file_name or (
+            "photo.jpg" if "photo" in ftype else "attachment"
+        ))
+        # MIME metadata arrives from customers on several channels. Only
+        # raster images may render on the dashboard's authenticated origin.
+        mime = _content_type(file_name)
+        stored_key = (await session.execute(select(OutboundJob.file_key).where(
+            OutboundJob.message_id == m.id,
+        ))).scalar_one_or_none()
 
     try:
-        data = await get_channel(channel).fetch_file(file_id)
+        data = file_store.get(stored_key) if stored_key else None
+        if data is None:
+            data = await get_channel(channel).fetch_file(file_id)
     except LookupError:
         # The customer is on a channel this process cannot reach — a Slack
         # ticket on an instance whose credentials were removed, say.
@@ -1140,7 +1237,7 @@ async def ticket_attachment(msg_id: int):
     return StreamingResponse(
         io.BytesIO(data),
         media_type=mime,
-        headers={"Content-Disposition": f'inline; filename="{file_name}"'},
+        headers=_attachment_headers(file_name),
     )
 
 
@@ -1180,7 +1277,7 @@ async def ticket_templates_json(ticket_id: int):
 
 
 @router.get("/tickets/{ticket_id}/messages.json", response_class=JSONResponse)
-async def ticket_messages_json(ticket_id: int, after_id: str | None = None):
+async def ticket_messages_json(request: Request, ticket_id: int, after_id: str | None = None):
     """What the open page has not seen yet.
 
     `after_id` is the client's cursor. Without it the whole conversation comes
@@ -1191,4 +1288,9 @@ async def ticket_messages_json(ticket_id: int, after_id: str | None = None):
     payload = await queries.messages_after(ticket_id, cursor)
     if payload is None:
         return JSONResponse({"ok": False}, status_code=404)
+    from src.dashboard.auth import current_user
+    actor = current_user(request)
+    if actor is not None and getattr(request.state, 'section_permissions', {}).get('tickets') != 'edit':
+        for delivery in payload.get("deliveries", []):
+            delivery["can_retry"] = False
     return JSONResponse({"ok": True, **payload})
