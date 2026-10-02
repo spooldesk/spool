@@ -11,11 +11,37 @@ containers, Docker Compose v2 и Python 3.12+. Установку этих ин�
 
 ## 1. Скачать или перенести кандидат
 
-Открой [GitHub Releases](https://github.com/spooldesk/spool/releases) и выбери
-нужный prerelease. Если репозиторий приватный, войди в GitHub под аккаунтом с
-доступом. Скачай все файлы из Assets, перечисленные в `SHA256SUMS`, в один новый
-каталог. Автоматические ссылки GitHub «Source code» не содержат Docker-образа;
-для этой инструкции используй приложенный `spooldesk-source.zip`.
+**[Скачать Spooldesk v0.1.0-rc.5 одним ZIP (101 МиБ)](https://github.com/spooldesk/spool/releases/download/v0.1.0-rc.5/spooldesk-v0.1.0-rc.5-transfer.zip)**
+
+Скачай также [контрольную сумму ZIP](https://github.com/spooldesk/spool/releases/download/v0.1.0-rc.5/spooldesk-v0.1.0-rc.5-transfer.zip.sha256).
+Ссылка есть наверху главной страницы репозитория — искать файлы в Releases не
+нужно. Пока репозиторий приватный, необходим вход в GitHub под аккаунтом с доступом.
+
+Либо скачай оба файла через терминал с установленным **GitHub CLI**.
+Для первого входа выполни `gh auth login`, затем:
+
+```powershell
+gh release download v0.1.0-rc.5 --repo spooldesk/spool --pattern 'spooldesk-v0.1.0-rc.5-transfer.zip*' --dir spooldesk-download
+```
+
+Это только скачивание, без запуска программ или изменения существующей установки.
+В каталоге с ZIP и его `.sha256` проверь архив и распакуй его в **новый** каталог:
+
+```powershell
+$package = 'spooldesk-v0.1.0-rc.5-transfer.zip'
+$expected = ((Get-Content "$package.sha256" -Raw).Trim() -split '\s+')[0]
+$actual = (Get-FileHash -LiteralPath $package -Algorithm SHA256).Hash.ToLower()
+if ($actual -ne $expected) { throw 'Package checksum mismatch' }
+if (Test-Path -LiteralPath '.\spooldesk-install') { throw 'Choose a new empty destination' }
+Expand-Archive -LiteralPath $package -DestinationPath '.\spooldesk-install'
+Set-Location '.\spooldesk-install'
+```
+
+Продолжай по инструкции ниже. Внутри ZIP лежит и автономная копия инструкции
+`INSTALL-RU.md`. При желании отдельные файлы доступны на странице
+[релиза](https://github.com/spooldesk/spool/releases/tag/v0.1.0-rc.5).
+Автоматические ссылки GitHub «Source code» не содержат Docker-образа;
+для установки используй вложенный `spooldesk-source.zip`.
 
 В пакете CI есть `spooldesk-source.zip`, `spooldesk-source.tar.gz`,
 `spooldesk-image.tar.gz`, `IMAGE_ID`, `IMAGE_TAG`, `SOURCE_COMMIT`,

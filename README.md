@@ -10,9 +10,38 @@ open-source licence. Paid installation and maintenance are separate services.
 
 ## Install
 
-Download the assets from the selected [GitHub release](https://github.com/spooldesk/spool/releases).
-Prereleases are installation candidates; second-computer acceptance is still
-pending. A private repository requires signing in with an authorized account.
+### Download and install
+
+**[↓ Download Spooldesk v0.1.0-rc.5 — complete installation package (101 MiB)](https://github.com/spooldesk/spool/releases/download/v0.1.0-rc.5/spooldesk-v0.1.0-rc.5-transfer.zip)**
+
+One ZIP contains the tested Docker image, source, checksums and `INSTALL-RU.md`.
+Extract it and follow that guide. The image runs on Linux/amd64, including
+Docker Desktop with Linux containers on Windows x64. PostgreSQL is downloaded
+separately; Docker Compose v2, Python 3.12+ and internet access are required.
+
+[Installation guide / Инструкция](docs/SECOND_COMPUTER_INSTALL.md) ·
+[ZIP checksum](https://github.com/spooldesk/spool/releases/download/v0.1.0-rc.5/spooldesk-v0.1.0-rc.5-transfer.zip.sha256) ·
+[Release notes](https://github.com/spooldesk/spool/releases/tag/v0.1.0-rc.5)
+
+This is an installation candidate; second-computer acceptance is pending.
+**Private preview:** sign in with a GitHub account that has repository access.
+The direct download does not grant access to an otherwise unauthorized account.
+
+### Download from a terminal
+
+With [GitHub CLI](https://cli.github.com/) installed, sign in once using
+`gh auth login`, then run this command in PowerShell, Bash or another terminal:
+
+```sh
+gh release download v0.1.0-rc.5 --repo spooldesk/spool --pattern 'spooldesk-v0.1.0-rc.5-transfer.zip*' --dir spooldesk-download
+```
+
+This downloads the same ZIP and its SHA-256 file. It does not start an installer
+or modify an existing deployment. Open `INSTALL-RU.md` after extraction; verify
+the checksums and use its **prebuilt image** instructions for this release trial.
+
+<details>
+<summary>Build from source instead</summary>
 
 For a clean installation on another Windows computer, use the
 [step-by-step guide](docs/SECOND_COMPUTER_INSTALL.md). Docker Desktop must use
@@ -37,6 +66,8 @@ use HTTPS and the production configuration in [DEPLOY.md](DEPLOY.md).
 Prebuilt images must be selected by their supplied versioned tag using
 `SPOOLDESK_IMAGE`; see the installation guide. Do not rebuild when testing the
 prebuilt release artifact.
+
+</details>
 
 ## What is included
 
