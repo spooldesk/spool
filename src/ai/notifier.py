@@ -22,6 +22,7 @@ from sqlalchemy import func, select
 
 from src.ai.suggest_from_history import suggest_from_history_for_ticket
 from src.ai.suggest_template import suggest_template_for_ticket
+from src.ai import policy
 from src.config import load_settings
 # Module level: the shadow gate runs in helpers that had no local import,
 # and a guard that raises NameError is a guard that is not there.
@@ -92,6 +93,10 @@ async def _post_template_suggestion(
     # suggestion to exist, and the operator needs never to see it.
     if await settings_service.get_ai_shadow_mode():
         return
+    if (not await policy.ticket_allowed(ticket.id)
+            or template.team_id != ticket.team_id
+            or await settings_service.is_category_ai_blacklisted(template.category)):
+        return
     settings = load_settings()
     text = (
         f"🤖 {_op('ai_looks_like_template', title=template.title)}\n\n"
@@ -126,6 +131,8 @@ async def _post_history_suggestion(
     # the posting stops. That is the whole trick: the evidence needs the
     # suggestion to exist, and the operator needs never to see it.
     if await settings_service.get_ai_shadow_mode():
+        return
+    if not await policy.ticket_allowed(ticket.id):
         return
     settings = load_settings()
     text = (

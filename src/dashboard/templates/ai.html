@@ -4,23 +4,17 @@
 {% block content %}
 <div class="mb-6">
   <h1 class="text-2xl font-semibold">AI Analytics</h1>
-  <p class="text-sm text-zinc-400 mt-1">
-    {{ T.aa_subtitle }}
-  </p>
+  <p data-help class="text-sm text-zinc-400 mt-1">{{ T.aa_subtitle }}</p>
 </div>
 
 <!-- KPI cards -->
-<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
   <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-5">
     <div class="text-xs uppercase tracking-wide text-zinc-400">{{ T.aa_total_calls }}</div>
     <div class="mt-2 text-3xl font-semibold tabular-nums">{{ stats.total }}</div>
     <div class="mt-1 text-xs text-zinc-500">{{ T.aa_success_rate.format(pct=fmt_pct(stats.success_rate)) }}</div>
   </div>
-  <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-5">
-    <div class="text-xs uppercase tracking-wide text-zinc-400">Accept rate</div>
-    <div class="mt-2 text-3xl font-semibold tabular-nums">{{ fmt_pct(stats.accept_rate) }}</div>
-    <div class="mt-1 text-xs text-zinc-500">{{ T.aa_decisions.format(accepted=stats.accepted, decided=stats.decided) }}</div>
-  </div>
+
   <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-5">
     <div class="text-xs uppercase tracking-wide text-zinc-400">Latency p50 / p95</div>
     <div class="mt-2 text-3xl font-semibold tabular-nums">
@@ -38,7 +32,7 @@
 <!-- Answer quality: is the AI actually as good as us? -->
 <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-5 mb-4">
   <h2 class="font-medium">{{ T.ai_quality_title }}</h2>
-  <p class="text-xs text-zinc-500 mt-0.5 mb-4">{{ T.ai_quality_hint }}</p>
+  <p data-help class="text-xs text-zinc-500 mt-0.5 mb-4">{{ T.ai_quality_hint }}</p>
 
   {% if quality.delta is none %}
     <p class="text-sm text-zinc-500">{{ T.ai_quality_too_few }}</p>
@@ -117,7 +111,6 @@
           <tr class="text-left text-xs uppercase tracking-wide text-zinc-400 border-b border-zinc-900">
             <th class="py-2">Use case</th>
             <th class="py-2 text-right">{{ T.aa_calls }}</th>
-            <th class="py-2 text-right">Accept rate</th>
             <th class="py-2 text-right">Avg latency</th>
             <th class="py-2 text-right">Tokens out</th>
           </tr>
@@ -127,10 +120,7 @@
             <tr>
               <td class="py-2 font-mono text-xs text-zinc-300">{{ u.use_case }}</td>
               <td class="py-2 text-right tabular-nums">{{ u.total }}</td>
-              <td class="py-2 text-right tabular-nums">
-                {{ fmt_pct(u.accept_rate) }}
-                <span class="text-zinc-500 text-xs">({{ u.accepted }}/{{ u.accepted + u.rejected }})</span>
-              </td>
+
               <td class="py-2 text-right tabular-nums text-zinc-300">{{ fmt_ms(u.avg_latency_ms) }}</td>
               <td class="py-2 text-right tabular-nums text-zinc-300">{{ fmt_tokens(u.tokens_out) }}</td>
             </tr>
@@ -190,9 +180,9 @@
   new Chart(document.getElementById('chart-ai-per-day'), {
     type: 'bar',
     data: {
-      labels: {{ per_day_labels_json|safe }},
+      labels: {{ per_day_labels_json|tojson }},
       datasets: [{
-        data: {{ per_day_values_json|safe }},
+        data: {{ per_day_values_json|tojson }},
         backgroundColor: '#7c3aed',
         borderRadius: 4,
       }],

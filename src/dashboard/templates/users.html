@@ -86,7 +86,7 @@
               <a href="/users/{{ r.user_db_id }}" class="text-brand-500 hover:text-brand-600 font-medium">
                 {{ r.label }}
               </a>
-              <span class="text-zinc-500 text-xs ml-2">tg:{{ r.tg_id }}</span>
+              <span class="text-zinc-500 text-xs ml-2">{{ r.channels|join(' · ') }}</span>
             </td>
             <td class="px-4 py-2.5 text-zinc-300">
               {{ r.team }}
@@ -131,7 +131,7 @@
 {% block scripts %}
 <script>
 (function () {
-  const USERS = {{ search_users_json|safe }};
+  const USERS = {{ search_users_json|tojson }};
   const search = document.getElementById('user-search');
   const results = document.getElementById('user-results');
   function esc(s){ return (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
@@ -151,7 +151,7 @@
   search.addEventListener('input', () => {
     const q = search.value.trim().toLowerCase().replace(/^@/, '');
     if (!q) { results.classList.add('hidden'); return; }
-    render(USERS.filter(u => u.label.toLowerCase().replace(/^@/, '').startsWith(q)));
+    render(USERS.filter(u => (u.search || u.label).toLowerCase().includes(q)));
   });
   document.addEventListener('click', (e) => {
     if (!results.contains(e.target) && e.target !== search) results.classList.add('hidden');

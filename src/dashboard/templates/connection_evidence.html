@@ -1,0 +1,33 @@
+{% set observation = center.evidence[channel] %}
+<div class="connection-evidence">
+  <div class="connection-progress"><strong>{{ T.connection_setup }}</strong><span>{{ observation.completed }}/{{ observation.steps|length }} {{ T.connection_progress }}</span></div>
+  <ol class="connection-steps">
+    {% for step in observation.steps %}<li data-done="{{ 'true' if step.done else 'false' }}"><span aria-hidden="true">{{ '✓' if step.done else loop.index }}</span>{{ T['connection_step_' ~ step.key] }}</li>{% endfor %}
+  </ol>
+  <dl class="connection-activity">
+    <div><dt>{{ T.connection_last_incoming }}</dt><dd>{{ observation.incoming_at.strftime('%Y-%m-%d %H:%M:%S') if observation.incoming_at else T.connection_never }}</dd></div>
+    <div><dt>{{ T.connection_last_outgoing }}</dt><dd>{{ observation.outgoing_at.strftime('%Y-%m-%d %H:%M:%S') if observation.outgoing_at else T.connection_never }}</dd></div>
+    <div><dt>{{ T.connection_inbound_pending }}</dt><dd>{{ observation.inbound_pending }}</dd></div>
+    <div><dt>{{ T.connection_outbound_pending }}</dt><dd>{{ observation.outgoing_queues.get('pending', 0) + observation.outgoing_queues.get('sending', 0) + observation.outgoing_queues.get('retry', 0) }}</dd></div>
+  </dl>
+  {% if observation.problem_count %}<p class="connection-channel-issues"><a href="#delivery-problems">{{ T.connection_issues }}: {{ observation.problem_count }}</a></p>{% endif %}
+  {% if channel != 'widget' %}
+  <div class="connection-check-result" role="status">
+    {% if observation.check %}
+      <p class="workspace-muted">{{ T.connection_check_time }}: {{ observation.check.checked_at.strftime('%Y-%m-%d %H:%M:%S') }}</p>
+      {% if observation.check.stale %}<p>{{ T.connection_check_stale }}</p>
+      {% else %}
+        <strong class="connection-result-label" data-status="{{ observation.check.status }}">{{ T['connection_status_' ~ observation.check.status] }}</strong>
+        {% for part in observation.check.parts %}
+        <p><strong>{{ part.part|upper }}:</strong> {{ T['connection_result_' ~ part.code] }}{% if part.missing %} <code>{{ part.missing|join(', ') }}</code>{% endif %}</p>
+        {% endfor %}
+      {% endif %}
+    {% else %}<p>{{ T.connection_check_none }}</p>{% endif %}
+  </div>
+  <form method="post" action="/manage/integrations/{{ channel }}/check" class="connection-check-form" data-connection-check>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="message-action" data-checking-label="{{ T.connection_checking }}" {% if not state.configured %}disabled{% endif %}>{{ T.connection_check }}</button>
+    <p class="workspace-muted">{{ T.connection_check_hint }}</p>
+  </form>
+  {% endif %}
+</div>

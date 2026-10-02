@@ -45,11 +45,13 @@ _UPLOAD_TIMEOUT = 60.0
 
 
 def bot_token() -> str:
-    return (os.getenv("SLACK_BOT_TOKEN") or "").strip()
+    from src.config.channel_values import get
+    return get("SLACK_BOT_TOKEN").strip()
 
 
 def signing_secret() -> str:
-    return (os.getenv("SLACK_SIGNING_SECRET") or "").strip()
+    from src.config.channel_values import get
+    return get("SLACK_SIGNING_SECRET").strip()
 
 
 def is_configured() -> bool:
@@ -170,20 +172,47 @@ class SlackChannel:
                     headers={"Authorization": f"Bearer {self._token}"},
                 )
         except httpx.HTTPError as e:
-            return False, {"error": f"{type(e).__name__}"}
+            return False, {"error": type(e).__name__, "delivery_uncertain": True}
+
+        if response.status_code == 429:
+            return False, {"error": "ratelimited"}
 
         try:
             data = response.json()
         except ValueError:
-            return False, {"error": f"http_{response.status_code}"}
+            return False, {"error": f"http_{response.status_code}", "delivery_uncertain": True}
+        if not isinstance(data, dict):
+            return False, {"error": "invalid_response", "delivery_uncertain": True}
+        if response.status_code >= 500:
+            return False, {"error": f"http_{response.status_code}", "delivery_uncertain": True}
         return bool(data.get("ok")), data
 
     # -- outbound ---------------------------------------------------------
 
+    async def edit_message(self, address: str, ref: str, text: str, *, caption=False) -> Delivery:
+        if caption:
+            return Delivery.failed("chat_edit_unsupported")
+        try:
+            ok, data = await self._post("chat.update", {"channel": address, "ts": ref,
+                                                      "text": text, "blocks": []})
+            if ok:
+                return Delivery.sent(ref)
+            return Delivery.failed("chat_edit_uncertain" if data.get("delivery_uncertain") else "chat_edit_refused")
+        except Exception:
+            return Delivery.failed("chat_edit_uncertain")
+
     async def send_text(
-        self, address: str, text: str, *, options: Sequence[Option] | None = None
+        self, address: str, text: str, *, options: Sequence[Option] | None = None, reply_ref: str | None = None
+    ) -> Delivery:
+        return await self._send_text(address, text, options=options)
+
+    async def _send_text(
+        self, address: str, text: str, *, options: Sequence[Option] | None = None,
+        thread_ts: str | None = None,
     ) -> Delivery:
         payload: dict = {"channel": address, "text": text}
+        if thread_ts:
+            payload["thread_ts"] = thread_ts
         blocks = _blocks(text, options)
         if blocks:
             # `text` stays as well: it is what a notification shows, and a
@@ -195,6 +224,8 @@ class SlackChannel:
             return Delivery.sent(data.get("ts"))
 
         error = str(data.get("error") or "unknown")
+        if data.get("delivery_uncertain"):
+            return Delivery.failed("e_delivery_uncertain", f"slack: {error}")
         # The ones worth telling apart, because they mean different things to
         # whoever has to fix them.
         if error in {"channel_not_found", "not_in_channel", "is_archived"}:
@@ -209,8 +240,26 @@ class SlackChannel:
             return Delivery.failed("e_slack_auth", error)
         return Delivery.failed("e_send_failed", f"slack: {error}")
 
+    async def send_for_ticket(
+        self, address: str, text: str, *, conversation_key: str,
+        options: Sequence[Option] | None = None,
+        attachment: tuple[str, bytes] | None = None,
+    ) -> Delivery:
+        """Send a ticket reply into its original Slack message thread."""
+        thread_ts = conversation_key.removeprefix("slack:") if conversation_key.startswith("slack:") else None
+        if attachment is not None:
+            return await self._send_file(address, filename=attachment[0], content=attachment[1],
+                                        caption=text, thread_ts=thread_ts)
+        return await self._send_text(address, text, options=options, thread_ts=thread_ts)
+
     async def send_file(
-        self, address: str, *, filename: str, content: bytes, caption: str | None = None
+        self, address: str, *, filename: str, content: bytes, caption: str | None = None, reply_ref: str | None = None
+    ) -> Delivery:
+        return await self._send_file(address, filename=filename, content=content, caption=caption)
+
+    async def _send_file(
+        self, address: str, *, filename: str, content: bytes, caption: str | None = None,
+        thread_ts: str | None = None,
     ) -> Delivery:
         """Three calls, because that is what Slack now requires.
 
@@ -245,9 +294,10 @@ class SlackChannel:
             "files": [{"id": file_id, "title": filename}],
             "channel_id": address,
             **({"initial_comment": caption} if caption else {}),
+            **({"thread_ts": thread_ts} if thread_ts else {}),
         })
         if not ok:
-            return self._file_error(data)
+            return self._file_error(data, delivery_attempted=True)
 
         # The message id, so the reply can be unsent like any other, and the
         # file id so the ticket page can fetch it back. Slack returns both
@@ -259,8 +309,10 @@ class SlackChannel:
             file_ref=shared.get("id") or file_id,
         )
 
-    def _file_error(self, data: dict) -> Delivery:
+    def _file_error(self, data: dict, *, delivery_attempted: bool = False) -> Delivery:
         error = str(data.get("error") or "unknown")
+        if delivery_attempted and data.get("delivery_uncertain"):
+            return Delivery.failed("e_delivery_uncertain", f"slack: {error}")
         if error in {"missing_scope", "not_allowed_token_type"}:
             self._scope_missing("files")
             return Delivery.failed("e_slack_files_scope", error)

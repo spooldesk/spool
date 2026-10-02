@@ -127,6 +127,13 @@ async def test_with_the_trial_off_the_answer_goes_out(initialized_db, channel):
     from src.ai import deflect
 
     await settings_service.set_ai_shadow_mode(False, updated_by=0)
+    await settings_service.set_ai_enabled(True, updated_by=0)
+    await settings_service.set_ai_deflection_enabled(True, updated_by=0)
+    ticket_id = await _ticket_with_shadow_call(suggested="VPN help")
+    async with db_session() as session:
+        ticket = await session.get(Ticket, ticket_id)
+        user = await session.get(User, ticket.user_id)
+        user_tg_id = user.tg_id
 
     async def _confident(ticket_id, user_text):
         return deflect.DeflectResult(answer="Restart the VPN client.", ai_call_id=1)
@@ -134,12 +141,14 @@ async def test_with_the_trial_off_the_answer_goes_out(initialized_db, channel):
     original = deflect.try_deflect_for_ticket
     deflect.try_deflect_for_ticket = _confident
     try:
-        await deflect.deflect_and_offer(_BOT, 1, "vpn broken", 555, "en")
+        await deflect.deflect_and_offer(_BOT, ticket_id, "vpn broken", user_tg_id, "en")
     finally:
         deflect.try_deflect_for_ticket = original
+        await settings_service.set_ai_enabled(False, updated_by=0)
+        await settings_service.set_ai_deflection_enabled(False, updated_by=0)
 
     assert len(channel.texts) == 1, "the gate is stuck shut"
-    assert channel.texts[0][0] == "555", "it must reach the customer, not the admin chat"
+    assert channel.texts[0][0] == str(user_tg_id), "it must reach the customer, not the admin chat"
 
 
 async def test_the_pair_is_the_draft_and_the_reply_that_followed(initialized_db):

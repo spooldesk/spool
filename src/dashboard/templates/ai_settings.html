@@ -4,23 +4,51 @@
 {% block content %}
 <div class="max-w-2xl">
   <h1 class="text-2xl font-semibold tracking-tight mb-1">{{ T.ai_title }}</h1>
-  <p class="text-sm text-zinc-500 mb-6">{{ T.ai_subtitle }}</p>
+  <p data-help class="text-sm text-zinc-500 mb-6">{{ T.ai_subtitle }}</p>
 
   {% if flash_sent %}
     <div class="mb-4 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm">{{ T.saved }}</div>
   {% endif %}
 
   {% if flash_err %}
-    <div class="mb-4 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-sm">{{ T.ai_engine_err }}</div>
+    <div role="alert" class="mb-4 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-sm">{{ T.get(flash_err, T.ai_engine_err) }}</div>
   {% endif %}
 
+  <section id="assistant-config" class="workspace-card">
+    <h2>{{ T.assistant_title }}</h2>
+    <p class="workspace-intro">{{ T.assistant_settings_help }}</p>
+    <p class="workspace-muted">{{ T.assistant_privacy }}</p>
+    <p class="workspace-muted">{{ T.assistant_limits }}</p>
+    <form method="post" action="/manage/ai/assistant" class="workspace-form">
+      <label class="workspace-check"><input type="checkbox" name="enabled" value="1" {% if assistant_on %}checked{% endif %}>{{ T.assistant_enable }}</label>
+      <button class="workspace-primary">{{ T.save }}</button>
+      {% if assistant_on and enabled %}<a href="/assistant">{{ T.assistant_title }} →</a>{% endif %}
+    </form>
+  </section>
+  <section id="company" class="workspace-card">
+    <h2>{{ T.company_title }}</h2>
+    <p class="workspace-intro">{{ T.company_intro }}</p>
+    <p data-help>{{ T.company_guide }}</p>
+    <p class="workspace-muted">{{ T.company_limits }}</p>
+    <p data-help>{{ T.company_provider }}</p>
+    {% if company.unreadable %}<p class="workspace-error">{{ T.integration_unreadable }}</p>{% endif %}
+    {% if company.title %}<p class="workspace-muted">{{ company.title }} · {{ company.updated_at[:10] }} · {{ company.text|length }} / 24 000</p>
+      <details><summary class="text-sm">{{ T.company_preview }}</summary><pre class="workspace-reference">{{ company.text }}</pre></details>
+    {% else %}<p class="workspace-muted">{{ T.company_empty }}</p>{% endif %}
+    <form method="post" action="/manage/ai/company" enctype="multipart/form-data" class="workspace-form">
+      <label>{{ T.company_upload }}<input type="file" name="document" accept=".docx,.txt,.md" {% if not company.title %}required{% endif %}></label>
+      <label class="workspace-check"><input type="checkbox" name="enabled" value="1" {% if company.enabled or not company.title %}checked{% endif %}>{{ T.company_enabled }}</label>
+      <button class="workspace-primary">{{ T.save }}</button>
+    </form>
+    {% if company.title %}<form method="post" action="/manage/ai/company" class="workspace-delete"><input type="hidden" name="remove" value="1"><button>{{ T.company_remove }}</button></form>{% endif %}
+  </section>
   <!-- Which LLM answers -->
   <form method="post" action="/manage/ai/engine" class="bg-zinc-950 border border-zinc-900 rounded-xl p-5 mb-4 space-y-4">
     <div class="text-xs uppercase tracking-wide text-zinc-500">{{ T.ai_engine }}</div>
 
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <div>
-        <label class="block text-xs text-zinc-500 mb-1.5">{{ T.ai_provider }}</label>
+        <label for="aiProvider" class="block text-xs text-zinc-500 mb-1.5">{{ T.ai_provider }}</label>
         <select name="provider" id="aiProvider"
                 class="w-full px-3 py-2 rounded-lg bg-black border border-zinc-800 text-sm
                        focus:border-brand-500 focus:outline-none text-zinc-100">
@@ -33,7 +61,7 @@
       </div>
 
       <div>
-        <label class="block text-xs text-zinc-500 mb-1.5">{{ T.ai_model }}</label>
+        <label for="aiModel" class="block text-xs text-zinc-500 mb-1.5">{{ T.ai_model }}</label>
         {#
           A text input with a datalist, not a select: the listed models are a
           convenience and go stale within months, so anything typed has to be
@@ -54,9 +82,14 @@
       </div>
     </div>
 
+    {% for p in providers %}
+      {% set note = T.get('ai_note_' ~ p.id) %}
+      {% if note %}<p data-provider-note="{{ p.id }}" {% if p.id != provider %}hidden{% endif %} class="text-xs text-zinc-500">{{ note }}</p>{% endif %}
+    {% endfor %}
+
     <div id="aiHostRow" {% if not host_hint %}hidden{% endif %}>
-      <label class="block text-xs text-zinc-500 mb-1.5">{{ T.ai_host }}</label>
-      <input name="host" id="aiHost" value="{{ host }}" placeholder="{{ host_hint }}"
+      <label for="aiHost" class="block text-xs text-zinc-500 mb-1.5">{{ T.ai_host }}</label>
+      <input name="host" id="aiHost" value="{{ host }}" placeholder="{{ host_hint }}" {% if not host_hint %}disabled{% endif %}
              class="w-full px-3 py-2 rounded-lg bg-black border border-zinc-800 text-sm
                     font-mono focus:border-brand-500 focus:outline-none text-zinc-100
                     placeholder:text-zinc-600">
@@ -64,13 +97,13 @@
 
     <div id="aiKeyRow" {% if not needs_key %}hidden{% endif %}>
       <div>
-        <label class="block text-xs text-zinc-500 mb-1.5">{{ T.ai_api_key }}</label>
-        <input name="api_key" type="password" autocomplete="off"
+        <label for="aiKey" class="block text-xs text-zinc-500 mb-1.5">{{ T.ai_api_key }}</label>
+        <input name="api_key" id="aiKey" data-empty-placeholder="{{ T.ai_key_placeholder }}" type="password" autocomplete="off"
                placeholder="{% if key_from_env %}{{ T.ai_key_from_env }} {{ key_env_var }}{% elif key_hint %}{{ key_hint }}{% else %}{{ T.ai_key_placeholder }}{% endif %}"
                class="w-full px-3 py-2 rounded-lg bg-black border border-zinc-800 text-sm
                       focus:border-brand-500 focus:outline-none text-zinc-100
                       placeholder:text-zinc-600">
-        <p class="mt-1.5 text-xs text-zinc-600">
+        <p id="aiKeyInfo" class="mt-1.5 text-xs text-zinc-600">
           {{ T.ai_key_blank_keeps }}
           {% if console_url %}
             <a href="{{ console_url }}" target="_blank" rel="noopener"
@@ -79,7 +112,7 @@
         </p>
         {% if key_present and not key_from_env %}
           <label class="mt-2 flex items-center gap-2 text-xs text-zinc-500 cursor-pointer">
-            <input type="checkbox" name="clear_key" value="1"
+            <input type="checkbox" name="clear_key" id="aiClearKey" value="1"
                    class="rounded bg-black border-zinc-700 text-brand-600 focus:ring-brand-500 w-4 h-4">
             {{ T.ai_key_clear }}
           </label>
@@ -88,16 +121,14 @@
     </div>
 
     <div class="flex items-center justify-between gap-4 pt-1">
-      <div class="text-xs min-w-0">
+      <div id="aiSavedStatus" class="text-xs min-w-0">
         {% if key_unreadable %}
           <span class="px-2 py-0.5 rounded-full bg-red-500/15 text-red-300 border border-red-500/30">{{ T.ai_key_unreadable }}</span>
         {% elif key_present or not needs_key %}
-          <span class="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">{{ T.ai_connected }}</span>
+          <span class="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">{{ T.ai_configured_unverified }}</span>
         {% else %}
           <span class="px-2 py-0.5 rounded-full bg-red-500/15 text-red-300 border border-red-500/30">{{ T.ai_no_key }}</span>
         {% endif %}
-        {% set note = T.get(provider_note_key) %}
-        {% if note %}<p class="mt-2 text-zinc-600">{{ note }}</p>{% endif %}
       </div>
       <button type="submit"
               class="shrink-0 px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium">
@@ -106,38 +137,7 @@
     </div>
   </form>
 
-  <script>
-    // Point the model field at the chosen provider's suggestions, and clear a
-    // model that belonged to the previous one. Without this the field keeps
-    // offering Gemini names after somebody picks Claude. The page works
-    // without this script — it just offers the wrong list until saved.
-    (function () {
-      var sel = document.getElementById("aiProvider");
-      var model = document.getElementById("aiModel");
-      if (!sel || !model) return;
-      var initial = sel.value;
-      var hostRow = document.getElementById("aiHostRow");
-      var host = document.getElementById("aiHost");
-      var keyRow = document.getElementById("aiKeyRow");
-
-      sel.addEventListener("change", function () {
-        var opt = sel.options[sel.selectedIndex];
-        model.setAttribute("list", "models-" + sel.value);
-        if (sel.value !== initial) model.value = "";
-        var list = document.getElementById("models-" + sel.value);
-        var first = list && list.querySelector("option");
-        if (!model.value && first) model.value = first.value;
-
-        // A provider is either something (a key) or somewhere (a host).
-        // Reshaping here rather than after a save means picking Ollama and
-        // typing its address is one step instead of two.
-        var hint = opt.getAttribute("data-host-hint") || "";
-        hostRow.hidden = !hint;
-        if (hint) host.placeholder = hint;
-        keyRow.hidden = opt.getAttribute("data-needs-key") !== "1";
-      });
-    })();
-  </script>
+  <script src="/static/ai-settings.js?v={{ g_asset_v }}" defer></script>
 
   <form method="post" action="/manage/ai" class="space-y-4">
     <!-- Master toggle -->
@@ -147,7 +147,7 @@
                class="rounded bg-black border-zinc-700 text-brand-600 focus:ring-brand-500 w-4 h-4">
         <div>
           <div class="text-sm font-medium">{{ T.ai_enable }}</div>
-          <div class="text-xs text-zinc-500">{{ T.ai_enable_hint }}</div>
+          <div data-help class="text-xs text-zinc-500">{{ T.ai_enable_hint }}</div>
         </div>
       </label>
     </div>
@@ -162,9 +162,7 @@
             {{ T.ai_deflection }}
             <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] bg-brand-600/20 text-brand-400 border border-brand-500/30 align-middle">beta</span>
           </div>
-          <div class="text-xs text-zinc-500">
-            {{ T.ai_deflection_hint }}
-          </div>
+          <div data-help class="text-xs text-zinc-500">{{ T.ai_deflection_hint }}</div>
         </div>
       </label>
     </div>
@@ -172,7 +170,7 @@
     <!-- Blacklist -->
     <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-5">
       <div class="text-sm font-medium mb-1">{{ T.ai_blacklist }}</div>
-      <p class="text-xs text-zinc-500 mb-3">{{ T.ai_blacklist_hint }}</p>
+      <p data-help class="text-xs text-zinc-500 mb-3">{{ T.ai_blacklist_hint }}</p>
       <div class="space-y-1.5">
         {% for c in categories %}
           <label class="flex items-center gap-2 text-sm cursor-pointer hover:text-white">
@@ -188,16 +186,16 @@
     <button class="px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium">{{ T.save }}</button>
   </form>
 
-  <div id="shadow" class="mt-6 bg-zinc-950 border border-zinc-900 rounded-xl p-5">
-    <div class="text-sm font-medium mb-1">{{ T.sh_setting_title }}</div>
-    <p class="text-xs text-zinc-500 mb-4">{{ T.sh_setting_hint }}</p>
+  <details id="shadow" class="mt-6 bg-zinc-950 border border-zinc-900 rounded-xl p-5">
+    <summary class="text-sm font-medium mb-3 cursor-pointer">{{ T.sh_setting_title }}</summary>
+    <p data-help class="text-xs text-zinc-500 mb-4">{{ T.sh_setting_hint }}</p>
 
     <form method="post" action="/manage/ai/shadow" class="space-y-3">
       <label class="flex items-start gap-2 text-sm cursor-pointer">
         <input type="checkbox" name="shadow" value="1" {% if shadow_on %}checked{% endif %}
                class="mt-0.5 rounded bg-black border-zinc-700 text-brand-600 focus:ring-brand-500">
         <span>{{ T.sh_setting_toggle }}
-          <span class="block text-xs text-zinc-500">{{ T.sh_setting_toggle_hint }}</span>
+          <span data-help class="block text-xs text-zinc-500">{{ T.sh_setting_toggle_hint }}</span>
         </span>
       </label>
       <div class="flex items-center gap-3">
@@ -205,11 +203,11 @@
         <a href="/ai/shadow" class="text-sm text-brand-400 hover:text-brand-300">{{ T.sh_view_results }}</a>
       </div>
     </form>
-  </div>
+  </details>
 
-  <div id="savings" class="mt-6 bg-zinc-950 border border-zinc-900 rounded-xl p-5">
-    <div class="text-sm font-medium mb-1">{{ T.sv_title }}</div>
-    <p class="text-xs text-zinc-500 mb-4">{{ T.sv_hint }}</p>
+  <details id="savings" class="mt-6 bg-zinc-950 border border-zinc-900 rounded-xl p-5">
+    <summary class="text-sm font-medium mb-3 cursor-pointer">{{ T.sv_title }}</summary>
+    <p data-help class="text-xs text-zinc-500 mb-4">{{ T.sv_hint }}</p>
 
     <form method="post" action="/manage/ai/savings" class="space-y-3 max-w-md">
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -231,16 +229,15 @@
         <input name="assist_minutes" type="number" step="0.5" min="0" value="{{ '%.0f'|format(assist_minutes) }}"
                class="w-full px-3 py-2 rounded-lg bg-black border border-zinc-800 text-sm
                       focus:border-brand-500 focus:outline-none text-zinc-100">
-        <p class="text-xs text-zinc-500 mt-1">{{ T.sv_assist_hint }}</p>
+        <p data-help class="text-xs text-zinc-500 mt-1">{{ T.sv_assist_hint }}</p>
       </div>
       <button class="px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium">{{ T.save }}</button>
     </form>
-  </div>
+  </details>
 
-  <div class="mt-6 flex items-start gap-1.5 text-xs text-zinc-600">
-    <i class="ti ti-info-circle shrink-0 mt-0.5" style="font-size:13px" aria-hidden="true"></i>
-    <span>{{ T.ai_analytics_hint }}
-    <a href="/ai" class="text-brand-400 hover:text-brand-300">{{ T.r_ai_footer_link_label }}</a>.</span>
+  <div class="mt-6 flex items-center gap-1.5 text-xs text-zinc-600">
+    <a href="/ai" class="text-brand-400 hover:text-brand-300">{{ T.r_ai_footer_link_label }}</a>
+    <span data-help>{{ T.ai_analytics_hint }} {{ T.r_ai_footer_link_label }}.</span>
   </div>
 </div>
 {% endblock %}

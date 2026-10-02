@@ -1,9 +1,10 @@
 <!doctype html>
+{% set workspace_brand = 'Spooldesk' if (g_brand_name or 'Support')|lower in ['support', 'spooldesk'] else g_brand_name %}
 <html lang="{{ T.html_lang }}" class="h-full dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Dashboard{% endblock %} · {{ g_brand_name or 'Support' }}</title>
+  <title>{% block title %}Dashboard{% endblock %} · {{ workspace_brand }}</title>
 
   <!--
     Theme init — runs synchronously before any paint to prevent flash.
@@ -16,7 +17,8 @@
   <script>
     (function(){
       var pref = {{ (prefs.theme if prefs else 'system')|tojson }};
-      var t = pref === 'system' ? localStorage.getItem('dash-theme') : pref;
+      var cached = null; try { cached = localStorage.getItem('dash-theme'); } catch (_) {}
+      var t = pref === 'system' ? cached : pref;
       if (!t && pref === 'system' && window.matchMedia) {
         t = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
       }
@@ -52,33 +54,17 @@
   <link rel="stylesheet"
         href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
   <link rel="stylesheet" href="/static/app.css?v={{ g_asset_v }}">
+  <link rel="stylesheet" href="/static/brand.css?v={{ g_asset_v }}">
+  <link rel="stylesheet" href="/static/workspace.css?v={{ g_asset_v }}">
   <meta name="csrf-token" content="{{ csrf_token }}">
-  <script>
-    // Auto-attach the CSRF token to same-origin mutating fetch() requests, so
-    // AJAX calls (ai-suggest, etc.) don't each have to set the header manually.
-    (function () {
-      var meta = document.querySelector('meta[name="csrf-token"]');
-      var token = meta ? meta.getAttribute('content') : '';
-      if (!token || !window.fetch) return;
-      var _fetch = window.fetch;
-      window.fetch = function (input, init) {
-        init = init || {};
-        var method = (init.method
-          || (input && typeof input !== 'string' && input.method)
-          || 'GET').toUpperCase();
-        if (method !== 'GET' && method !== 'HEAD') {
-          var headers = new Headers(init.headers
-            || (input && typeof input !== 'string' && input.headers) || {});
-          if (!headers.has('X-CSRF-Token')) headers.set('X-CSRF-Token', token);
-          init.headers = headers;
-        }
-        return _fetch(input, init);
-      };
-    })();
-  </script>
+  <script src="/static/dashboard-fetch.js?v={{ g_asset_v }}"></script>
+  <link rel="stylesheet" href="/static/message-menu.css?v={{ g_asset_v }}">
+  <script src="/static/auto-grow.js?v={{ g_asset_v }}" defer></script>
+  <script src="/static/help-tips.js?v={{ g_asset_v }}" defer></script>
+  <script src="/static/section-access.js?v={{ g_asset_v }}" defer></script>
   {% block head_extra %}{% endblock %}
 </head>
-<body class="h-full antialiased text-gray-900 dark:text-zinc-100">
+<body class="workspace-shell h-full antialiased text-gray-900 dark:text-zinc-100" data-help-label="{{ T.wg_nav_help }}" data-session-expired="{{ T.session_expired }}" data-sign-in="{{ T.sign_in }}" data-readonly="{{ 'true' if not section_editable else 'false' }}">
 <div class="flex h-full">
 
   <!-- ============================================================
@@ -97,26 +83,15 @@
     <!-- Logo -->
     <div class="h-12 shrink-0 flex items-center gap-2.5 px-4
                 border-b border-gray-100 dark:border-zinc-900">
-      <div class="w-7 h-7 rounded-md bg-violet-600 flex items-center justify-center shrink-0">
-        <i class="ti ti-headset text-white" style="font-size:14px" aria-hidden="true"></i>
-      </div>
-      <span class="font-semibold text-sm text-gray-900 dark:text-zinc-100 truncate">
-        {{ g_brand_name or 'Support' }}
-      </span>
-    </div>
-
-    <!-- Workspace selector (placeholder until Phase 3 multi-tenancy) -->
-    <div class="px-3 py-2 border-b border-gray-100 dark:border-zinc-900">
-      <button class="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md
-                     hover:bg-gray-50 dark:hover:bg-zinc-900 transition-colors text-left"
-              title="Workspace (multi-tenant in a future release)">
-        <div class="w-5 h-5 rounded bg-violet-100 dark:bg-violet-900/40
-                    flex items-center justify-center shrink-0">
-          <span class="text-[9px] font-bold text-violet-700 dark:text-violet-400">W</span>
-        </div>
-        <span class="flex-1 text-xs font-medium text-gray-700 dark:text-zinc-300 truncate">Workspace</span>
-        <i class="ti ti-selector text-gray-300 dark:text-zinc-600" style="font-size:12px" aria-hidden="true"></i>
-      </button>
+      {% if (g_brand_name or 'Support')|lower in ['support', 'spooldesk'] %}
+        <a href="/" class="sd-wordmark workspace-wordmark" aria-label="Spooldesk">
+          <img class="sd-brand-icon" src="/static/icons/favicon-96x96.png?v={{ g_asset_v }}" width="30" height="30" alt="">
+          <span>spooldesk<span class="sd-brand-dot">.</span></span>
+        </a>
+      {% else %}
+        <div class="w-7 h-7 rounded-md bg-violet-600 flex items-center justify-center shrink-0"><i class="ti ti-headset text-white" style="font-size:14px" aria-hidden="true"></i></div>
+        <span class="font-semibold text-sm truncate">{{ g_brand_name }}</span>
+      {% endif %}
     </div>
 
     <!-- Navigation -->
@@ -128,6 +103,7 @@
          Usage: {{ navitem('tickets', '/tickets', 'ti-ticket', 'Tickets') }}
       ---------------------------------------------------------- #}
       {% macro navitem(key, href, icon, label, badge_id=None) %}
+        {% if can_view(href) %}
         {# accept a single string or a comma-separated list #}
         {% set _keys = key.split(',') if ',' in key|string else [key] %}
         {% set _active = active_page in _keys %}
@@ -151,10 +127,15 @@
                   title="{{ T.queue_badge_title }}"></span>
           {% endif %}
         </a>
+        {% endif %}
       {% endmacro %}
 
       {# RBAC: the nav mirrors router permissions (bootstrap session = owner) #}
       {% set _role = current_user.role if current_user else 'owner' %}
+
+      {% if assistant_enabled and can_view('/assistant') %}
+      <div>{{ navitem('assistant', '/assistant', 'ti-message-chatbot', T.nav_ai_assistant) }}</div>
+      {% endif %}
 
       <div>
         <p class="px-3 mb-1 text-[10px] font-semibold uppercase tracking-wider
@@ -162,12 +143,12 @@
         {{ navitem('tickets',    '/tickets',    'ti-ticket',  T.nav_tickets, badge_id='nav-queue-badge') }}
         {{ navitem('board',      '/board',      'ti-layout-kanban', T.nav_board) }}
         {{ navitem('users',      '/users',      'ti-users',   T.nav_users) }}
-        {% if _role in ('admin', 'owner') %}
+        {% if has_telegram %}
           {{ navitem('broadcast', '/broadcast', 'ti-speakerphone', T.nav_broadcast) }}
         {% endif %}
       </div>
 
-      {% if _role in ('admin', 'owner') %}
+      {% if can_view('/manage/templates') or can_view('/manage/articles') or can_view('/manage/categories') or can_view('/manage/teams') or can_view('/manage/close-reasons') or can_view('/manage/settings') or can_view('/manage/ai') or _role == 'owner' %}
       <div>
         <p class="px-3 mb-1 text-[10px] font-semibold uppercase tracking-wider
                   text-gray-300 dark:text-zinc-600">{{ T.nav_configure }}</p>
@@ -176,26 +157,33 @@
         {{ navitem('categories',   '/manage/categories',   'ti-category-2',     T.nav_categories) }}
         {{ navitem('close_reasons','/manage/close-reasons','ti-circle-check',   T.nav_close_reasons) }}
         {{ navitem('teams',        '/manage/teams',        'ti-building',       T.nav_teams) }}
-        {{ navitem('tags',         '/manage/tags',         'ti-tag',            T.nav_tags) }}
         {{ navitem('settings',     '/manage/settings',     'ti-settings-2',     T.nav_settings) }}
         {% if _role == 'owner' %}
-          {{ navitem('admins',     '/manage/admins',       'ti-shield-lock',    T.nav_operators) }}
+          {{ navitem('integrations', '/manage/integrations', 'ti-plug', T.nav_integrations) }}
+          {{ navitem('admins', '/manage/admins', 'ti-shield-lock', T.nav_operators) }}
+          {{ navitem('roles', '/manage/roles', 'ti-lock-access', T.nav_roles) }}
         {% endif %}
       </div>
 
+      {% endif %}
+
+      {% if can_view('/manage/ai') %}
       <div>
         <p class="px-3 mb-1 text-[10px] font-semibold uppercase tracking-wider
                   text-gray-300 dark:text-zinc-600">{{ T.nav_ai }}</p>
-        {{ navitem('ai_settings', '/manage/ai', 'ti-cpu', T.nav_ai_config) }}
-        {{ navitem('ai_shadow', '/ai/shadow', 'ti-eye-off', T.nav_ai_shadow) }}
+        {{ navitem('ai_settings,ai_shadow', '/manage/ai', 'ti-cpu', T.nav_ai_config) }}
       </div>
       {% endif %}
 
       <div>
         <p class="px-3 mb-1 text-[10px] font-semibold uppercase tracking-wider
                   text-gray-300 dark:text-zinc-600">{{ T.nav_analytics }}</p>
-        {{ navitem('overview,ai,templates_analytics', '/overview', 'ti-chart-bar', T.nav_dashboard) }}
-        {% if _role in ('admin', 'owner') %}
+        {{ navitem('overview', '/overview', 'ti-chart-bar', T.nav_dashboard) }}
+        {% if not can_view('/overview') %}
+        {{ navitem('ai', '/ai', 'ti-chart-dots', T.nav_ai_analytics) }}
+        {{ navitem('templates_analytics', '/templates', 'ti-chart-bar', T.nav_templates) }}
+        {% endif %}
+        {% if can_view('/reports') %}
           {{ navitem('reports', '/reports', 'ti-report-analytics', T.nav_reports) }}
         {% endif %}
       </div>
@@ -222,12 +210,15 @@
            title="{{ T.menu_preferences }}">
           <i class="ti ti-adjustments-horizontal" style="font-size:14px" aria-hidden="true"></i>
         </a>
-        <a href="/logout"
+        <form method="post" action="/logout">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit"
            class="text-gray-300 dark:text-zinc-600
                   hover:text-gray-600 dark:hover:text-zinc-300 transition-colors"
            title="Log out">
           <i class="ti ti-logout" style="font-size:14px" aria-hidden="true"></i>
-        </a>
+          </button>
+        </form>
       </div>
     </div>
 
@@ -270,19 +261,21 @@
         'categories':          T.nav_categories,
         'close_reasons':       T.nav_close_reasons,
         'teams':               T.nav_teams,
-        'tags':                T.nav_tags,
         'settings':            T.nav_settings,
         'admins':              T.nav_operators,
+        'integrations':        T.nav_integrations,
+        'roles':               T.nav_roles,
         'ai_settings':         T.nav_ai_config,
         'ai_shadow':           T.nav_ai_shadow,
         'overview':            T.nav_analytics,
         'ai':                  T.nav_ai_analytics,
+        'assistant':           T.nav_ai_assistant,
         'templates_analytics': T.nav_template_analytics,
         'reports':             T.nav_reports,
       } %}
       <nav class="flex items-center gap-1 text-sm flex-1 min-w-0" aria-label="Breadcrumb">
         <span class="text-gray-300 dark:text-zinc-600 text-xs truncate shrink-0">
-          {{ g_brand_name or 'Support' }}
+          {{ workspace_brand }}
         </span>
         <i class="ti ti-chevron-right shrink-0 text-gray-200 dark:text-zinc-700"
            style="font-size:11px" aria-hidden="true"></i>
@@ -302,6 +295,11 @@
 
       <!-- Right-side controls -->
       <div class="flex items-center gap-0.5 shrink-0">
+        {% if assistant_enabled and assistant_context_available and active_page != 'assistant' %}
+        <a href="/assistant?context={{ request.url.path|urlencode }}" class="ws-button inline-flex items-center gap-1 px-2 text-xs text-violet-600 dark:text-violet-400" title="{{ T.assistant_analyze }}" aria-label="{{ T.assistant_analyze }}">
+          <i class="ti ti-message-chatbot" aria-hidden="true"></i><span>AI</span>
+        </a>
+        {% endif %}
 
         <!-- Light/Dark toggle -->
         <button id="theme-toggle"
@@ -330,8 +328,8 @@
         </button>
 
         <!-- Help -->
-        <a href="https://t.me/" target="_blank" rel="noopener"
-           title="Help"
+        <a href="/help"
+           title="{{ T.wg_nav_help }}" aria-label="{{ T.wg_nav_help }}"
            class="w-8 h-8 rounded-md flex items-center justify-center
                   text-gray-400 dark:text-zinc-500
                   hover:bg-gray-50 dark:hover:bg-zinc-900
@@ -455,11 +453,13 @@
     ].join(' ');
     el.innerHTML =
       '<i class="ti ' + icon + ' text-base shrink-0" aria-hidden="true"></i>' +
-      '<span class="text-zinc-100">' + msg + '</span>' +
+      '<span class="text-zinc-100"></span>' +
       '<button onclick="this.parentElement.remove()" ' +
               'class="ml-auto text-zinc-500 hover:text-zinc-300" aria-label="Dismiss">' +
         '<i class="ti ti-x" style="font-size:14px" aria-hidden="true"></i>' +
       '</button>';
+    // Toasts may come from a URL query parameter, so their message is text.
+    el.querySelector('span').textContent = msg;
 
     container.appendChild(el);
     // Animate in
@@ -481,7 +481,7 @@
     var msg  = p.get('toast');
     var type = p.get('toast_type') || 'success';
     if (msg) {
-      window.showToast(decodeURIComponent(msg), type);
+      window.showToast(msg, type);
       // Clean the param from URL without page reload
       var url = new URL(window.location);
       url.searchParams.delete('toast');
@@ -495,11 +495,11 @@
   // nav item and (opt-in via the bell) browser notifications for new tickets.
   var queueBadge = document.getElementById('nav-queue-badge');
   var notifyBtn  = document.getElementById('notify-toggle');
-  var NOTIFY_KEY = 'dash-notify';
-  var LAST_KEY   = 'dash-last-ticket';
+  var notificationsWanted = {{ (prefs.notify_new if prefs else False)|tojson }};
+  var LAST_KEY = 'dash-last-ticket-{{ current_user.id if current_user else "anonymous" }}';
 
   function notifyEnabled() {
-    return localStorage.getItem(NOTIFY_KEY) === '1'
+    return notificationsWanted
         && 'Notification' in window
         && Notification.permission === 'granted';
   }
@@ -512,11 +512,17 @@
   }
 
   if (notifyBtn) {
-    notifyBtn.addEventListener('click', function () {
+    async function saveNotifications(enabled) {
+      const body = new FormData(); body.append('enabled', enabled ? '1' : '0');
+      const result = await fetch('/me/notifications', {method:'POST', body});
+      if (!result.ok) return false;
+      notificationsWanted = enabled;
+      renderBell();
+      return true;
+    }
+    notifyBtn.addEventListener('click', async function () {
       if (notifyEnabled()) {
-        localStorage.setItem(NOTIFY_KEY, '0');
-        renderBell();
-        window.showToast('{{ T.js_notify_off }}', 'info');
+        if (await saveNotifications(false)) window.showToast('{{ T.js_notify_off }}', 'info');
         return;
       }
       if (!('Notification' in window)) {
@@ -526,11 +532,9 @@
       Promise.resolve(
         Notification.permission === 'granted'
           ? 'granted' : Notification.requestPermission()
-      ).then(function (perm) {
+      ).then(async function (perm) {
         if (perm === 'granted') {
-          localStorage.setItem(NOTIFY_KEY, '1');
-          renderBell();
-          window.showToast('{{ T.js_notify_on }}', 'success');
+          if (await saveNotifications(true)) window.showToast('{{ T.js_notify_on }}', 'success');
         } else {
           window.showToast('{{ T.js_notify_denied }}', 'warning');
         }
@@ -556,7 +560,7 @@
         // the very first poll stays silent.
         if (last && d.latest_ticket_id > last) {
           var tid = d.latest_ticket_id;
-          window.showToast('{{ T.js_new_ticket }} #' + tid, 'info');
+          if (notificationsWanted) window.showToast('{{ T.js_new_ticket }} #' + tid, 'info');
           if (notifyEnabled()) {
             var n = new Notification('{{ T.js_new_ticket }} #' + tid, {
               tag: 'new-ticket-' + tid,
@@ -697,7 +701,7 @@
   overlay.addEventListener('click', e => { if (e.target === overlay) showKeys(false); });
 
   document.addEventListener('keydown', function (e) {
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.defaultPrevented || e.isComposing || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
 
     // Escape works everywhere, including out of a field the operator is
     // stuck in — it is the way back, so it cannot itself need the way back.
@@ -710,18 +714,22 @@
     }
 
     if (typing(document.activeElement)) return;
+    if (!overlay.classList.contains('hidden')) return;
+    // Physical keys also work with Russian/Ukrainian keyboard layouts.
+    const key = /^Key[A-Z]$/.test(e.code || '') ? e.code.slice(3).toLowerCase()
+      : e.code === 'Slash' ? (e.shiftKey ? '?' : '/') : e.key.toLowerCase();
 
     // 'g' opens a pair; a second key within two seconds completes it, and
     // after that it is just a letter again.
     if (pending === 'g' && Date.now() - pendingAt < 2000) {
       pending = null;
-      const target = {t: '/tickets', b: '/board', p: '/me'}[e.key];
+      const target = {t: '/tickets', b: '/board', p: '/me'}[key];
       if (target) { e.preventDefault(); location.href = target; }
       return;
     }
     pending = null;
 
-    switch (e.key) {
+    switch (key) {
       case 'g':
         pending = 'g'; pendingAt = Date.now();
         break;

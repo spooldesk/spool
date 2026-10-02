@@ -152,13 +152,13 @@ async def get_sla_minutes() -> int:
 
 
 def sla_state(waiting_seconds: int | None, sla_minutes: int) -> str | None:
-    """None (fine) / 'warn' (past the target) / 'breach' (past twice it)."""
+    """Warn at 80% of the response target; breach at the deadline."""
     if waiting_seconds is None:
         return None
     target = sla_minutes * 60
-    if waiting_seconds >= target * 2:
-        return "breach"
     if waiting_seconds >= target:
+        return "breach"
+    if waiting_seconds >= target * .8:
         return "warn"
     return None
 

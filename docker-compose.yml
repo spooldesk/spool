@@ -1,36 +1,61 @@
-# Spooldesk — one image, two services.
+# Spooldesk — dashboard with channel workers, and PostgreSQL.
 #
 # Quick start:
 #   1. python scripts/setup.py      # generates .env (or copy .env.example → .env)
-#   2. docker compose up -d --build
+#   2. docker compose -p spooldesk up -d --build dashboard
 #   3. open http://localhost:8000   # dashboard
 #
 # On a server with a domain, add the production overlay instead of step 2 —
 # it puts TLS in front and stops the dashboard listening on anything but
 # loopback:
 #
-#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#   docker compose -p spooldesk -f docker-compose.yml -f docker-compose.prod.yml up -d --build caddy
 #
-# Using only the website widget, with no Telegram? Start the dashboard alone:
-#   docker compose up -d --build dashboard
-# The bot service is Telegram; without BOT_TOKEN it logs why and exits, and
+# Configure channels in Integrations. Dashboard manages their workers.
+# The optional standalone bot service is retained for existing installations;
+# new installations do not need it. Without BOT_TOKEN it logs why and exits, and
 # `restart: on-failure` leaves it stopped rather than looping on that message.
 #
-# Both services share one SQLite database on the `data` volume. DATABASE_URL is
-# overridden here to an absolute path inside that volume so data persists across
-# rebuilds (the .env value is for local non-Docker runs).
+# PostgreSQL is the default database. The data volume holds local attachments
+# and separately protected key material; pgdata holds PostgreSQL itself.
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-spooldesk}
+      POSTGRES_USER: ${POSTGRES_USER:-spooldesk}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    logging: &bounded-logs
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   bot:
     # The image is built by `dashboard`, which is the service that always
     # runs. Building here would leave a widget-only install — one that never
     # starts this service — with no image at all.
-    image: spooldesk:latest
+    image: ${SPOOLDESK_IMAGE:-spooldesk:latest}
     depends_on: [dashboard]
     command: python -m src.main
-    env_file: .env
+    env_file: ${SPOOLDESK_ENV_FILE:-.env}
     environment:
-      DATABASE_URL: sqlite+aiosqlite:////app/data/support.db
+      DATABASE_URL: ""
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER:-spooldesk}
+      POSTGRES_DB: ${POSTGRES_DB:-spooldesk}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      ATTACHMENTS_DIR: /app/data/attachments
     volumes:
       - data:/app/data
       - logs:/app/logs
@@ -38,19 +63,29 @@ services:
     # cleanly after saying so once, and `unless-stopped` would restart it into
     # the same message every few seconds forever.
     restart: on-failure
+    logging: *bounded-logs
 
   dashboard:
     build: .
-    image: spooldesk:latest
+    image: ${SPOOLDESK_IMAGE:-spooldesk:latest}
     # --no-proxy-headers: uvicorn has its own X-Forwarded-For handling, on by
     # default. Two layers reading the same header is worse than one of them
     # being wrong, so src/dashboard/proxy.py is the only reader and this
     # switches the other off. What it trusts is TRUSTED_PROXY_HOPS.
     command: python -m uvicorn src.dashboard.app:app --host 0.0.0.0 --port 8000
       --no-proxy-headers
-    env_file: .env
+    env_file: ${SPOOLDESK_ENV_FILE:-.env}
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
-      DATABASE_URL: sqlite+aiosqlite:////app/data/support.db
+      DATABASE_URL: ""
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER:-spooldesk}
+      POSTGRES_DB: ${POSTGRES_DB:-spooldesk}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      ATTACHMENTS_DIR: /app/data/attachments
       # Set DASH_COOKIE_SECURE=true in .env when serving over HTTPS.
     ports:
       # Loopback only, deliberately. On a laptop this is still
@@ -64,6 +99,7 @@ services:
       - data:/app/data
       - logs:/app/logs
     restart: unless-stopped
+    logging: *bounded-logs
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthz').status==200 else 1)"]
       interval: 30s
@@ -74,3 +110,4 @@ services:
 volumes:
   data:
   logs:
+  pgdata:

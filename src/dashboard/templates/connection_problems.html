@@ -1,0 +1,30 @@
+<section class="workspace-card" id="delivery-problems">
+  <div class="workspace-card-heading"><h2>{{ T.connection_issues }}</h2><span class="workspace-status">{{ center.problem_count }}</span></div>
+  {% if not center.problem_count %}<p>{{ T.connection_issues_none }}</p>
+  {% else %}
+  <p>{{ T.connection_issues_hint }}</p>
+  <p>{{ T.connection_issues_limit }}</p>
+  {% if center.outgoing_problems %}
+  <h3>{{ T.connection_outgoing }} · {{ center.outgoing_problem_count }}</h3>
+  <div class="connection-table-scroll" tabindex="0" role="region" aria-label="{{ T.connection_outgoing }}">
+  <table class="connection-table"><thead><tr><th>{{ T.connection_message }}</th><th>{{ T.connection_created }}</th><th>{{ T.connection_attempts }}</th><th>{{ T.connection_next_attempt }}</th><th></th></tr></thead><tbody>
+  {% for issue in center.outgoing_problems %}<tr>
+    <td><strong>{{ issue.channel|capitalize }} · #{{ issue.message_id }}</strong><br>{{ T['connection_issue_' ~ issue.status] }}</td>
+    <td>{{ issue.created_at.strftime('%Y-%m-%d %H:%M') }}</td><td>{{ issue.attempts }}</td>
+    <td>{{ issue.next_attempt_at.strftime('%Y-%m-%d %H:%M') if issue.next_attempt_at else '—' }}</td>
+    <td><a href="/tickets/{{ issue.ticket_id }}">{{ T.connection_open_ticket }} #{{ issue.ticket_id }}</a></td>
+  </tr>{% endfor %}
+  </tbody></table></div>
+  {% endif %}
+  {% if center.incoming_problems %}
+  <h3>{{ T.connection_incoming }} · {{ center.incoming_problem_count }}</h3>
+  <p>{{ T.connection_inbound_issue }}</p>
+  <div class="connection-table-scroll" tabindex="0" role="region" aria-label="{{ T.connection_incoming }}">
+  <table class="connection-table"><thead><tr><th>{{ T.connection_event }}</th><th>{{ T.connection_created }}</th><th>{{ T.connection_attempts }}</th><th>{{ T.connection_next_attempt }}</th></tr></thead><tbody>
+  {% for issue in center.incoming_problems %}<tr>
+    <td>{{ issue.channel|capitalize }} · #{{ issue.id }}</td><td>{{ issue.created_at.strftime('%Y-%m-%d %H:%M') }}</td><td>{{ issue.attempts }}</td><td>{{ issue.next_attempt_at.strftime('%Y-%m-%d %H:%M') if issue.next_attempt_at else '—' }}</td>
+  </tr>{% endfor %}
+  </tbody></table></div>
+  {% endif %}
+  {% endif %}
+</section>

@@ -71,31 +71,48 @@ def _register_sqlite_functions(dbapi_connection, connection_record) -> None:
     except Exception:  # pragma: no cover — never block a connection over this
         logging.getLogger(__name__).warning("Could not register ci_contains()", exc_info=True)
 
-    # Foreign keys, under test only. SQLite leaves them off by default and
-    # PostgreSQL always enforces them, so a suite run on SQLite happily
-    # inserts a ticket assigned to an operator who does not exist — and then
-    # the same test fails on PostgreSQL for a reason that has nothing to do
-    # with the code under test.
-    #
-    # Deliberately not switched on in production: an instance whose data
-    # predates a constraint would start refusing writes on upgrade, which is
-    # a far worse surprise than a lenient database.
-    if _os.getenv("TESTING") == "1":
+    # Production and tests enforce the same integrity rules. Migration
+    # repairs nullable legacy references and refuses unrepairable orphans.
+    await_only(raw.execute("PRAGMA foreign_keys=ON"))
+    await_only(raw.execute("PRAGMA busy_timeout=30000"))
+
+
+async def acquire_write_lock(session: AsyncSession) -> None:
+    """Serialize mutation decisions across processes, before reading state.
+
+    This release supports a small single-organization instance. A transaction
+    lock makes read/decide/write operations correct on both database engines;
+    network calls must happen after the transaction commits.
+    """
+    if session.info.get("write_locked") and session.in_transaction():
+        return
+    if session.bind.dialect.name == "sqlite":
+        from sqlalchemy.exc import OperationalError
         try:
-            await_only(raw.execute("PRAGMA foreign_keys=ON"))
-        except Exception:  # pragma: no cover
-            logging.getLogger(__name__).warning(
-                "Could not enable foreign keys for the test database",
-                exc_info=True,
-            )
+            await session.execute(text("BEGIN IMMEDIATE"))
+        except OperationalError as exc:
+            if "within a transaction" not in str(exc):
+                raise
+            # An existing SQLite write transaction already owns its writer lock.
+    else:
+        await session.execute(text("SELECT pg_advisory_xact_lock(1936748396)"))
+    session.info["write_locked"] = True
+
+
+@event.listens_for(AsyncSession.sync_session_class, "after_transaction_end")
+def _clear_write_lock(session, transaction) -> None:
+    if transaction.parent is None:
+        session.info.pop("write_locked", None)
 
 
 @asynccontextmanager
-async def db_session() -> AsyncIterator[AsyncSession]:
+async def db_session(*, write: bool = False) -> AsyncIterator[AsyncSession]:
     """Yield a managed async DB session."""
 
     session = SessionFactory()
     try:
+        if write:
+            await acquire_write_lock(session)
         yield session
         await session.commit()
     except Exception:
@@ -108,12 +125,14 @@ async def db_session() -> AsyncIterator[AsyncSession]:
 async def init_db() -> None:
     """Create database tables if they do not already exist and run migrations.
 
-    On SQLite it also enables WAL journal mode, so the dashboard (separate
-    process, read-only) can read without blocking the bot's writes, and runs
-    the in-place column migrations. Both are SQLite-specific: PostgreSQL does
-    the first by default and needs none of the second on a database
-    create_all just built. Safe to call repeatedly on either.
+    Ordered transactional revisions run under a cross-process migration lock
+    on both SQLite and PostgreSQL. SQLite additionally uses WAL mode.
     """
+
+    # Import optional table modules before metadata.create_all so every
+    # process sees the complete schema, regardless of its enabled channels.
+    from src.database import delivery_models, inbound_models, workspace_models, assistant_models  # noqa: F401
+    from src.database.migrations import migrate
 
     async with engine.begin() as conn:
         if ON_SQLITE:
@@ -122,14 +141,15 @@ async def init_db() -> None:
             # manually changed. PostgreSQL has readers-don't-block-writers as
             # its normal behaviour and nothing to switch on.
             await conn.execute(text("PRAGMA journal_mode=WAL"))
+            await conn.execute(text("BEGIN IMMEDIATE"))
+        else:
+            await conn.execute(text("SELECT pg_advisory_xact_lock(1936748396)"))
         await conn.run_sync(models.Base.metadata.create_all)
-        if ON_SQLITE:
-            # A long list of additive ALTER TABLEs that bring a *legacy
-            # SQLite file* up to the current schema. A PostgreSQL database
-            # has no legacy — create_all above built it correct — so these
-            # are skipped rather than translated. See dialect.py for the
-            # limitation that follows from having no migration framework.
+        if ON_SQLITE and not await conn.run_sync(lambda c: inspect(c).has_table("schema_migrations")):
+            # Bootstrap pre-versioning SQLite databases once; subsequent
+            # upgrades use the same ordered revision list on both engines.
             await conn.run_sync(_migrate_to_new_schema)
+        await conn.run_sync(migrate)
         await conn.run_sync(_init_teams)
         await conn.run_sync(_init_categories)
         await conn.run_sync(_init_close_reasons)

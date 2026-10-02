@@ -11,6 +11,7 @@ driving a browser, and it is the one that would have caught all three.
 """
 
 import re
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -72,6 +73,30 @@ def _page(tid: int) -> str:
     with TestClient(app, base_url="http://testserver") as c:
         _login(c)
         return c.get(f"/tickets/{tid}").text
+
+
+@pytest.mark.parametrize("enabled,provider,key,visible", [
+    (False, "anthropic", "test-key", False),
+    (True, "anthropic", None, False),
+    (True, "anthropic", "test-key", False),
+    (True, "ollama", None, False),
+])
+async def test_manual_ai_button_is_absent_regardless_of_provider(
+    initialized_db, monkeypatch, enabled, provider, key, visible,
+):
+    from src.services import settings_service
+
+    monkeypatch.setattr(settings_service, "get_ai_enabled", AsyncMock(return_value=enabled))
+    monkeypatch.setattr(settings_service, "get_ai_provider", AsyncMock(return_value=provider))
+    monkeypatch.setattr(settings_service, "get_ai_key", AsyncMock(return_value=key))
+    monkeypatch.setattr(settings_service, "is_category_ai_blacklisted", AsyncMock(return_value=False))
+    channels.register(_NoFiles())
+    try:
+        body = _page(await _ticket_on("nofiles"))
+    finally:
+        channels.reset()
+    assert ('id="ai-btn"' in body) is visible
+    assert 'id="file-input"' in body  # Removing AI must not break the composer.
 
 
 # ------------------------------------------------- the composer stays alive
@@ -183,22 +208,30 @@ async def test_a_delivered_file_is_recorded_with_something_to_fetch_it_by(
 
 
 @pytest.mark.parametrize("adapter_name", ["telegram", "slack"])
-def test_success_never_travels_in_the_failure_field(adapter_name):
+async def test_success_never_travels_in_the_failure_field(adapter_name, monkeypatch):
     """Both adapters return a file reference on success. Neither should be
     putting it in `error_detail`, which is what the caller reads when
     something went wrong."""
-    import inspect
-
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    import httpx
     from src.channels import slack, telegram
 
-    module = {"telegram": telegram, "slack": slack}[adapter_name]
-    source = inspect.getsource(module)
-    send_file = source[source.index("async def send_file"):]
-    send_file = send_file[:send_file.index("async def ", 10)]
-
-    successes = [line for line in send_file.splitlines()
-                 if "ok=True" in line or "Delivery.sent" in line]
-    assert successes, "no success path found — did send_file move?"
-    for line in successes:
-        assert "error_detail" not in line, \
-            f"{adapter_name} returns a success in the failure field"
+    if adapter_name == "telegram":
+        bot = SimpleNamespace(send_document=AsyncMock(return_value=SimpleNamespace(
+            message_id=42, document=SimpleNamespace(file_id="stored-file"))))
+        adapter = telegram.TelegramChannel(bot)
+    else:
+        def transport(request):
+            if str(request.url).endswith("files.getUploadURLExternal"):
+                return httpx.Response(200, json={"ok": True, "upload_url": "https://files.slack.test/upload", "file_id": "stored-file"})
+            if str(request.url).endswith("files.completeUploadExternal"):
+                return httpx.Response(200, json={"ok": True, "files": [{"id": "stored-file", "timestamp": "42"}]})
+            return httpx.Response(200)
+        real_client = httpx.AsyncClient
+        monkeypatch.setattr(httpx, "AsyncClient", lambda *args, **kwargs:
+                            real_client(*args, **{**kwargs, "transport": httpx.MockTransport(transport)}))
+        adapter = slack.SlackChannel(token="test-only")
+    result = await adapter.send_file("12345", filename="log.txt", content=b"log")
+    assert result.ok and result.file_ref == "stored-file" and result.ref == "42"
+    assert result.error_detail is None and result.error_key is None

@@ -1,226 +1,95 @@
 # Using Spooldesk
 
-This is the day-to-day guide: what an operator does, and what the product
-does on its own. [DEPLOY.md](DEPLOY.md) covers getting it running;
-[FAQ.md](FAQ.md) covers the questions people ask before they install it.
+Operators work in the web dashboard. Email, Slack, website chat and optional
+Telegram are customer entry points. The old Telegram operator reply controls
+are disabled; use the dashboard on desktop or a suitable mobile browser.
 
----
+## Start as the owner
 
-## What a ticket is
+1. Sign in with the owner credentials generated for this installation.
+2. Configure only the needed channels in **Integrations**. Save, check access,
+   then confirm a real incoming message and the recipient's receipt of a reply.
+   Authentication checks alone do not prove end-to-end delivery.
+3. Invite colleagues in **Operators**. Give each person their own account.
+4. Use **Roles** for section visibility and view/edit permissions. Owner-only
+   operations, including connection credentials, remain owner-only.
+5. Configure teams, categories, working hours and response targets as needed.
 
-One conversation with one customer, on whichever channel they wrote from.
-The widget, email, Slack and Telegram all arrive in the same queue and are
-answered the same way — the channel is a fact about a ticket, not a separate
-inbox to check.
+See [connection diagnostics](docs/CONNECTION_CENTER.md). Dashboard language,
+theme and row density are individual operator preferences; customer language
+settings govern customer-facing messages separately.
 
-A customer has **one active ticket at a time**. Writing again continues it
-rather than opening a second one; a new ticket starts once the old one is
-closed. That is deliberate: five parallel threads from one person is not a
-feature to whoever has to answer them.
+## Work through a ticket
 
----
+The active queue and closed archive are separate. Open a ticket from its list
+or board card; review the customer's channel, history, assigned operator and
+verification state before replying.
 
-## The board
+- Assign responsibility and use New / In progress / Waiting as work stages.
+- A delivered public reply puts the conversation into waiting for the customer;
+  internal notes do not count as customer answers. A new customer reply resumes
+  the response clock. Working hours and the configured response policy apply.
+- Switch explicitly between a public reply and an internal note. Notes stay
+  operator-only and are not sent as customer messages or ordinary AI context.
+- Type a reply, attach files or paste an image; preview attachments before sending.
+  Text areas grow automatically. `Ctrl+Enter` sends from the reply composer.
+- The three-dot message menu contains the available reply, copy, edit and removal
+  actions. External-channel capabilities govern which mutations are possible.
+- Close after resolution using the configured reasons. CSAT is available on
+  supported channel flows; it is not a guarantee that every recipient responds.
 
-Four columns. Three of them are stages you set; the fourth is derived.
+## Colleague typing indicator
 
-| Column | What it means |
-|---|---|
-| **New** | Nobody has replied yet |
-| **In progress** | Somebody is working on it |
-| **Waiting** | The ball is with the customer |
-| **Closed** | Finished — last 7 days only |
+When a different operator types, the ticket header and composer show their name
+and whether it is a customer reply or internal note. Own tabs are not shown as
+colleagues; multiple tabs of one colleague appear once. The indicator expires
+after inactivity and clears on normal departure. It transmits activity flags,
+not draft text. A connection failure must not be treated as proof nobody else
+is answering. The indicator is advisory; it does not lock the Send button.
 
-**New → In progress happens by itself** the moment you reply. It never
-downgrades a stage you set on purpose, so moving a ticket to Waiting and then
-replying to something else does not undo your decision.
+## Delivery problems
 
-**Waiting is the one that pays for itself.** The response clock only runs
-while the customer is waiting on *you*. Park a ticket in Waiting and the
-clock stops; it starts again when they answer. A card that has been in
-Waiting for a week is not late — it is a customer who has gone quiet, which
-is a different problem and looks different on the board.
+Watch message delivery state. Queued, failed and uncertain are different states.
+A provider may have accepted a message even if its acknowledgement was lost.
+Inspect the customer channel before explicitly retrying an uncertain send.
+The owner can review connection and delivery diagnostics in Integrations.
+Email edits/deletions cannot recall a delivered email from an external inbox.
 
-The clock also counts **working hours**, configured in Settings. A message at
-18:05 is not overdue at 09:00 the next morning. Amber past the response
-target, red past twice it, and nothing at all when nothing is owed.
+## Customers and verification
 
-Closed is capped at seven days and every column at fifty cards. The board is
-for triage; history lives in **Tickets**, which has filters and Excel export.
+Approve incoming customers and assign a team when that workflow is enabled.
+Disabling multi-team routing leaves the single-team workflow. Linking email,
+Slack or Telegram identities groups a customer's contact history; it does not
+prove identity automatically. Verify ownership before linking accounts or
+disclosing private information. Widget-signed identity and support approval
+are different checks. See [deployment](DEPLOY.md) for signed widget identities.
 
----
+## Knowledge and templates
 
-## Answering
+Keep internal drafts separate from published help articles. Only publish content
+appropriate for customers. Templates speed up repeated replies; review them
+before sending. Configure company information/documents in AI settings to give
+the model terminology, policies, escalation rules and examples; do not upload
+secrets. Providing context is not fine-tuning the underlying model.
 
-Open a ticket and you get the whole conversation, whichever channels it
-crossed, in order.
+## AI assistant
 
-**Reply** goes to the customer. **Note** does not — internal notes are
-operator-only, never sent, and never given to the AI as context. That last
-part matters: a note saying "this is the third time this week" should not
-come back as a suggested reply.
+Enable the assistant in AI settings and select the correct provider, model and
+key. OpenRouter uses its own provider selection. The assistant can search ticket
+content, summarize issues, create drafts and propose supported changes.
+Inspect sources and coverage; it does not necessarily read every message.
+Confirm status/assignee changes only when the proposed action is correct.
 
-**Attachments work both ways on every channel.** Drag a file onto the reply
-box, or paste a screenshot straight into it. Images from customers appear
-inline; anything else is a download. Widget visitors can do the same.
+Chats and supported document excerpts are private to the operator and encrypted
+at rest. History survives reload; current access is checked again when it is
+read. Upload text formats or DOCX to the chat. PDF/image OCR and arbitrary agent
+code execution are outside this release. See [AI_ASSISTANT.md](docs/AI_ASSISTANT.md).
 
-**Templates** are canned replies, scoped to a team, with shortcuts. The AI
-picks likely candidates for you when it is switched on; you still choose.
+## Reports and working preferences
 
-**A signature** can be appended to everything you send — Preferences →
-Signature. Empty by default, because a signature nobody chose is a change to
-what customers receive.
-
-### Closing
-
-Pick one or more close reasons, and add free text if none of them fit.
-Reasons are editable in Settings, so they should end up describing what
-actually happens in your support rather than what the defaults guessed.
-
-Closing tells the customer, on whatever channel they wrote from, and asks
-them to rate it 1–5. The score is immutable and shows up on the dashboard;
-nobody is asked twice.
-
-The rating is tappable on every channel that can draw a button: Telegram,
-the widget, and Slack. Email gets the choices written into the text, because
-there is nothing in an email to click.
-
----
-
-## The help centre
-
-Articles customers read for themselves, in the widget's Help tab. Written in
-**Help centre** in the sidebar.
-
-Nothing is visible until you publish it — there is no half-published state,
-and the list says which is which. The Help tab does not appear in the widget
-at all until at least one article is published, because an empty search box
-reads as a broken search rather than as an empty shelf.
-
-Two things worth knowing while writing:
-
-**The summary is worth writing.** It is what somebody reads in the search
-results, and a truncated first line is usually the sentence that sets up the
-answer rather than the answer.
-
-**A published article's URL is frozen.** Editing the title of a draft renames
-its link; editing a published one does not, because that link may be in a
-customer's bookmarks or in a reply a colleague sent last month.
-
-Two numbers per article, and they answer different questions. **Reads** is
-how many people opened it — including everyone who read it and opened a ticket
-anyway. **Solved** is how many times the assistant answered from it and the
-person confirmed that was the end of it.
-
-An article with reads and no solves is being found and not helping. That is
-more useful to know than either number alone.
-
----
-
-## Working faster
-
-**Saved views** are a set of filters with a name — "my unassigned", "billing
-this week". They live in the Tickets page and are per operator.
-
-**Preferences** (`g` then `p`) is per operator, not per instance. Nothing you
-change there affects a colleague.
-
-- **Language** — the dashboard's, independent of what customers see.
-- **Theme** and **density** — dark, light, or follow the system.
-- **Landing page** — where you start. Board people and queue people want
-  different answers.
-- **Advance to the next ticket after replying** — off by default. It moves
-  the page out from under you, which is welcome when you asked for it and
-  alarming when you did not.
-- **Signature**, **hotkeys**, **notify on new**.
-
-### Keyboard
-
-Hotkeys can be switched off in Preferences. Anywhere:
-
-| Keys | |
-|---|---|
-| `g` then `t` | Tickets |
-| `g` then `b` | Board |
-| `g` then `p` | Preferences |
-| `/` | Search |
-| `?` | This list |
-| `Esc` | Close whatever is open |
-
-In a ticket:
-
-| Keys | |
-|---|---|
-| `r` | Reply |
-| `n` | Internal note |
-| `Ctrl` + `Enter` | Send |
-| `j` | Next ticket |
-| `Esc` | Back |
-
-**Search** covers ticket id, message text, the author's username and the
-category, and folds case in Unicode rather than only in ASCII — searching
-`okonomie` for `Okonomie` works in any database, but searching `ökonomie`
-finds `Ökonomie` here and would not in a plain SQL `LIKE`. The same is true
-of every non-Latin alphabet.
-
----
-
-## Answering from Telegram
-
-If the Telegram channel is set up, every ticket also lands in your admin
-group — including tickets that arrived from the widget or Slack. Replying in
-the thread reaches the customer on their own channel.
-
-This is for answering away from a desk. Everything else — the board, close
-reasons, templates, notes, reports, settings — is the dashboard.
-
----
-
-## Who the customer is
-
-Telegram gives you an account. Slack gives you a workspace user. The widget
-gives you whatever the visitor's page said, and that is worth reading
-carefully.
-
-A ticket shows either **Verified identity** or **Says they are this person**.
-The second is the normal case and most of those people are exactly who they
-say — a widget runs on a page the visitor controls, so an unsigned name is a
-claim, not a fact. Treat it as a reason to check another way before doing
-something irreversible: resetting access, discussing an account, quoting a
-balance.
-
-Verified means the customer's own server signed the identity with a shared
-secret. See "Proving it" in [DEPLOY.md](DEPLOY.md) for how a site sets that
-up.
-
----
-
-## What the AI does, when it is on
-
-It is off unless a `GEMINI_API_KEY` is set. When on, it suggests — it never
-sends.
-
-- Answers customers directly from your **help articles**, before an operator
-  joins — and records which article did it, so the Solved column means
-  something. Articles are preferred over the other two sources: they were
-  written for the person asking.
-- Searches previous resolved tickets and drafts an answer for a new one.
-- Picks likely templates.
-- Every suggestion is Accept/Dismiss, and the accept rate, latency and token
-  cost are measured rather than assumed. They are on the AI analytics page,
-  so "is this worth paying for" has an answer.
-
-Internal notes are excluded from everything it sees. So are sensitive
-categories, whose message bodies are masked on the ticket page as well.
-
----
-
-## Reports
-
-**Dashboard** is the shape of the week: ticket trend, first-response and
-resolution times, CSAT, category split, an activity heatmap by hour.
-
-**Reports** is the detail, with date ranges and export.
-
-Both count what happened, not what was configured. A category nobody uses
-shows as a category nobody uses.
+Use overview and reports for queue, response/resolution metrics, CSAT and period
+comparisons. Check date ranges, filters and metric definitions before sending a
+report to a lead. AI accept rate is not a support-team performance KPI.
+Optional automatic-next-ticket and notification preferences are per operator.
+Shortcuts available on a page are shown by that page's shortcut help; browser
+permissions and OS-level shortcuts can affect notifications and key handling.

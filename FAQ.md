@@ -1,184 +1,96 @@
-# FAQ
+# Frequently asked questions
 
-Questions people ask before installing, answered including the ones where
-the honest answer is "not yet".
+## What am I installing?
 
-[DEPLOY.md](DEPLOY.md) is how to run it. [USING.md](USING.md) is how to work
-in it.
+A self-hosted helpdesk for one organization. Customers contact it through
+email, Slack, the website widget or optional Telegram. Operators reply from
+the web dashboard. Telegram group reply controls are retired.
 
----
+## Do I need a VPS?
 
-## What is it
+No purchase is required for a local installation test. A suitable computer
+with Docker running Linux containers can host it. Public use needs a reliable,
+continuously available machine, persistent storage and HTTPS. Sleep, power loss
+and a disconnected network make a laptop installation unavailable.
 
-**What does Spooldesk actually do?**
-Customers write from a chat bubble on your website, from Slack, or from
-Telegram. Everything arrives in one queue that your team answers from a web
-dashboard: a board, an SLA clock, canned replies, internal notes, reports.
+## Is PostgreSQL included?
 
-**Is Telegram required?**
-No. It started as a Telegram bot and the name still says so in the repository
-URL, but an instance can run on the website widget alone. Leave `BOT_TOKEN`
-unset and the dashboard runs without it; the startup log says so once rather
-than failing later.
+Yes. Standard Compose starts PostgreSQL 16 and the dashboard, with separate
+named volumes for the database, attachments and logs. SQLite is for isolated
+tests and legacy recovery; it is not the recommended production configuration.
+No operator-capacity or RAM claim has been established by a load test.
 
-**How is this different from a Telegram bot someone wrote in a weekend?**
-Mostly in what happens after the first message: the ticket has a stage, a
-clock that knows your working hours, an operator it is assigned to, a close
-reason, and a searchable history. And in the fact that the customer's channel
-is not the operator's — a widget conversation is answered from the same place
-as a Telegram one.
+## What do I pay for?
 
-**Can I use it for something other than customer support?**
-People use ticket queues for internal IT, for order questions, for onboarding
-checklists. Nothing here assumes "support" beyond the vocabulary, which is
-editable: categories, close reasons and templates are all yours.
+Own production use within the current [BSL grant](LICENSE) has no mandatory
+software fee. You pay your infrastructure, email and AI providers. Installation
+and maintenance are optional, separately scoped services. The landing's service
+figures are indicative; commercial arrangements are still being prepared.
+There is no checkout or hosted SaaS subscription in this release.
 
----
+## Is it open source? Can I resell it?
 
-## Running it
+The source is available under BSL 1.1, which has use restrictions and is not an
+OSI open-source licence. The licence defines conversion to Apache 2.0 on the
+specified change date or earlier applicable fourth anniversary. Hosted/managed
+offerings to third parties outside the grant need separate rights. Do not infer
+unlimited MSP/reseller rights simply because the machine belongs to a client.
 
-**What does it need?**
-A small Linux VPS. Two containers, SQLite, no external services required. It
-runs comfortably in well under a gigabyte of RAM — the production compose
-file caps the dashboard at 768 MB and the bot at 384 MB, and those are limits
-rather than requirements.
+## Are channels and AI required at first start?
 
-**Do I need PostgreSQL?**
-Almost certainly not. SQLite in WAL mode runs a support desk with a handful
-of operators without complaining, and it makes the whole instance one file to
-back up. Two things change that: wanting more than one dashboard process, or
-having operations people who would rather administer a database they already
-know. PostgreSQL is supported for those — see DEPLOY.md.
+No. Start the clean dashboard, then configure needed channels in owner-only
+**Integrations**. The assistant is optional and has its own settings. OpenRouter
+keys must use the OpenRouter provider, not the direct Anthropic provider.
 
-**Is there a hosted version?**
-Not today. Self-hosting is the product.
+## Will my customer data stay on my machine?
 
-**HTTPS?**
-The production compose overlay puts Caddy in front and obtains certificates
-automatically. One command, one line of `.env`.
+The database and local attachments are stored on your infrastructure. Connected
+email/messaging services and any external AI provider also process data needed
+for their enabled functions. AI analysis uses bounded ticket excerpts and
+explicit uploads, with section permissions and internal-note exclusions.
+Self-hosting is not an automatic GDPR or other privacy-law compliance claim.
 
-**How do I back it up?**
-`make backup` writes one archive with the database and its attachments,
-taken at the same instant. They are halves of one record: a restored database
-without its attachments is a support history full of dead paperclips. Then
-copy it somewhere else — the disk holding the only copy is the disk that
-fails.
+## Can the assistant change tickets?
 
-**Can I upgrade without losing data?**
-On SQLite, yes: schema changes so far have been additive columns applied in
-place at startup. On PostgreSQL there is no migration framework yet, so a
-release with a schema change would need Alembic, which is not written. This
-is the honest reason to stay on SQLite unless you have a reason not to.
+It can propose supported status/assignee changes for a permitted ticket.
+You must confirm the concrete action, and permissions/current state are checked
+again. It can search, summarize and draft, but has no arbitrary shell access.
+Private chat history survives reload; TXT/MD/CSV/JSON/LOG/DOCX uploads are supported,
+not image/PDF OCR. See [the assistant guide](docs/AI_ASSISTANT.md).
 
----
+## How do colleagues avoid double replies?
 
-## Data and privacy
+An indicator beside the ticket composer names colleagues typing a reply or an
+internal note. Tabs of one operator are deduplicated; no draft text is shared.
+This is advisory, not an exclusive lock. Two independently sent replies can still
+both be delivered, so operators should coordinate responsibility.
 
-**Where does customer data live?**
-On your server. There is no telemetry, no phone-home, no account to create.
+## Can I edit or delete a sent message?
 
-**Does the AI answer from my own articles?**
-Yes, and it prefers them to the other sources — an article was written for the
-person asking, while a canned template was written for an operator to send.
-When an answer built from an article is confirmed as solving the problem, that
-article is credited, so you can see which ones are earning their keep.
+Use its three-dot menu. What reaches the external channel depends on its
+capabilities, permissions and delivery state. Email cannot generally be recalled
+or edited in the recipient's inbox. Uncertain delivery requires investigation;
+do not assume a retry cannot duplicate a message.
 
-**Does the AI see my tickets?**
-Only if you give it a `GEMINI_API_KEY`, and then only what it needs to
-suggest an answer. Internal notes are never included. Categories marked
-sensitive are masked on the ticket page and excluded entirely. With no key,
-no AI code path runs at all.
+## How are customers and teams handled?
 
-**Are attachments safe to accept from strangers?**
-The widget's upload endpoint is the most exposed thing here and is written
-that way: a size cap enforced while reading rather than after, a per-session
-rate limit, and files served under a content type from an allowlist rather
-than the one the uploader claimed — so an uploaded `.html` cannot come back
-as HTML on your own domain. Files are fetched with the visitor's session
-token, so an attachment is only readable by the conversation it belongs to.
+Customer approval/team assignment is distinct from an operator's dashboard
+account and from cryptographic proof of a widget identity. Channel accounts can
+be linked to a customer profile after verifying they belong together. Teams can
+be disabled for a single-team workflow. They do not provide tenant isolation.
 
-**Can a visitor pretend to be someone else?**
-They can *say* they are anyone — a widget runs on a page they control. The
-ticket page therefore distinguishes **Verified identity** from **Says they
-are this person**, and verification means the customer's own server signed
-the identity with a shared secret. Unsigned claims can fill a blank field but
-never overwrite one, so nobody can quietly rewrite the name at the top of a
-ticket an operator is already working on.
+## Backup, restore and upgrade?
 
-**GDPR?**
-Self-hosted, so you are the controller and the data never leaves your
-infrastructure. There is no built-in "export everything about this person"
-button yet; tickets are exportable to Excel and the database is yours.
+Use the PostgreSQL backup tool for DB plus attachments and preserve the original
+encryption key separately. Restore on new storage and review quarantined jobs.
+Back up before upgrading; an old image is not guaranteed to understand a newer
+schema. See [recovery](docs/BACKUP_RESTORE.md) and [release procedure](docs/RELEASING.md).
 
----
+## Does installing successfully mean the whole release is ready?
 
-## Licensing and money
-
-**Is it free?**
-For running your own support, yes, including commercially. Also for deploying
-it for a client as part of IT services.
-
-**What is not allowed?**
-Reselling it as a hosted or managed service to third parties — that needs a
-commercial licence. This is the Business Source License, the same model as
-Sentry and MariaDB. The single restriction exists so a cloud provider cannot
-take this and outrun a solo maintainer with it.
-
-**Is that open source?**
-Not by the OSI definition, and the README says so plainly rather than
-fudging it. Full source, no feature gates, no telemetry, no seat limits.
-Every release converts to Apache 2.0 four years after publication, so nothing
-can be taken away later.
-
-**Can I remove the branding?**
-Yes. The brand name shown to customers is a setting, and there are no
-"powered by" links to strip.
-
----
-
-## Limits worth knowing
-
-**How many operators?**
-No seat limit in the software. The practical ceiling on SQLite is set by
-write concurrency, and a team of a few operators is nowhere near it.
-
-**Is there a knowledge base?**
-Yes — articles you write in the dashboard, which customers search in the
-widget's Help tab. Self-service, so the questions that have a written answer
-stop arriving as tickets. It is deliberately plain text: an article is
-rendered exactly as typed, which is also why it cannot carry anything else.
-
-**Is there an API?**
-Not yet — webhooks and a REST API are on the roadmap. Today the integration
-points are the channels themselves and the database.
-
-**Can one customer have several conversations at once?**
-No, by choice. One active ticket per customer; writing again continues it.
-Their history is visible to them in the widget and to you in the dashboard.
-
-**Can customers rate the support they got on every channel?**
-On the three that can draw a button — Telegram, the widget and Slack — yes,
-and a tap records it. Email gets the choices written into the message,
-because there is nothing in an email to click, so email conversations are
-absent from the CSAT figure rather than counted as bad ones.
-
-Slack needs its Interactivity request URL set for this; DEPLOY.md has the
-step. Without it the buttons appear and a tap fails.
-
-**Email as a channel?**
-Yes. Point it at a mailbox you already have — IMAP in, SMTP out, no third
-party and no DNS changes. Quoted history is trimmed out of replies, and
-autoresponders are recognised and ignored rather than answered.
-
-**What language do customers see?**
-Theirs, when the channel tells us — Telegram supplies it and the widget reads
-the browser's. When it does not, they get the instance's default language,
-which is set in Settings and is worth setting deliberately: it is what every
-customer with an unknown language will read. Russian, Ukrainian and English
-ship; the operator dashboard's language is a separate setting, and each
-operator can override it for themselves.
-
-**Does it work on a phone?**
-The dashboard is responsive and the widget is built mobile-first. For
-answering on the move, the Telegram admin group is usually nicer than a
-browser.
+It establishes portability when tested from the supplied archive on a clean
+computer. Combine that result with the functional tests already completed,
+reviewed source and matching release artifacts. A customer's actual channel
+credentials, HTTPS, backups and monitoring still need deployment-specific checks.
+Paid services also need seller and contract arrangements; see
+[legal preparation](docs/LEGAL_READINESS.md).

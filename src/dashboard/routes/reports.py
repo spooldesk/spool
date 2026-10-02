@@ -64,9 +64,11 @@ def _period_bounds(preset: str | None, date_from: str | None, date_to: str | Non
 
 async def _gather(date_from: datetime, date_to: datetime) -> dict:
     """Current period + the immediately preceding period of equal length."""
+    from src.dashboard.lead_metrics import snapshot
     span = date_to - date_from
     prev_from, prev_to = date_from - span, date_from
     return {
+        "operations": await snapshot(date_from, date_to),
         "summary": await report_queries.report_summary(date_from, date_to),
         # What the AI cost, what it saved, and what the saving cost in
         # rating — the last one belongs here or the rest is a sales sheet.
@@ -159,6 +161,7 @@ async def reports_page(
         "quality": data["quality"],
         "export_url": f"/reports/export.xlsx?{export_qs}",
         "fmt_hours": _fmt_hours,
+        "fmt_minutes": _fmt_minutes,
         **data,
     })
 
@@ -238,7 +241,19 @@ async def reports_export(
     for i, w in enumerate([26, 10, 10, 8], start=1):
         ws3.column_dimensions[get_column_letter(i)].width = w
 
+    ops = data['operations']
+    ws4 = wb.create_sheet(tr('lead_queue'))
+    ws4.append([tr('x_metric'), tr('x_period')]); _style_header(ws4, 2)
+    for key in ('open','unanswered','waiting','sla_breached','oldest_hours','delivery_attention',
+                'response_p50','response_p90','response_count','resolution_p50','resolution_p90','resolution_count'):
+        ws4.append([tr('lead_'+key), _fmt(ops[key])])
+    ws4.append([tr('lead_as_of'), ops['as_of'].isoformat()+' UTC'])
+    ws4.append([tr('lead_definition'), tr('lead_cohort_hint')])
+    ws4.column_dimensions['A'].width = 45; ws4.column_dimensions['B'].width = 85
+
     buf = io.BytesIO()
+    from src.dashboard.exporting import literal_strings
+    literal_strings(wb)
     wb.save(buf)
     buf.seek(0)
     filename = f"report_{df.date().isoformat()}_{(dt.date() - timedelta(days=1)).isoformat()}.xlsx"

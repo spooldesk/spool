@@ -21,7 +21,7 @@ The bot, the dashboard, and anything in this repository. Most usefully:
   limiting, password storage (argon2)
 - Role checks: an `agent` reaching an `admin` or `owner` route
 - SQL injection, template injection, XSS in operator-supplied content
-- Anything that lets one team read another team's tickets
+- Bypassing section permissions, owner-only operations or private assistant history
 - The AI path: prompt injection that makes a deflection answer leak an internal
   note, or the scrubber failing to redact a credential before it reaches the
   model
@@ -30,11 +30,11 @@ The bot, the dashboard, and anything in this repository. Most usefully:
 
 - Findings that need an operator account you already control to be malicious
   with data you already have access to
-- Denial of service through sheer volume — it is a single SQLite process and
-  makes no claim otherwise
+- Capacity claims beyond the tested deployment size; resource-exhaustion defects
+  in ordinary authenticated or public workflows are still useful reports
 - Missing hardening headers on a deployment you configured yourself
-- The hosted demo. It is seeded with synthetic data, resets itself, and its
-  credentials are printed in the README on purpose.
+- Disclosed credentials for the local synthetic preview. That configuration
+  must never be used for a public production deployment or real customer data.
 
 ## Running it safely
 
@@ -42,22 +42,27 @@ The bot, the dashboard, and anything in this repository. Most usefully:
   the whole of dashboard authentication.
 - **Do not bind the dashboard to `0.0.0.0` without a reverse proxy.** It has no
   IP allowlist of its own.
-- Keep `.env` out of version control — it is in `.gitignore` and has never been
-  committed.
-- `support.db` holds every conversation in plain text. Back it up, and treat
-  the backup like the conversations.
+- Keep `.env` out of version control — it is in `.gitignore`. Review release archives and
+  Git history for accidental disclosure.
+- New installations use PostgreSQL. Ticket conversations and stored attachments
+  are sensitive data; protect the database, file storage and backups. Keep the
+  encryption key separately: integration credentials and AI chat payloads need it.
 - Give each operator their own account rather than sharing one. Roles are
   enforced per route, and the audit trail is only as good as the accounts.
 
 ## What the AI sees
 
-If AI features are enabled, ticket text is sent to Google Gemini. Before it
-leaves:
+When AI is used, ticket text is sent to the configured provider: Gemini,
+Anthropic, OpenAI, OpenRouter, or the configured Ollama endpoint. Before it leaves:
 
 - Credential-shaped strings are redacted by `src/ai/scrubber.py`
 - **Internal notes are never included.** An answer generated for a customer
   must not be built from what the team said privately — there is a test for
   this, and it is the one I would most like to hear about if it is wrong.
 
-Categories can be excluded from AI entirely in the dashboard, and the whole
-feature is off unless you configure a key.
+Category exclusions and AI modes are configured in the dashboard. The operator
+assistant separately checks section permissions and requires confirmation before
+applying a proposed change. Its private history and explicit document uploads
+are described in [AI_ASSISTANT.md](docs/AI_ASSISTANT.md). Teams route work and do
+not provide tenant isolation. This edition is one installation per organization.
+Ollama can run without an API key; other providers require credentials.

@@ -14,6 +14,7 @@ from typing import Optional
 from sqlalchemy import select
 
 from src.ai.client import LLMUnavailable, get_client
+from src.ai import policy
 from src.ai.prompts import (
     SUGGEST_TEMPLATE_SYSTEM,
     build_suggest_template_user_prompt,
@@ -25,14 +26,6 @@ from src.services import template_service
 
 logger = logging.getLogger(__name__)
 
-# Tickets in these categories never reach the LLM.
-# Match is substring and case-insensitive, so a category renamed or
-# translated by the team still matches what was blocked.
-# Category blacklist now lives in settings (editable from the web dashboard) and
-# is enforced once in ai/notifier.py before this use case runs. Kept empty here
-# to avoid a second, conflicting source of truth.
-_BLACKLISTED_CATEGORY_FRAGMENTS: list[str] = []
-
 # Cap input text to avoid huge prompts on free tier
 _MAX_USER_TEXT_CHARS = 2000
 
@@ -43,13 +36,6 @@ class SuggestResult:
 
     template_id: Optional[int]
     ai_call_id: Optional[int]  # for later updates (accepted/dismissed)
-
-
-def _is_category_blacklisted(category: str | None) -> bool:
-    if not category:
-        return False
-    low = category.lower()
-    return any(frag in low for frag in _BLACKLISTED_CATEGORY_FRAGMENTS)
 
 
 def _parse_template_id(raw: str, valid_ids: set[int]) -> Optional[int]:
@@ -90,27 +76,16 @@ async def suggest_template_for_ticket(
 
     Safe to call as a fire-and-forget task — never raises, always logs.
     """
-    client = await get_client()
-    if client is None:
-        return SuggestResult(template_id=None, ai_call_id=None)
-
     # Load ticket + candidate templates (one round-trip)
     try:
         async with db_session() as session:
             ticket = (await session.execute(
                 select(Ticket).where(Ticket.id == ticket_id)
             )).scalar_one_or_none()
-            if ticket is None or ticket.status != "active":
+            if not await policy.allows(ticket):
                 return SuggestResult(template_id=None, ai_call_id=None)
-
-            if _is_category_blacklisted(ticket.category):
-                logger.info(
-                    f"Ticket #{ticket_id} category {ticket.category!r} is blacklisted "
-                    f"for AI — skipping suggest"
-                )
-                return SuggestResult(template_id=None, ai_call_id=None)
-
-            templates = await template_service.list_for_ticket(session, ticket, limit=12)
+            templates = await policy.permitted_sources(
+                await template_service.list_for_ticket(session, ticket, limit=12))
     except Exception as e:
         logger.error(f"AI suggest: failed to load ticket #{ticket_id}: {e}", exc_info=True)
         return SuggestResult(template_id=None, ai_call_id=None)
@@ -119,8 +94,12 @@ async def suggest_template_for_ticket(
         logger.info(f"Ticket #{ticket_id}: no templates for team — nothing to suggest")
         return SuggestResult(template_id=None, ai_call_id=None)
 
+    client = await get_client()
+    if client is None:
+        return SuggestResult(template_id=None, ai_call_id=None)
+
     # Build candidate list for the prompt
-    candidates = [(t.id, t.title, t.body) for t in templates]
+    candidates = [(t.id, scrub(t.title), scrub(t.body)) for t in templates]
     valid_ids = {t.id for t in templates}
 
     safe_user_text = scrub(user_text or "")[:_MAX_USER_TEXT_CHARS]
@@ -130,13 +109,15 @@ async def suggest_template_for_ticket(
         templates=candidates,
     )
 
+    from src.ai import company_context
+    company = await company_context.load()
     # Call the LLM (timeouts/errors handled by provider → LLMUnavailable)
     response = None
     error_msg: Optional[str] = None
     try:
         response = await client.complete(
             system=SUGGEST_TEMPLATE_SYSTEM,
-            user=user_prompt,
+            user=user_prompt + company.reference(),
             max_output_tokens=64,  # we only need a number, but 2.5-flash thinking can eat budget
             temperature=0.1,       # near-deterministic
         )
@@ -144,6 +125,8 @@ async def suggest_template_for_ticket(
         error_msg = str(e)
         logger.info(f"AI suggest for ticket #{ticket_id} unavailable: {e}")
 
+    if response and not await company_context.current(company):
+        response, error_msg = None, 'company_reference_changed'
     # Parse + persist audit log
     picked_id: Optional[int] = None
     if response is not None:

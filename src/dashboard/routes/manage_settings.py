@@ -16,12 +16,6 @@ from src.services import catalog_service, close_reason_service, settings_service
 
 router = APIRouter()
 
-# Fallback list for the tags dropdown, used only when the category catalog is
-# empty. Mirrors the defaults seeded in db.py so a fresh install shows the same
-# names in both places.
-TAG_CATEGORIES = ["Access", "Software", "Hardware", "Network", "Other"]
-
-
 # ==================== Teams ====================
 
 
@@ -57,55 +51,6 @@ async def team_delete(team_id: int):
     except team_service.TeamError as e:
         return RedirectResponse(f"/manage/teams?err={quote(str(e))}", status_code=303)
     return RedirectResponse("/manage/teams?sent=deleted", status_code=303)
-
-
-# ==================== Tags (category → admin mentions) ====================
-
-
-@router.get("/manage/tags", response_class=HTMLResponse)
-async def tags_page(request: Request, sent: str | None = None):
-    templates = request.app.state.templates
-    tags = await settings_service.get_category_admin_tags()
-    items = [{"category": k, "tags": v} for k, v in tags.items()]
-    # Offer the editable ticket categories plus any already-mapped custom ones.
-    # Falls back to a small preset if the catalog is empty.
-    async with db_session() as session:
-        cat_rows = await catalog_service.list_all(session)
-    cats = [c.name for c in cat_rows] or list(TAG_CATEGORIES)
-    for k in tags.keys():
-        if k not in cats:
-            cats.append(k)
-    return templates.TemplateResponse(request, "tags_manage.html", {
-        "active_page": "tags", "items": items, "categories": cats, "flash_sent": sent,
-    })
-
-
-@router.post("/manage/tags")
-async def tags_set(category: str = Form(...), tags: str = Form(...)):
-    """Add the given mentions to a category WITHOUT dropping existing ones.
-
-    Tokens already present aren't duplicated; new ones are appended in order.
-    """
-    category = (category or "").strip()
-    new_raw = (tags or "").strip()
-    if category and new_raw:
-        mapping = await settings_service.get_category_admin_tags()
-        existing = (mapping.get(category, "") or "").split()
-        result = list(existing)  # preserve order
-        for tok in new_raw.split():
-            if tok not in result:
-                result.append(tok)
-        mapping[category] = " ".join(result)
-        await settings_service.set_category_admin_tags(mapping, updated_by=0)
-    return RedirectResponse("/manage/tags?sent=saved", status_code=303)
-
-
-@router.post("/manage/tags/delete")
-async def tags_delete(category: str = Form(...)):
-    mapping = await settings_service.get_category_admin_tags()
-    mapping.pop(category, None)
-    await settings_service.set_category_admin_tags(mapping, updated_by=0)
-    return RedirectResponse("/manage/tags?sent=deleted", status_code=303)
 
 
 # ==================== Categories (editable ticket catalog) ====================
@@ -269,7 +214,6 @@ from src.channels import slack as slack_channel  # noqa: E402
 async def settings_page(request: Request, sent: str | None = None):
     templates = request.app.state.templates
     brand_name = await settings_service.get_brand_name()
-    rd_enabled, rd_match, rd_target = await settings_service.get_redirect_config()
     # Languages
     from src.utils.i18n import SUPPORTED_LANGUAGES
     enabled_langs = await settings_service.get_enabled_languages()
@@ -279,92 +223,31 @@ async def settings_page(request: Request, sent: str | None = None):
          "enabled": code in enabled_langs, "is_default": code == default_lang}
         for code, label in SUPPORTED_LANGUAGES.items()
     ]
-    no_tag = ", ".join(sorted(await settings_service.get_admin_no_tag_usernames()))
     from src.services import sla_service, work_hours_service
     wh = await work_hours_service.get_config()
-    from src.dashboard.i18n import SUPPORTED_DASH_LANGUAGES
-    dash_lang = await settings_service.get_dash_language()
     return templates.TemplateResponse(request, "settings_manage.html", {
-        "dash_lang": dash_lang,
-        "dash_languages": SUPPORTED_DASH_LANGUAGES,
         "active_page": "settings",
         "brand_name": brand_name,
-        "redirect_enabled": rd_enabled, "redirect_match": rd_match, "redirect_target": rd_target,
         "languages": languages,
-        "no_tag_usernames": no_tag,
         "work_hours": wh,
         # The target and the policy sit in one card: they are one
         # decision, and split across two forms people set half of it.
         "sla_minutes": await work_hours_service.get_sla_minutes(),
         "sla_policy": await sla_service.get_policy(),
         "wh_day_labels": work_hours_service.day_labels(),
-        # The snippet is built from the request rather than typed in, so the
-        # host in it is always the host that served the page. Asking someone
-        # to keep the two in agreement is asking for the failure where the
-        # bubble appears and nothing behind it works.
-        "widget_enabled": await settings_service.get_widget_enabled(),
-        "widget_origins": "\n".join(await settings_service.get_widget_origins()),
-        "widget_greeting": await settings_service.get_widget_greeting(),
-        "widget_ask_identity": await settings_service.get_widget_ask_identity(),
-        # The secret itself, not a mask. It is a shared secret: the person
-        # configuring the widget is the person who has to paste it into their
-        # own backend, and hiding it from them only means keeping a second
-        # copy somewhere less safe than this page.
-        "widget_identity_secret": await settings_service.get_widget_identity_secret(),
-        # Read from the environment, never written from here: this page shows
-        # whether Slack is wired up, not what its secrets are.
-        "slack_ready": slack_channel.is_configured(),
-        "slack_url": f'{str(request.base_url).rstrip("/")}/slack/events',
-        # Built from the request for the same reason as the events URL: the
-        # commonest setup failure is pointing Slack at the wrong host, and
-        # buttons that do nothing look like a bug in the product.
-        "slack_interactive_url": f'{str(request.base_url).rstrip("/")}/slack/interactive',
-        "widget_snippet": (
-            f'<script src="{str(request.base_url).rstrip("/")}/widget/embed.js" async></script>'
-        ),
         "flash_sent": sent,
     })
 
 
 @router.post("/manage/settings/widget")
-async def settings_save_widget(
-    widget_enabled: str = Form("0"),
-    widget_origins: str = Form(""),
-    widget_greeting: str = Form(""),
-    widget_ask_identity: str = Form("0"),
-    widget_identity_secret: str = Form(""),
-):
-    """Turn the public endpoints on or off, and configure what they say.
-
-    Deliberately one form. Enabling the widget without having thought about
-    which sites may embed it is the mistake worth making hard, and splitting
-    them into two cards is how people end up doing exactly that.
-    """
-    await settings_service.set_widget_enabled(widget_enabled == "1", updated_by=0)
-    await settings_service.set_widget_origins(widget_origins, updated_by=0)
-    await settings_service.set_widget_greeting(widget_greeting, updated_by=0)
-    await settings_service.set_widget_ask_identity(widget_ask_identity == "1", updated_by=0)
-    await settings_service.set_widget_identity_secret(widget_identity_secret, updated_by=0)
-    return RedirectResponse("/manage/settings?sent=widget", status_code=303)
-
-
-@router.post("/manage/settings/dash-language")
-async def settings_save_dash_language(request: Request, dash_language: str = Form("en")):
-    await settings_service.set_dash_language(dash_language, updated_by=0)
-    # Apply immediately — refresh the module cache and the Jinja global.
-    try:
-        from src.dashboard import i18n as dash_i18n
-        dash_i18n.set_active_language(dash_language)
-        request.app.state.templates.env.globals["T"] = dash_i18n.strings()
-    except Exception:
-        pass
-    return RedirectResponse("/manage/settings?sent=saved", status_code=303)
+async def settings_save_widget(request: Request):
+    from src.dashboard.routes.workspace import integration_save
+    return await integration_save(request, 'widget')
 
 
 @router.post("/manage/settings/sla")
 async def settings_save_sla(
     sla_minutes: str = Form(""),
-    notify: str = Form(""),
     return_to_pool: str = Form(""),
 ):
     """The target and what to do when it is missed, saved together — they are
@@ -380,7 +263,7 @@ async def settings_save_sla(
         str(max(1, minutes)), updated_by=0,
     )
     await sla_service.set_policy(
-        notify=bool(notify), return_to_pool=bool(return_to_pool), updated_by=0,
+        notify=False, return_to_pool=bool(return_to_pool), updated_by=0,
     )
     return RedirectResponse("/manage/settings?sent=saved", status_code=303)
 
@@ -415,30 +298,6 @@ async def settings_save_brand(request: Request, brand_name: str = Form(...)):
         request.app.state.templates.env.globals["g_brand_name"] = brand_name
     except Exception:
         pass
-    return RedirectResponse("/manage/settings?sent=saved", status_code=303)
-
-
-@router.post("/manage/settings/redirect")
-async def settings_save_redirect(
-    redirect_enabled: str = Form("0"),
-    redirect_match: str = Form(""),
-    redirect_target: str = Form(""),
-):
-    await settings_service.set_redirect_config(
-        enabled=(redirect_enabled == "1"),
-        team_match=redirect_match,
-        target=redirect_target,
-        updated_by=0,
-    )
-    return RedirectResponse("/manage/settings?sent=saved", status_code=303)
-
-
-@router.post("/manage/settings/no-tag")
-async def settings_save_no_tag(no_tag_usernames: str = Form("")):
-    """Save the list of admin usernames that should never be @-tagged in lists."""
-    import re
-    parts = [p for p in re.split(r"[\s,]+", no_tag_usernames or "") if p]
-    await settings_service.set_admin_no_tag_usernames(parts, updated_by=0)
     return RedirectResponse("/manage/settings?sent=saved", status_code=303)
 
 

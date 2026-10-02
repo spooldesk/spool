@@ -35,9 +35,9 @@ async def _make_user(*, team_id=None, verified=True, tickets=0) -> int:
                  is_verified=verified, is_active=True)
         session.add(u)
         await session.flush()
-        for _ in range(tickets):
+        for conversation in range(tickets):
             session.add(Ticket(user_id=u.id, team_id=team_id, category="Network",
-                               status="active"))
+                               status="active", conversation_key=f"thread-{conversation}"))
         uid = u.id
         await session.commit()
     return uid

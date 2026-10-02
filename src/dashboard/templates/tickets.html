@@ -22,10 +22,19 @@
 
 {% with page = "/tickets" %}{% include "_saved_views.html" %}{% endwith %}
 
+<nav class="ticket-status-tabs" aria-label="{{ T.f_status }}">
+  {% for state, label in [('active', T.opt_active), ('closed', T.opt_closed)] %}
+    <a href="{{ status_urls[state] }}" {% if filters.status == state %}aria-current="page"{% endif %}>
+      {{ label }} <span>{{ status_counts[state] }}</span>
+    </a>
+  {% endfor %}
+</nav>
+
 <!-- Filters -->
 <form method="get" action="/tickets"
       class="bg-zinc-950 border border-zinc-900 rounded-xl p-4 mb-4
              grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
+  <input type="hidden" name="status" value="{{ filters.status }}">
 
   <!-- Search — full-width row above the selects -->
   <div class="md:col-span-6 relative">
@@ -36,22 +45,14 @@
            class="w-full pl-9 pr-9 py-2 rounded-lg bg-black border border-zinc-800 text-sm
                   focus:border-brand-500 focus:outline-none text-zinc-100 placeholder:text-zinc-600">
     {% if filters.q %}
-      <a href="/tickets" title="{{ T.search_reset }}"
+      <a href="{{ reset_url }}" title="{{ T.search_reset }}"
          class="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-200">
         <i class="ti ti-x" style="font-size:14px" aria-hidden="true"></i>
       </a>
     {% endif %}
   </div>
 
-  <div>
-    <label class="block text-xs uppercase tracking-wide text-zinc-400 mb-1">{{ T.f_status }}</label>
-    <select name="status" class="w-full px-2 py-1.5 rounded-md bg-black border border-zinc-800 text-sm">
-      <option value="">{{ T.all }}</option>
-      <option value="active"  {% if filters.status == 'active' %}selected{% endif %}>{{ T.opt_active }}</option>
-      <option value="closed"  {% if filters.status == 'closed' %}selected{% endif %}>{{ T.opt_closed }}</option>
-    </select>
-  </div>
-
+  {% if filters.status == 'active' %}
   <div>
     <label class="block text-xs uppercase tracking-wide text-zinc-400 mb-1">{{ T.stage }}</label>
     <select name="stage" class="w-full px-2 py-1.5 rounded-md bg-black border border-zinc-800 text-sm">
@@ -61,6 +62,7 @@
       {% endfor %}
     </select>
   </div>
+  {% endif %}
 
   <div>
     <label class="block text-xs uppercase tracking-wide text-zinc-400 mb-1">{{ T.f_team }}</label>
@@ -113,7 +115,7 @@
             class="px-3 py-1.5 rounded-md bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium">
       {{ T.apply }}
     </button>
-    <a href="/tickets"
+    <a href="{{ reset_url }}"
        class="px-3 py-1.5 rounded-md border border-zinc-800 text-zinc-300 hover:bg-zinc-900 text-sm">
       {{ T.reset }}
     </a>
@@ -133,9 +135,11 @@
           <th class="px-4 py-3">{{ T.th_operator }}</th>
           <th class="px-4 py-3">{{ T.th_category }}</th>
           <th class="px-4 py-3">{{ T.th_created }}</th>
+          {% if filters.status == 'closed' %}
           <th class="px-4 py-3">{{ T.th_closed }}</th>
           <th class="px-4 py-3">{{ T.th_time }}</th>
           <th class="px-4 py-3 text-center" title="{{ T.csat_col_hint }}">CSAT</th>
+          {% endif %}
         </tr>
       </thead>
       <tbody class="divide-y divide-zinc-900">
@@ -155,7 +159,7 @@
                               'waiting': 'bg-amber-500/15 text-amber-300'} %}
                 <span class="px-2 py-0.5 rounded text-xs {{ _sc.get(r.stage, _sc['new']) }}">{{ T['stage_' ~ (r.stage or 'new')] }}</span>
               {% elif r.status == 'closed' %}
-                <span class="px-2 py-0.5 rounded text-xs bg-slate-500/15 text-zinc-300">closed</span>
+                <span class="px-2 py-0.5 rounded text-xs bg-slate-500/15 text-zinc-300">{{ T.th_closed }}</span>
               {% else %}
                 <span class="px-2 py-0.5 rounded text-xs bg-slate-500/15">{{ r.status }}</span>
               {% endif %}
@@ -165,11 +169,6 @@
               {{ r.user_label }}
               {% if r.local_user_id %}
                 <span class="text-zinc-500 text-xs">· {{ r.team }}:{{ r.local_user_id }}</span>
-              {% endif %}
-              {% if r.linked_work %}
-                <div class="flex items-center gap-1 text-xs text-amber-400/80 mt-0.5">
-                  <i class="ti ti-link" style="font-size:11px" aria-hidden="true"></i> {{ T.linked_personal }} {{ r.linked_work }}
-                </div>
               {% endif %}
             </td>
             <td class="px-4 py-2.5">
@@ -188,6 +187,7 @@
             <td class="px-4 py-2.5 text-zinc-400 text-xs tabular-nums">
               {{ r.created_at.strftime('%Y-%m-%d %H:%M') if r.created_at else '—' }}
             </td>
+            {% if filters.status == 'closed' %}
             <td class="px-4 py-2.5 text-zinc-400 text-xs tabular-nums">
               {{ r.closed_at.strftime('%Y-%m-%d %H:%M') if r.closed_at else '—' }}
             </td>
@@ -206,10 +206,11 @@
                 <span class="text-zinc-700">—</span>
               {% endif %}
             </td>
+            {% endif %}
           </tr>
         {% else %}
           <tr>
-            <td colspan="10" class="px-4 py-10 text-center text-zinc-500">
+            <td colspan="{{ 10 if filters.status == 'closed' else 7 }}" class="px-4 py-10 text-center text-zinc-500">
               {{ T.nothing_found }}
             </td>
           </tr>

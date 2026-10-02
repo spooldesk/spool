@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from src.ai import registry
+from src.dashboard.auth import current_user
 from src.services import secret_store, settings_service
 
 router = APIRouter()
@@ -70,9 +71,13 @@ async def ai_settings_page(request: Request, sent: str | None = None,
     blacklist = await settings_service.get_ai_blacklist()
     price_in, price_out = await settings_service.get_ai_pricing()
 
+    from src.ai import company_context
+    from src.ai.assistant_access import ENABLED_KEY
     return templates.TemplateResponse(request, "ai_settings.html", {
+        "company": await company_context.load(),
         "active_page": "ai_settings",
         "enabled": enabled,
+        "assistant_on": await settings_service.get_value(ENABLED_KEY, "0") == "1",
         "deflection": deflection,
         **await _engine_state(),
         "flash_err": err,
@@ -88,8 +93,44 @@ async def ai_settings_page(request: Request, sent: str | None = None,
     })
 
 
+@router.post('/manage/ai/assistant')
+async def assistant_settings_save(request: Request, enabled: str = Form("")):
+    from src.ai.assistant_access import ENABLED_KEY
+    operator = current_user(request)
+    await settings_service.set_value(ENABLED_KEY, "1" if enabled == "1" else "0",
+                                     updated_by=operator.id if operator else 0)
+    return RedirectResponse('/manage/ai?sent=saved#assistant-config', status_code=303)
+
+
+@router.post('/manage/ai/company')
+async def company_save(request: Request):
+    from pathlib import PurePath
+    from urllib.parse import quote
+    from src.ai import company_context
+    from src.ai.company_document import extract_document, MAX_UPLOAD_BYTES
+    from src.dashboard.routes.workspace import actor_id
+    form = await request.form()
+    upload = form.get('document')
+    try:
+        text = None
+        title = ''
+        if upload is not None and getattr(upload, 'filename', ''):
+            title = PurePath(upload.filename.replace('\\', '/')).name
+            content = await upload.read(MAX_UPLOAD_BYTES + 1)
+            text = extract_document(title, content)
+        await company_context.save(actor_id(request), title=title, text=text,
+            enabled=form.get('enabled') == '1', remove=form.get('remove') == '1')
+    except ValueError as exc:
+        return RedirectResponse('/manage/ai?err=' + quote(str(exc)) + '#company', status_code=303)
+    finally:
+        if upload is not None and hasattr(upload, 'close'):
+            await upload.close()
+    return RedirectResponse('/manage/ai?sent=saved#company', status_code=303)
+
+
 @router.post("/manage/ai/engine")
 async def ai_engine_save(
+    request: Request,
     provider: str = Form(...),
     model: str = Form(""),
     host: str = Form(""),
@@ -108,50 +149,56 @@ async def ai_engine_save(
 
     # Prices follow the model inside set_ai_engine, where the rule holds for
     # every caller rather than only for this one.
+    operator = current_user(request)
+    actor = operator.id if operator else 0
     await settings_service.set_ai_engine(
-        provider=provider, model=model, host=host, updated_by=0)
+        provider=provider, model=model, host=host, updated_by=actor)
 
     if clear_key:
-        await settings_service.set_ai_key(provider, "", updated_by=0)
+        await settings_service.set_ai_key(provider, "", updated_by=actor)
     elif api_key.strip():
-        await settings_service.set_ai_key(provider, api_key, updated_by=0)
+        await settings_service.set_ai_key(provider, api_key, updated_by=actor)
 
     return RedirectResponse("/manage/ai?sent=saved", status_code=303)
 
 
 @router.post("/manage/ai")
 async def ai_settings_save(
+    request: Request,
     enabled: str = Form(""),
     deflection: str = Form(""),
     blacklist: list[str] = Form(default=[]),
 ):
-    await settings_service.set_ai_enabled(bool(enabled), updated_by=0)
-    await settings_service.set_ai_deflection_enabled(bool(deflection), updated_by=0)
+    operator = current_user(request)
+    actor = operator.id if operator else 0
+    await settings_service.set_ai_enabled(bool(enabled), updated_by=actor)
+    await settings_service.set_ai_deflection_enabled(bool(deflection), updated_by=actor)
     # Store the chosen categories (lowercased fragments) as the blacklist
-    await settings_service.set_ai_blacklist([c for c in blacklist if c], updated_by=0)
+    await settings_service.set_ai_blacklist([c for c in blacklist if c], updated_by=actor)
     return RedirectResponse("/manage/ai?sent=saved", status_code=303)
 
 
 @router.post("/manage/ai/savings")
 async def savings_assumptions_save(
-    price_in: float = Form(0.0),
-    price_out: float = Form(0.0),
-    assist_minutes: float = Form(0.0),
+    request: Request,
+    price_in: float = Form(0.0, allow_inf_nan=False),
+    price_out: float = Form(0.0, allow_inf_nan=False),
+    assist_minutes: float = Form(0.0, allow_inf_nan=False),
 ):
     """Negatives are clamped in the service — a report cannot be worth less
     than nothing, and a typed minus should not silently invert a number
     somebody is about to present."""
+    operator = current_user(request)
     await settings_service.set_savings_assumptions(
         price_in=price_in, price_out=price_out,
-        assist_minutes=assist_minutes, updated_by=0,
+        assist_minutes=assist_minutes, updated_by=operator.id if operator else 0,
     )
     return RedirectResponse("/manage/ai?sent=saved#savings", status_code=303)
 
 
 @router.post("/manage/ai/shadow")
-async def ai_shadow_save(shadow: str = Form("")):
-    """Turning shadow ON is the safe direction, so it needs no ceremony.
-    Turning it OFF means the AI starts reaching customers — which is a
-    decision made on the evidence page, not here."""
-    await settings_service.set_ai_shadow_mode(bool(shadow), updated_by=0)
+async def ai_shadow_save(request: Request, shadow: str = Form("")):
+    """Apply the administrator's explicit choice for automatic suggestions."""
+    operator = current_user(request)
+    await settings_service.set_ai_shadow_mode(bool(shadow), updated_by=operator.id if operator else 0)
     return RedirectResponse("/manage/ai?sent=saved#shadow", status_code=303)

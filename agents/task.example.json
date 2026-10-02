@@ -1,0 +1,18 @@
+{
+  "id": "review-health-contract",
+  "role": "researcher",
+  "mode": "read_only",
+  "complexity": "medium",
+  "goal": "Explain the health check contract and identify at most two concrete limitations supported by the supplied source.",
+  "context": ["Spooldesk is a multichannel helpdesk. This is a source review; no live service needs to be contacted."],
+  "relevant_paths": ["src/services/health.py"],
+  "constraints": ["Use only the supplied snapshot.", "Cite source lines. Do not claim to have executed tests."],
+  "acceptance_criteria": ["Name each health subsystem and its failure conditions.", "Distinguish observed behavior from assumptions."],
+  "allowed_changes": [],
+  "forbidden_changes": ["All repository files", "System settings", "Credentials and customer data"],
+  "delegation_reason": "An independent review can identify a contract mismatch before the Lead relies on health checks for deployment.",
+  "context_cost_reason": "Only one small module is needed; the whole repository and conversation are unnecessary.",
+  "parallel_group": "",
+  "workstream": "",
+  "parallel_reason": ""
+}

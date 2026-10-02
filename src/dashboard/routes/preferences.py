@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 
 from src.dashboard.auth import current_user
 from src.services import preferences_service
@@ -36,9 +36,7 @@ async def preferences_page(request: Request, sent: str | None = None):
         "active_page": "me",
         "prefs": prefs,
         "languages": SUPPORTED_DASH_LANGUAGES,
-        # Shown next to "follow the instance", so the choice is not a guess.
-        "instance_language": SUPPORTED_DASH_LANGUAGES.get(
-            await settings_service.get_dash_language(), "English"),
+        "selected_language": prefs.get("language") or await settings_service.get_dash_language(),
         "themes": preferences_service.THEMES,
         "densities": preferences_service.DENSITIES,
         "landings": preferences_service.LANDINGS,
@@ -79,3 +77,14 @@ async def preferences_save(
         "hotkeys": hotkeys == "1",
     })
     return RedirectResponse("/me?sent=saved", status_code=303)
+
+
+@router.post("/me/notifications")
+async def preferences_notifications(request: Request, enabled: str = Form("")):
+    operator_id = _operator_id(request)
+    if operator_id is None:
+        return JSONResponse({"ok": False}, status_code=403)
+    prefs = await preferences_service.for_operator(operator_id)
+    prefs["notify_new"] = enabled == "1"
+    await preferences_service.save(operator_id, prefs)
+    return {"ok": True, "enabled": prefs["notify_new"]}

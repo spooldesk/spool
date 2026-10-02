@@ -61,7 +61,7 @@
   }
 
   function enhanceSelect(select) {
-    if (select.dataset.enhanced || select.multiple || select.size > 1) return;
+    if (select.disabled || select.dataset.enhanced || select.multiple || select.size > 1) return;
     select.dataset.enhanced = '1';
 
     const root = document.createElement('div');
@@ -130,7 +130,9 @@
         item.textContent = text;
         item.setAttribute('role', 'option');
         item.setAttribute('aria-selected', index === select.selectedIndex ? 'true' : 'false');
+        item.setAttribute('aria-disabled', opt.disabled ? 'true' : 'false');
         item.addEventListener('click', function () {
+          if (select.disabled || opt.disabled) return;
           const changed = select.selectedIndex !== index;
           select.selectedIndex = index;
           // Announce it after the index moves, not through commit(): by then
@@ -169,6 +171,7 @@
         paint();
       },
       open: function () {
+        if (select.disabled) return;
         build();
         panel.classList.remove('hidden');
         cursor = select.selectedIndex;
@@ -230,7 +233,7 @@
   }
 
   function enhanceDate(input) {
-    if (input.dataset.enhanced) return;
+    if (input.disabled || input.dataset.enhanced) return;
     input.dataset.enhanced = '1';
 
     const root = document.createElement('div');

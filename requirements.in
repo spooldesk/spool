@@ -1,0 +1,26 @@
+# Direct runtime dependencies. Generated, hashed pins live in requirements.txt.
+# See docs/DEPENDENCIES.md for updates; do not edit the generated lock by hand.
+# The venv's installer ships in the image too; keep it patched and pinned.
+pip==26.2.1
+aiogram==3.31.0
+# aiogram 3.10 forced aiohttp 3.9.x. Keep the patched client parser as a floor.
+aiohttp>=3.14.3,<3.15
+python-dotenv==1.2.2
+SQLAlchemy==2.0.50
+aiosqlite==0.22.1
+# Both SQLite and PostgreSQL deployments use the same runtime lock.
+asyncpg==0.31.0
+openpyxl==3.1.5
+# Keep the tested SDK API; upgrading the major version is a separate change.
+google-genai==1.46.0
+fastapi==0.135.1
+uvicorn[standard]==0.49.0
+jinja2==3.1.6
+itsdangerous==2.2.0
+python-multipart==0.0.32
+httpx==0.28.1
+argon2-cffi==25.1.0
+# Used directly by the encrypted secret store.
+cryptography==50.0.1
+# Windows has no system IANA timezone database.
+tzdata==2026.2; sys_platform == "win32"

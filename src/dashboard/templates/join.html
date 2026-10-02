@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="{{ T.html_lang }}"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer"><title>{{ T.invite_join }} · Spooldesk</title>
+<link rel="stylesheet" href="/static/brand.css?v={{ g_asset_v }}">
+<link rel="stylesheet" href="/static/workspace.css?v={{ g_asset_v }}">
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center}.join-card{max-width:400px;margin:24px;padding:32px;background:var(--ws-panel);border:1px solid var(--ws-line);border-radius:12px}label,input,button{display:block;width:100%;box-sizing:border-box}input,button{margin:10px 0;padding:12px;border:1px solid var(--ws-line);border-radius:6px}button{background:var(--ws-accent);color:white;cursor:pointer}p{line-height:1.6;color:var(--ws-muted)}</style>
+<script>if(matchMedia('(prefers-color-scheme:dark)').matches)document.documentElement.classList.add('dark');</script>
+</head><body class="workspace-shell"><main class="join-card">
+<h1>{{ T.invite_join }}</h1><p>{{ T.invite_join_hint }}</p>
+{% if error %}<p role="alert">{{ error }}</p>{% endif %}
+<form method="post" action="/join">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<input type="hidden" id="invitation-token" name="token" value="{{ token or '' }}">
+<label for="password">{{ T.f_password }}</label>
+<input type="password" name="password" id="password" required minlength="8" maxlength="1024" autocomplete="new-password">
+<button>{{ T.invite_join }}</button>
+</form><a href="/login">{{ T.invite_login }}</a></main>
+<script>var token=new URLSearchParams(location.hash.slice(1)).get('token');if(token){document.getElementById('invitation-token').value=token;history.replaceState(null,'','/join');}</script>
+</body></html>

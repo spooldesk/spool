@@ -79,33 +79,29 @@ def _material() -> str:
         if existing:
             return existing
 
-    # No key anywhere. Make one rather than refusing: an operator who has
-    # just been asked for an API key should not first have to go and edit a
-    # file on the server, which is the friction this feature exists to remove.
     material = secrets.token_urlsafe(48)
+    staging = path.with_name(path.name + "." + secrets.token_hex(8) + ".tmp")
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(material + "\n", encoding="utf-8")
-        # Owner-only. Best effort: on Windows this is close to meaningless,
-        # and failing to tighten a file is not a reason to refuse to work.
+        fd = os.open(staging, os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                     stat.S_IRUSR | stat.S_IWUSR)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(material + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
         try:
-            path.chmod(stat.S_IRUSR | stat.S_IWUSR)
-        except OSError:  # pragma: no cover
+            # Publish a fully written key without overwriting another worker.
+            os.link(staging, path)
+        except FileExistsError:
             pass
-        logger.info(
-            "Generated a secrets key at %s. Back this file up separately from "
-            "the archive — restoring the database without it leaves stored API "
-            "keys unreadable.", path,
-        )
-    except OSError:  # pragma: no cover
-        # A read-only data directory. The cipher still works for this process,
-        # so an operator can use the dashboard now; it just will not survive a
-        # restart, and they are told.
-        logger.warning(
-            "Could not write %s. API keys stored now will be unreadable after "
-            "a restart — set %s in the environment instead.", path, ENV_VAR,
-        )
-    return material
+        result = path.read_text(encoding="utf-8").strip()
+        if not result:
+            raise RuntimeError("Secrets key file is empty; restore the key before saving secrets")
+        return result
+    except OSError as exc:
+        raise RuntimeError("Cannot persist encryption key; configure SECRETS_KEY") from exc
+    finally:
+        staging.unlink(missing_ok=True)
 
 
 def _cipher() -> Fernet:
@@ -151,15 +147,6 @@ def decrypt(ciphertext: str) -> str | None:
             ENV_VAR, KEY_FILENAME,
         )
         return None
-
-
-def looks_encrypted(value: str) -> bool:
-    """Whether a stored value has already been through encrypt().
-
-    Fernet tokens begin with a version byte of 0x80, which base64 renders as
-    "gAAAAA". Used to leave a value alone rather than double-encrypting it.
-    """
-    return value.startswith("gAAAAA")
 
 
 def masked(plaintext: str | None) -> str:

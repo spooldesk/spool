@@ -4,7 +4,7 @@
 {% block content %}
 <div class="max-w-3xl">
   <h1 class="text-2xl font-semibold tracking-tight">{{ T.bc_title }}</h1>
-  <p class="text-sm text-zinc-500 mt-1">{{ T.bc_subtitle }}</p>
+  <p data-help class="text-sm text-zinc-500 mt-1">{{ T.bc_subtitle }}</p>
 
   {% if flash_sent %}
     <div class="mt-4 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm">
@@ -46,7 +46,7 @@
         <div id="bc-count" class="text-2xl font-semibold tabular-nums">{{ count_all }}</div>
       </div>
     </div>
-    <p class="text-xs text-zinc-600">{{ T.bc_recipients_hint }}</p>
+    <p data-help class="text-xs text-zinc-600">{{ T.bc_recipients_hint }}</p>
 
     <div>
       <label class="block text-xs uppercase tracking-wide text-zinc-400 mb-1">{{ T.bc_message }}</label>

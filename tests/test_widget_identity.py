@@ -31,6 +31,8 @@ from src.channels.widget import (
     identity_subject,
     looks_like_email,
     sign_identity,
+    sign_identity_v2,
+    verified_identity_fields,
     verify_identity,
 )
 from src.dashboard.app import app
@@ -203,12 +205,40 @@ async def test_a_signed_identity_may_correct_what_it_signed_for(widget_on):
 
         _say(c, "I changed my address", token=token,
              name="Ann Smith", email="new@shop.example", external_id="cust_7",
-             hash=sign_identity(SECRET, "cust_7"))
+             hash=sign_identity_v2(SECRET, name="Ann Smith", email="new@shop.example",
+                                   external_id="cust_7"))
 
     user = await _customer(token)
     assert user.email == "new@shop.example"
     assert user.username == "Ann Smith"
     assert user.identity_verified is True
+
+
+async def test_legacy_identifier_proof_cannot_rewrite_unsigned_profile_fields(widget_on):
+    await settings_service.set_widget_identity_secret(SECRET, updated_by=0)
+    with TestClient(app, base_url="http://testserver") as c:
+        opened = _say(c, "hello", name="Ann", email="old@shop.example").json()
+        _say(c, "forged neighbors", token=opened["session"], name="Boss",
+             email="boss@shop.example", external_id="cust_7",
+             hash=sign_identity(SECRET, "cust_7"))
+    user = await _customer(opened["session"])
+    assert user.username == "Ann" and user.email == "old@shop.example"
+    assert user.identity_verified_fields == ["external_id"]
+
+
+@pytest.mark.parametrize("field", ["name", "email", "external_id"])
+def test_v2_proof_binds_every_supplied_identity_field(field):
+    identity = dict(name="Анна", email="ann@shop.example", external_id="cust_7")
+    signature = sign_identity_v2(SECRET, **identity)
+    assert set(verified_identity_fields(SECRET, signature, **identity)) == set(identity)
+    identity[field] += "changed"
+    assert verified_identity_fields(SECRET, signature, **identity) == ()
+
+
+@pytest.mark.parametrize("signature", ["я" * 64, "v2:" + "я" * 64, "v2:bad", "bad"])
+def test_malformed_identity_signature_fails_closed(signature):
+    assert verified_identity_fields(SECRET, signature, name="Ann", email=None,
+                                    external_id="cust_7") == ()
 
 
 async def test_once_proved_an_unsigned_claim_can_no_longer_touch_it(widget_on):

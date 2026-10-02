@@ -131,7 +131,7 @@ class Channel(Protocol):
     caps: Capabilities
 
     async def send_text(
-        self, address: str, text: str, *, options: Sequence[Option] | None = None
+        self, address: str, text: str, *, options: Sequence[Option] | None = None, reply_ref: str | None = None
     ) -> Delivery:
         """Send text, optionally offering choices.
 
@@ -143,7 +143,7 @@ class Channel(Protocol):
         ...
 
     async def send_file(
-        self, address: str, *, filename: str, content: bytes, caption: str | None = None
+        self, address: str, *, filename: str, content: bytes, caption: str | None = None, reply_ref: str | None = None
     ) -> Delivery: ...
 
     async def fetch_file(self, ref: str) -> bytes | None:

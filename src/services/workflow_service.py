@@ -19,8 +19,6 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from sqlalchemy import select
-
 from src.database.db import db_session
 from src.database.models import Message as MessageRecord, Ticket
 
@@ -49,39 +47,25 @@ def board_column(status: str, stage: str | None) -> str:
 async def set_stage(ticket_id: int, stage: str) -> bool:
     """Move an ACTIVE ticket to another stage. Closed tickets are not moved —
     reopening is a separate action, not a side effect of dragging a card."""
-    if not is_valid_stage(stage):
-        return False
-    async with db_session() as session:
-        ticket = await session.get(Ticket, ticket_id)
-        if ticket is None or ticket.status != "active":
+    async with db_session(write=True) as session:
+        if not await set_stage_in_session(session, ticket_id, stage):
             return False
-        ticket.stage = stage
-        await session.commit()
     logger.info(f"Ticket #{ticket_id} stage -> {stage}")
     return True
 
 
-async def advance_on_admin_reply(ticket_id: int) -> None:
-    """A ticket that was still 'new' moves to 'in_progress' when an operator
-    replies. Never downgrades a stage an operator set deliberately."""
-    try:
-        async with db_session() as session:
-            ticket = await session.get(Ticket, ticket_id)
-            if ticket is None or ticket.status != "active":
-                return
-            if ticket.stage == "new":
-                ticket.stage = "in_progress"
-            # The clock is settled, so the breach record goes with it: if the
-            # customer writes again and waits again, that is a new breach and
-            # deserves to be announced rather than swallowed as a duplicate.
-            ticket.sla_breached_at = None
-            await session.commit()
-    except Exception as e:  # noqa: BLE001 — must never break a reply
-        logger.warning(f"stage auto-advance failed for #{ticket_id}: {e}")
+async def set_stage_in_session(session, ticket_id: int, stage: str) -> bool:
+    """Participate in a caller-owned approval transaction without an early commit."""
+    ticket = await session.get(Ticket, ticket_id)
+    if not is_valid_stage(stage) or ticket is None or ticket.status != "active":
+        return False
+    ticket.stage = stage
+    return True
 
 
 async def add_internal_note(
     ticket_id: int, *, text: str, author_tg_id: int = 0,
+    operator_id: int | None = None,
 ) -> Optional[int]:
     """Store an operator-only note on the ticket. Returns the message id."""
     text = (text or "").strip()
@@ -95,6 +79,7 @@ async def add_internal_note(
             ticket_id=ticket_id,
             sender_type="admin",
             sender_id=author_tg_id,
+            operator_id=operator_id,
             text=text,
             is_internal=True,
         )
@@ -104,14 +89,3 @@ async def add_internal_note(
         await session.commit()
     logger.info(f"Internal note added to ticket #{ticket_id}")
     return note_id
-
-
-async def count_internal_notes(ticket_id: int) -> int:
-    async with db_session() as session:
-        rows = (await session.execute(
-            select(MessageRecord.id).where(
-                MessageRecord.ticket_id == ticket_id,
-                MessageRecord.is_internal == True,  # noqa: E712
-            )
-        )).all()
-    return len(rows)

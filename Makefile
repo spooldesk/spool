@@ -52,7 +52,7 @@ prod-logs: ## Tail logs including the proxy
 	docker compose $(PROD) logs -f
 
 backup: ## Archive the database and its attachments together
-	bash scripts/backup.sh
+	bash scripts/backup_postgres.sh
 
 backup-daily: ## Run that archive every night (cron; pass AT=04:15 to change the time)
 	bash scripts/backup_schedule.sh $(AT)
@@ -61,11 +61,10 @@ backup-status: ## Show whether a nightly backup is scheduled
 	bash scripts/backup_schedule.sh --show
 
 # ---- PostgreSQL ----------------------------------------------------------
-# Only worth it for more than one dashboard process, or an ops team that would
-# rather run the database themselves. Needs POSTGRES_PASSWORD in .env.
+# PostgreSQL is the default. These aliases remain for existing runbooks.
 PG := -f docker-compose.yml -f docker-compose.postgres.yml
 
-pg-up: ## Start with PostgreSQL instead of SQLite
+pg-up: ## Start the default PostgreSQL stack
 	docker compose $(PG) up -d --build
 
 pg-down: ## Stop the PostgreSQL stack

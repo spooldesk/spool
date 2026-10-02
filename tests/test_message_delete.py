@@ -34,7 +34,7 @@ def _login(c: TestClient) -> str:
 class _Refusing(RecordingChannel):
     """A channel that can unsend in principle and declines this one.
 
-    The real reasons — already gone, past the medium's own window — are the
+    The real reasons вЂ” already gone, past the medium's own window вЂ” are the
     adapter's to recognise; above it they all look the same, and the point of
     the test is that "the adapter said no" never becomes "we deleted it".
     """
@@ -82,7 +82,7 @@ async def test_unsend_removes_it_from_the_customer_chat(initialized_db, channel)
 
     async with db_session() as session:
         row = await session.get(Message, mid)
-        assert row is not None, "the row must survive — reports count admin replies"
+        assert row is not None, "the row must survive вЂ” reports count admin replies"
         assert row.deleted_at is not None
         assert row.text == "sent by mistake", "the text stays for the next operator"
 
@@ -97,7 +97,7 @@ async def test_the_database_is_untouched_when_the_channel_refuses(initialized_db
         result = await message_service.delete_for_user(_BOT, mid)
     finally:
         channels.reset()
-    assert not result.ok and result.error_key == "e_delete_refused"
+    assert not result.ok and result.error_key == "chat_edit_uncertain"
 
     async with db_session() as session:
         assert (await session.get(Message, mid)).deleted_at is None
@@ -152,7 +152,7 @@ async def test_the_card_offers_the_button_only_where_it_works(initialized_db, ch
     await message_service.delete_for_user(_BOT, mid)
     after = next(m for m in (await queries.ticket_detail(tid))["messages"]
                  if m["id"] == mid)
-    assert after["can_delete"] is False, "already withdrawn — nothing left to offer"
+    assert after["can_delete"] is False, "already withdrawn вЂ” nothing left to offer"
     assert after["deleted_at"] is not None
 
 

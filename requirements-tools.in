@@ -1,0 +1,3 @@
+# Maintenance/CI tools only: install in a separate virtual environment.
+uv==0.12.17
+pip-audit==2.10.1

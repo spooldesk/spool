@@ -14,17 +14,8 @@ therefore gets a Python function registered on each connection, doing a
 proper Unicode casefold. PostgreSQL already has `ILIKE`, which folds Unicode
 correctly, so it uses that and no function is registered.
 
-**Migrations.** `_migrate_to_new_schema` in db.py is a long list of additive
-`ALTER TABLE`s that bring a *legacy SQLite file* up to the current schema.
-A PostgreSQL database has no legacy: `create_all` builds it correct on the
-first run. So those statements are skipped there rather than translated,
-which is both less work and more honest about what they are.
-
-That leaves a real limitation worth naming: there is no migration framework
-here. Schema changes have so far been additive columns applied to SQLite in
-place. A PostgreSQL deployment that needs to move between two releases with
-a schema change will need Alembic, and adding it is a separate piece of work
-from making the engine run.
+**Migrations.** Ordered revisions in migrations.py now upgrade both engines.
+The old SQLite-only column bootstrap is used once for unversioned files.
 """
 
 from __future__ import annotations

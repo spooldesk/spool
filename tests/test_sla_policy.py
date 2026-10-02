@@ -6,6 +6,7 @@ and a muted alert is worse than none at all.
 """
 
 from datetime import datetime, timedelta
+import pytest
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -90,20 +91,14 @@ async def _arm(*, notify=True, return_to_pool=False, target_minutes=60):
                                  updated_by=0)
 
 
-async def test_an_overdue_ticket_is_announced_once(initialized_db):
-    """The whole point of the record on the ticket: this runs every five
-    minutes, and an alert that repeats every five minutes gets muted."""
-    await _arm()
-    tid = await _overdue_ticket(minutes_ago=500)
+async def test_an_overdue_ticket_is_returned_once(initialized_db):
+    await _arm(return_to_pool=True)
+    tid = await _overdue_ticket(minutes_ago=500, assigned_to=await _another_operator())
     bot = _Bot()
-
     first = await sla_service.run_once(bot)
-    second = await sla_service.run_once(bot)
-
-    assert first["notified"] >= 1
-    assert any(f"#{tid}" in m for m in bot.sent)
-    assert second["breached"] == 0, "the second pass announced it again"
-    assert len(bot.sent) == first["notified"]
+    assert first['returned'] >= 1 and first['notified'] == 0
+    assert await sla_service.run_once(bot) == {'breached':0, 'notified':0, 'returned':0}
+    assert bot.sent == []
 
 
 async def test_inside_the_target_nothing_happens(initialized_db):
@@ -111,7 +106,7 @@ async def test_inside_the_target_nothing_happens(initialized_db):
     await _overdue_ticket(minutes_ago=10)
     bot = _Bot()
 
-    # Only tickets past twice the target count; ten minutes is not one of them.
+    # Only tickets past the target count; ten minutes is not one of them.
     await sla_service.run_once(bot)
     assert all("still waiting" not in m for m in bot.sent)
 
@@ -145,24 +140,6 @@ async def test_returning_to_the_pool_unassigns(initialized_db):
     assert assigned is None
 
 
-async def test_answering_arms_it_again(initialized_db):
-    """If the customer comes back and is made to wait again, that is a new
-    breach and deserves announcing rather than being swallowed as a repeat."""
-    await _arm()
-    tid = await _overdue_ticket(minutes_ago=900)
-    bot = _Bot()
-    await sla_service.run_once(bot)
-    assert await sla_service.run_once(bot) == {"breached": 0, "notified": 0, "returned": 0}
-
-    await workflow_service.advance_on_admin_reply(tid)
-
-    async with db_session() as session:
-        marked = (await session.execute(
-            select(Ticket.sla_breached_at).where(Ticket.id == tid)
-        )).scalar_one()
-    assert marked is None, "a reply must clear the record"
-
-
 async def test_switched_off_it_does_nothing_at_all(initialized_db):
     await _arm(notify=False, return_to_pool=False)
     await _overdue_ticket(minutes_ago=900)
@@ -172,15 +149,13 @@ async def test_switched_off_it_does_nothing_at_all(initialized_db):
     assert bot.sent == []
 
 
-async def test_one_failed_alert_does_not_stop_the_others(initialized_db):
-    """Telegram refusing one message must not cost the rest of the pass."""
-    await _arm()
-    for _ in range(3):
-        await _overdue_ticket(minutes_ago=900)
-
-    result = await sla_service.run_once(_Bot(fail=True))
-    assert result["breached"] >= 3
-    assert result["notified"] == 0, "every send failed, and it kept going"
+async def test_legacy_chat_notification_setting_is_ignored(initialized_db):
+    await _arm(notify=True)
+    await settings_service.set_value(sla_service.KEY_NOTIFY, '1')
+    await _overdue_ticket(minutes_ago=900)
+    bot = _Bot()
+    assert await sla_service.run_once(bot) == {'breached':0, 'notified':0, 'returned':0}
+    assert bot.sent == []
 
 
 async def test_the_policy_is_editable_from_settings(initialized_db):
@@ -196,7 +171,7 @@ async def test_the_policy_is_editable_from_settings(initialized_db):
         assert r.status_code == 303
 
     assert await work_hours_service.get_sla_minutes() == 45
-    assert await sla_service.get_policy() == {"notify": True, "return_to_pool": True}
+    assert await sla_service.get_policy() == {"notify": False, "return_to_pool": True}
 
 
 async def test_a_nonsense_target_falls_back(initialized_db):
@@ -211,3 +186,25 @@ async def test_a_nonsense_target_falls_back(initialized_db):
                data={"sla_minutes": "-10", "csrf_token": token},
                follow_redirects=False)
         assert await work_hours_service.get_sla_minutes() > 0
+
+
+async def test_poll_loop_does_not_create_a_telegram_client(monkeypatch):
+    import asyncio
+    from src.dashboard import bot_client
+    seen = []
+    def forbidden_bot():
+        raise AssertionError('SLA must not depend on Telegram')
+    monkeypatch.setattr(bot_client, 'get_bot', forbidden_bot)
+
+    async def run_once():
+        seen.append('pass')
+
+    async def sleep(_):
+        if len(seen) == 2:
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(sla_service, 'run_once', run_once)
+    monkeypatch.setattr(asyncio, 'sleep', sleep)
+    with pytest.raises(asyncio.CancelledError):
+        await sla_service.poll_loop()
+    assert seen == ['pass', 'pass']

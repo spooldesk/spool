@@ -28,14 +28,14 @@ import json
 import logging
 import time
 import urllib.parse
-from collections import OrderedDict
 
 from fastapi import APIRouter, Request, Response, status
 from fastapi.responses import JSONResponse, PlainTextResponse
+from starlette.background import BackgroundTask
 
 from src.channels.slack import NAME as SLACK, is_configured, signing_secret
 from src.database.db import db_session
-from src.services import intake_service
+from src.services import intake_service, inbound_service
 
 logger = logging.getLogger(__name__)
 
@@ -45,25 +45,7 @@ router = APIRouter(prefix="/slack", tags=["slack"])
 #: enough that a captured request is worthless by the time it is useful.
 _MAX_AGE_SECONDS = 60 * 5
 
-#: Slack retries anything it does not get a prompt 2xx for, so the same
-#: message can arrive three times. Kept in memory rather than a table: the
-#: retries land within seconds, and a table for that would be a migration and
-#: a cleanup job in exchange for closing a window measured in milliseconds.
-#: The cost of losing it in a restart is one duplicated message inside an
-#: existing ticket — not a duplicated ticket, since intake appends.
-_SEEN_LIMIT = 2000
-_seen: "OrderedDict[str, float]" = OrderedDict()
-
-
-def _already_handled(event_id: str) -> bool:
-    if not event_id:
-        return False
-    if event_id in _seen:
-        return True
-    _seen[event_id] = time.time()
-    while len(_seen) > _SEEN_LIMIT:
-        _seen.popitem(last=False)
-    return False
+_MAX_EVENT_BYTES = 1024 * 1024
 
 
 def _signature_ok(body: bytes, timestamp: str, signature: str) -> bool:
@@ -261,105 +243,103 @@ async def _apply_slack_choice(conversation: str, message_ts: str, payload: str) 
 
 @router.post("/events")
 async def events(request: Request) -> Response:
-    """Everything Slack sends: the setup handshake and then real messages."""
+    """Acknowledge only after raw input has a durable, deduplicated receipt."""
     if not is_configured():
-        # 404 rather than 403: an instance with no Slack app installed should
-        # look like it has no Slack endpoint.
-        return JSONResponse({"error": "not_configured"},
-                            status_code=status.HTTP_404_NOT_FOUND)
-
-    body = await request.body()
-    if not _signature_ok(
-        body,
-        request.headers.get("x-slack-request-timestamp", ""),
-        request.headers.get("x-slack-signature", ""),
-    ):
-        return JSONResponse({"error": "bad_signature"},
-                            status_code=status.HTTP_401_UNAUTHORIZED)
-
+        return JSONResponse({"error": "not_configured"}, status_code=404)
+    chunks, size = [], 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > _MAX_EVENT_BYTES:
+            return JSONResponse({"error": "too_large"}, status_code=413)
+        chunks.append(chunk)
+    body = b"".join(chunks)
+    if not _signature_ok(body, request.headers.get("x-slack-request-timestamp", ""),
+                         request.headers.get("x-slack-signature", "")):
+        return JSONResponse({"error": "bad_signature"}, status_code=401)
     try:
-        payload = await request.json()
-    except ValueError:
-        return JSONResponse({"error": "bad_json"},
-                            status_code=status.HTTP_400_BAD_REQUEST)
-
-    # The one-time handshake when the URL is entered in the Slack app config.
-    # Answered as plain text because that is what Slack's checker looks for.
+        payload = json.loads(body)
+    except (ValueError, UnicodeDecodeError):
+        return JSONResponse({"error": "bad_json"}, status_code=400)
+    if not isinstance(payload, dict):
+        return JSONResponse({"error": "bad_json"}, status_code=400)
     if payload.get("type") == "url_verification":
-        return PlainTextResponse(payload.get("challenge", ""))
-
+        return PlainTextResponse(str(payload.get("challenge", "")))
     if payload.get("type") != "event_callback":
         return JSONResponse({"ok": True})
-
-    # Answered before anything else is examined. Slack decides an endpoint is
-    # unhealthy on slow replies and starts retrying, which is how one message
-    # becomes three.
-    if _already_handled(payload.get("event_id", "")):
-        return JSONResponse({"ok": True})
-
     event = payload.get("event") or {}
-    if event.get("type") != "message" or _is_ours(event):
+    if not isinstance(event, dict) or event.get("type") != "message" or _is_ours(event):
         return JSONResponse({"ok": True})
-    # Edits, deletions, joins and thread broadcasts all arrive as messages
-    # with a subtype. Treating an edit as a new message would show an
-    # operator the same question twice with one word changed.
-    if event.get("subtype"):
+    # file_share is an ordinary customer message, including attachment-only
+    # messages. Edits/deletions are distinct operations, not new intake.
+    mutation = event.get("subtype") in {"message_changed", "message_deleted"}
+    if event.get("subtype") not in (None, "", "file_share", "message_changed", "message_deleted"):
         return JSONResponse({"ok": True})
+    if not event.get("channel") or not (mutation or event.get("text") or event.get("files")):
+        return JSONResponse({"ok": True})
+    identity = str(payload.get("event_id") or hashlib.sha256(body).hexdigest())
+    source_key = hashlib.sha256((str(payload.get("team_id") or "") + ":" + identity).encode()).hexdigest()
+    try:
+        event_id = await inbound_service.enqueue(channel=SLACK, source_key=source_key,
+                                                  payload=body)
+    except Exception:
+        # Slack retries this response. A 200 before persistence would lose an
+        # event if the process died while a background task was starting.
+        logger.warning("Slack event could not be persisted")
+        return JSONResponse({"error": "temporarily_unavailable"}, status_code=503)
+    return JSONResponse({"ok": True}, background=BackgroundTask(inbound_service.process, event_id))
 
-    conversation = (event.get("channel") or "").strip()
-    text = (event.get("text") or "").strip()
+
+async def prepare_event(raw: bytes, context: dict) -> dict:
+    """Potential network work happens before the processing transaction."""
+    payload = json.loads(raw)
+    event = payload["event"]
+    return {"event": event, "speaker": await _speaker(event), "team": payload.get("team_id") or ""}
+
+
+async def record_event(session, prepared: dict, context: dict, *, event_id: int):
+    """All attachments and the processed receipt share the caller's commit."""
+    from src.services.inbound_service import Recorded
+
+    event, speaker = prepared["event"], prepared["speaker"]
+    conversation = str(event.get("channel") or "").strip()
+    if event.get("subtype") in {"message_changed", "message_deleted"}:
+        from src.services.channel_events import update_customer_message
+        message = event.get("message") or {}
+        ref = str(event.get("deleted_ts") or message.get("ts") or '')
+        if _is_ours(message) or not conversation or not ref:
+            return Recorded(rejected="ignored")
+        mid = await update_customer_message(session, channel=SLACK, address=conversation,
+            ref=ref, text=str(message.get("text") or ''),
+            deleted=event.get("subtype") == "message_deleted")
+        return Recorded(message_id=mid or 0, rejected="mutation")
+    text = str(event.get("text") or "").strip()
     files = _attachments(event)
     if not conversation or not (text or files):
-        return JSONResponse({"ok": True})
-
-    speaker = await _speaker(event)
-    # A direct message is one person, so they are the customer and repeating
-    # their name on every line is noise. A shared channel is a room: the
-    # customer is the room, and every line needs an author.
+        return Recorded(rejected="empty")
     is_dm = event.get("channel_type") == "im"
+    # A shared channel's root message starts a ticket; thread replies join it.
+    # DMs retain one active conversation, including replies threaded in Slack.
+    root_ts = "" if is_dm else (event.get("thread_ts") or event.get("ts") or "")
+    conversation_key = "slack:" + str(root_ts) if root_ts else ""
 
-    def inbound(body: str, attachment=None) -> intake_service.Inbound:
+    def inbound(body: str, attachment=None):
         return intake_service.Inbound(
-            channel=SLACK,
-            # The conversation, not the person. A DM and a channel shared with
-            # a client's whole team are the same thing to Slack, and making
-            # them the same thing here is what lets one adapter serve both.
-            address=conversation,
-            text=body,
+            channel=SLACK, address=conversation, text=body,
             display_name=speaker if is_dm else f"Slack {conversation}",
-            speaker=None if is_dm else speaker,
-            attachment=attachment,
+            speaker=None if is_dm else speaker, attachment=attachment,
+            conversation_key=conversation_key,
+            channel_ref=str(event.get("ts") or '') or None,
+            reply_to_ref=str(event.get("thread_ts") or '') or None,
         )
 
-    async with db_session() as session:
-        # One Slack message can carry several files. Recorded as one row each,
-        # with the text on the first — which is how Slack itself shows them,
-        # and it keeps every attachment individually openable.
-        result = await intake_service.receive(
-            session, inbound(text, files[0] if files else None)
-        )
-        for extra in files[1:]:
-            await intake_service.receive(session, inbound("", extra))
-        await session.commit()
-
+    result = await intake_service.receive(session, inbound(text, files[0] if files else None))
     if result.rejected:
-        logger.info(f"Slack message from {conversation} not accepted: {result.rejected}")
-    else:
-        if result.opened_ticket:
-            # Into the operators' group, so a Slack conversation is answerable
-            # from Telegram like any other ticket.
-            try:
-                from src.dashboard.bot_client import get_bot
-                from src.services import announce_service
-
-                await announce_service.announce_ticket(get_bot(), result.ticket_id)
-            except Exception as e:  # noqa: BLE001
-                logger.warning(f"Ticket #{result.ticket_id} not announced: {e}")
-        logger.info(
-            f"Slack message on ticket #{result.ticket_id}"
-            f"{' (new conversation)' if result.opened_ticket else ''}"
-        )
-    # Always 200. Telling Slack an event failed makes it send the event again,
-    # and nothing above is worth repeating — a refusal is a decision, not an
-    # outage.
-    return JSONResponse({"ok": True})
+        return Recorded(rejected=result.rejected)
+    ids = [result.message_id]
+    for extra in files[1:]:
+        additional = await intake_service.receive(session, inbound("", extra))
+        if additional.rejected:
+            raise RuntimeError("attachment intake refused after first message")
+        ids.append(additional.message_id)
+    return Recorded(result.ticket_id, result.message_id, result.opened_ticket,
+                    message_ids=tuple(ids))

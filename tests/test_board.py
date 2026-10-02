@@ -48,7 +48,7 @@ async def _seed_board(initialized_db) -> dict[str, int]:
         now = datetime.utcnow()
         for column in ("new", "in_progress", "waiting"):
             t = Ticket(user_id=u.id, team_id=team.id, category="Network",
-                       status="active", stage=column,
+                       status="active", stage=column, conversation_key=f"board-{column}",
                        created_at=now - timedelta(hours=2))
             session.add(t)
             await session.flush()
@@ -90,12 +90,13 @@ async def test_closed_column_is_windowed(initialized_db):
     async with db_session() as session:
         t = await session.get(Ticket, ids["closed"])
         t.closed_at = datetime.utcnow() - timedelta(days=30)
+        team_id = t.team_id
         await session.commit()
 
-    board = await queries.board_columns(closed_days=7)
+    board = await queries.board_columns(closed_days=7, team_id=team_id)
     assert ids["closed"] not in {c["id"] for c in board["closed"]["cards"]}
 
-    board_wide = await queries.board_columns(closed_days=60)
+    board_wide = await queries.board_columns(closed_days=60, team_id=team_id)
     assert ids["closed"] in {c["id"] for c in board_wide["closed"]["cards"]}
 
     async with db_session() as session:  # restore
@@ -186,7 +187,12 @@ def test_negative_age_never_renders(seconds, expected_prefix):
 # ---------- whose move it is ----------
 
 async def _card_for(ticket_id: int) -> dict | None:
-    cols = await queries.board_columns()
+    # Other test modules share this DB. A capped global board may correctly
+    # hide this scenario's newer card behind unrelated older conversations.
+    async with db_session() as session:
+        ticket = await session.get(Ticket, ticket_id)
+        team_id = ticket.team_id
+    cols = await queries.board_columns(team_id=team_id)
     for col in cols.values():
         for c in col["cards"]:
             if c["id"] == ticket_id:
@@ -269,9 +275,10 @@ def test_sla_state_thresholds():
 
     assert wh.sla_state(None, 60) is None
     assert wh.sla_state(30 * 60, 60) is None      # inside the target
-    assert wh.sla_state(60 * 60, 60) == "warn"    # at the target
-    assert wh.sla_state(119 * 60, 60) == "warn"
-    assert wh.sla_state(120 * 60, 60) == "breach"  # twice it
+    assert wh.sla_state(48 * 60 - 1, 60) is None
+    assert wh.sla_state(48 * 60, 60) == "warn"
+    assert wh.sla_state(60 * 60 - 1, 60) == "warn"
+    assert wh.sla_state(60 * 60, 60) == "breach"
 
 
 def test_initials_are_readable():
@@ -286,9 +293,11 @@ def test_initials_are_readable():
 
 async def test_the_board_page_shows_the_waiting_badge(initialized_db):
     tid = await _ticket_with([("user", 200)])
+    async with db_session() as session:
+        team_id = (await session.get(Ticket, tid)).team_id
     with TestClient(app, base_url="http://testserver") as c:
         _login(c)
-        html = c.get("/board").text
+        html = c.get(f"/board?team_id={team_id}").text
     assert f'data-ticket-id="{tid}"' in html
     assert "ti-arrow-back-up" in html, "the waiting badge should be rendered"
 

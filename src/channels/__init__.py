@@ -78,7 +78,8 @@ def get(name: str | None) -> Channel:
 
 def available() -> list[str]:
     """Names of channels this process can currently send through."""
-    return sorted(set(_registry) | {DEFAULT})
+    from src.config import load_settings
+    return sorted(set(_registry) | ({DEFAULT} if load_settings().has_telegram else set()))
 
 
 def caps(name: str | None) -> Capabilities:
@@ -100,6 +101,10 @@ def caps(name: str | None) -> Capabilities:
 def reset() -> None:
     """Drop every registration. For tests, which install fakes."""
     _registry.clear()
+
+
+def unregister(name: str) -> None:
+    _registry.pop(name, None)
 
 
 __all__ = [

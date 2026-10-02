@@ -1,22 +1,6 @@
-"""SLA policies: what happens when a customer has waited too long.
+"""Response SLA escalation: optionally return an overdue ticket to the pool.
 
-The clock already existed — the board colours a card amber past the response
-target and red past twice it. But a colour only works on someone who is
-looking, and the person who should be looking is by definition busy with a
-different ticket. A policy acts without being watched.
-
-Two actions, both opt-in:
-
-- **Notify** the operators' chat once, when a ticket first crosses the breach
-  line. Once, not every check — an alert that repeats every five minutes is an
-  alert people mute, and a muted alert is worse than none.
-- **Return to the pool** — clear the assignment so the ticket goes back to
-  everyone's queue. On a small team that is what escalation actually means:
-  the person who claimed it has not got to it, so stop hiding it from the
-  others.
-
-Everything runs on working time, so a ticket that arrived at 18:05 does not
-escalate overnight to nobody.
+Runs on working time. Operator chat alerts have been retired.
 """
 
 from __future__ import annotations
@@ -28,22 +12,23 @@ from sqlalchemy import text
 
 from src.database.db import db_session
 from src.services import settings_service, work_hours_service
+from src.services.response_clock import WAITING_SINCE_SQL
 
 logger = logging.getLogger(__name__)
 
-KEY_NOTIFY = "sla_notify_enabled"      # "1"/"0" — post to the operators' chat
+KEY_NOTIFY = "sla_notify_enabled"      # Retired setting, always ignored/reset.
 KEY_RETURN = "sla_return_to_pool"      # "1"/"0" — clear the assignment on breach
 
 
 async def get_policy() -> dict:
     return {
-        "notify": (await settings_service.get_value(KEY_NOTIFY, "0")) == "1",
+        "notify": False,  # Retired: operator alerts belong in the dashboard.
         "return_to_pool": (await settings_service.get_value(KEY_RETURN, "0")) == "1",
     }
 
 
 async def set_policy(*, notify: bool, return_to_pool: bool, updated_by: int) -> None:
-    await settings_service.set_value(KEY_NOTIFY, "1" if notify else "0",
+    await settings_service.set_value(KEY_NOTIFY, "0",
                                      updated_by=updated_by)
     await settings_service.set_value(KEY_RETURN, "1" if return_to_pool else "0",
                                      updated_by=updated_by)
@@ -59,20 +44,12 @@ async def find_new_breaches() -> list[dict]:
     sla_minutes = await work_hours_service.get_sla_minutes()
     config = await work_hours_service.get_config()
     now = datetime.utcnow().replace(tzinfo=timezone.utc)
-    breach_seconds = sla_minutes * 60 * 2   # same line the board paints red
+    breach_seconds = sla_minutes * 60   # the configured response deadline
 
     async with db_session() as session:
-        rows = (await session.execute(text("""
+        rows = (await session.execute(text(f"""
             SELECT t.id, t.assigned_admin_id, t.category, u.username, u.tg_id,
-                   (SELECT MIN(m.created_at) FROM messages m
-                     WHERE m.ticket_id = t.id
-                       AND m.is_internal = false
-                       AND m.sender_type = 'user'
-                       AND m.id > COALESCE((SELECT MAX(a.id) FROM messages a
-                                             WHERE a.ticket_id = t.id
-                                               AND a.is_internal = false
-                                               AND a.sender_type = 'admin'), 0)
-                   ) AS waiting_since
+                   {WAITING_SINCE_SQL} AS waiting_since
               FROM tickets t
               LEFT JOIN users u ON u.id = t.user_id
              WHERE t.status = 'active'
@@ -126,18 +103,7 @@ async def return_to_pool(ticket_ids: list[int]) -> None:
         await session.commit()
 
 
-async def clear_on_reply(ticket_id: int) -> None:
-    """An answered ticket starts clean: if the customer writes again and is
-    made to wait again, that is a new breach and deserves to be announced."""
-    async with db_session() as session:
-        await session.execute(
-            text("UPDATE tickets SET sla_breached_at = NULL WHERE id = :i"),
-            {"i": ticket_id},
-        )
-        await session.commit()
-
-
-async def run_once(bot=None) -> dict:
+async def _run_once(bot=None) -> dict:
     """One pass of the policy. Returns what it did, for logs and for tests."""
     policy = await get_policy()
     if not policy["notify"] and not policy["return_to_pool"]:
@@ -149,25 +115,6 @@ async def run_once(bot=None) -> dict:
 
     ids = [b["id"] for b in breaches]
     notified = 0
-
-    if policy["notify"] and bot is not None:
-        from src.config import load_settings
-        from src.dashboard.formatting import fmt_seconds
-        from src.dashboard.i18n import t as _op
-
-        chat_id = load_settings().admin_chat_id
-        for b in breaches:
-            try:
-                await bot.send_message(
-                    chat_id=chat_id,
-                    text=_op("sla_breach_alert",
-                             id=b["id"], who=b["user_label"],
-                             waited=fmt_seconds(b["waited_seconds"])),
-                )
-                notified += 1
-            except Exception as e:  # noqa: BLE001 — one failure must not stop the rest
-                logger.warning(f"SLA alert for #{b['id']} not delivered: {e}")
-
     returned = 0
     if policy["return_to_pool"]:
         claimed = [b["id"] for b in breaches if b["assigned_admin_id"]]
@@ -180,3 +127,29 @@ async def run_once(bot=None) -> dict:
 
     logger.info(f"SLA: {len(ids)} breached, {notified} notified, {returned} returned")
     return {"breached": len(ids), "notified": notified, "returned": returned}
+
+
+async def run_once(bot=None) -> dict:
+    """One bounded pass, exclusive across dashboard workers."""
+    import asyncio
+    import secrets
+    from src.services import worker_lease
+    owner = secrets.token_hex(16)
+    if not await worker_lease.acquire("sla", owner, seconds=300):
+        return {"breached": 0, "notified": 0, "returned": 0}
+    try:
+        async with asyncio.timeout(240):
+            return await _run_once(bot)
+    finally:
+        await worker_lease.release("sla", owner)
+
+
+async def poll_loop(bot=None) -> None:
+    import asyncio
+    while True:
+        try:
+            # Escalation is local and does not depend on any messaging channel.
+            await run_once()
+        except Exception:
+            logger.exception("SLA policy pass failed")
+        await asyncio.sleep(300)

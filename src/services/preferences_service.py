@@ -122,14 +122,6 @@ async def save(admin_id: int, values: dict[str, Any]) -> dict[str, Any]:
     return cleaned
 
 
-async def language_for(admin_id: int | None) -> str | None:
-    """The language this page should be rendered in, or None to follow the
-    instance. Kept separate because it is needed on every request, before
-    anything else about the operator matters."""
-    prefs = await for_operator(admin_id)
-    return prefs["language"] or None
-
-
 def apply_signature(text: str, signature: str) -> str:
     """A reply with the operator's sign-off, if they set one.
 

@@ -5,11 +5,9 @@ unsend — a message is on somebody's server the moment it is accepted. There
 are no buttons, so the CSAT rating is spelled into the text like the widget's.
 There is no typing indicator and never will be.
 
-What it does have, uniquely here, is *threading in the customer's own client*.
-Nothing routes on it — a reply is matched to a ticket by who sent it, the same
-way every channel here works — but a customer whose mail client shows five
-disconnected messages instead of one conversation thinks less of the company,
-and the fix is three headers.
+Message-ID references preserve conversation topics in both the customer's
+mail client and ticket intake. References are scoped to the mailbox and sender
+so another correspondent cannot join a ticket by copying its header.
 
 Both directions run in a worker thread. `smtplib` is synchronous and blocking
 an event loop on somebody else's SMTP server, which may take thirty seconds to
@@ -19,6 +17,7 @@ answer, is how one slow mail host stops a dashboard from serving pages.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import re
 import smtplib
@@ -26,7 +25,7 @@ import ssl
 import uuid
 from collections.abc import Sequence
 from email.message import EmailMessage
-from email.utils import formataddr, make_msgid
+from email.utils import formataddr, formatdate, make_msgid
 
 from src.channels.base import Capabilities, Delivery, Option
 from src.services import file_store
@@ -51,10 +50,8 @@ def is_configured() -> bool:
 def thread_id(ticket_id: int, domain: str) -> str:
     """A Message-ID that says which conversation it belongs to.
 
-    The ticket number is in the identifier on purpose. Nothing routes on it
-    today — the sender's address already decides which conversation a reply
-    joins — but it means a mailbox can be read months later and every message
-    still says what it was about, without the database.
+    The ticket number helps identify mail during support diagnostics. Intake
+    uses stored references scoped to the sender, never a parsed ticket number.
     """
     return f"<spooldesk-{ticket_id}-{uuid.uuid4().hex[:12]}@{domain}>"
 
@@ -96,12 +93,12 @@ class EmailChannel:
     )
 
     async def send_text(
-        self, address: str, text: str, *, options: Sequence[Option] | None = None
+        self, address: str, text: str, *, options: Sequence[Option] | None = None, reply_ref: str | None = None
     ) -> Delivery:
         return await self._send(address, spell_options(text, options))
 
     async def send_file(
-        self, address: str, *, filename: str, content: bytes, caption: str | None = None
+        self, address: str, *, filename: str, content: bytes, caption: str | None = None, reply_ref: str | None = None
     ) -> Delivery:
         try:
             ref = file_store.put(content)
@@ -117,6 +114,72 @@ class EmailChannel:
         # The store keeps our copy so the ticket page can show what was sent;
         # the customer has theirs in their inbox.
         return Delivery(ok=True, ref=delivery.ref, file_ref=ref)
+
+    async def send_for_ticket(
+        self, address: str, text: str, *, ticket_id: int,
+        options: Sequence[Option] | None = None,
+        attachment: tuple[str, bytes] | None = None,
+        delivery_key: str | None = None,
+    ) -> Delivery:
+        """Thread-aware delivery used by the durable outbox.
+
+        A stable Message-ID makes a retry identifiable; SMTP itself does not
+        guarantee exactly-once delivery. Remember the reference before sending
+        so a fast customer reply can already be routed to the correct topic.
+        """
+        from src.config import load_settings
+        from src.database.db import db_session
+        from src.database.models import Ticket, User
+        from src.services import email_thread_service as threads
+
+        settings = load_settings()
+        if not settings.has_email:
+            return Delivery.failed("e_no_mailbox")
+        mailbox = threads.mailbox_key(settings)
+        domain = settings.email_address.rpartition("@")[2] or "localhost"
+        suffix = hashlib.sha256(delivery_key.encode()).hexdigest()[:24] if delivery_key else uuid.uuid4().hex
+        message_id = f"<spooldesk-{ticket_id}-{suffix}@{domain}>"
+        async with db_session(write=True) as session:
+            ticket = await session.get(Ticket, ticket_id)
+            user = await session.get(User, ticket.user_id) if ticket else None
+            if user is None or user.channel != NAME or (user.channel_user_id or "").lower() != address.lower():
+                return Delivery.failed("e_send_rejected", "ticket and email recipient do not match")
+            parent = await threads.latest(session, mailbox=mailbox, address=address,
+                                           conversation_key=ticket.conversation_key)
+            # On retry the latest reference may be this same outbound attempt.
+            # Never create a self-referential In-Reply-To header.
+            if parent is not None and parent.message_id == message_id:
+                from sqlalchemy import select
+                from src.database.inbound_models import EmailMessageReference
+                parent = (await session.execute(select(EmailMessageReference).where(
+                    EmailMessageReference.mailbox == mailbox,
+                    EmailMessageReference.address == address.lower(),
+                    EmailMessageReference.conversation_key == ticket.conversation_key,
+                    EmailMessageReference.message_id != message_id,
+                ).order_by(EmailMessageReference.created_at.desc()).limit(1))).scalar_one_or_none()
+            subject = (parent.subject if parent else "") or settings.email_subject
+            subject = subject.replace("\r", "").replace("\n", " ")[:990]
+            if parent and not subject.lower().startswith("re:"):
+                subject = "Re: " + subject
+            in_reply_to = parent.message_id if parent else None
+            await threads.remember(session, mailbox=mailbox, address=address,
+                message_id=message_id, conversation_key=ticket.conversation_key,
+                ticket_id=ticket_id, subject=subject, direction="outbound")
+
+        ref = None
+        if attachment:
+            try:
+                ref = await asyncio.to_thread(file_store.put, attachment[1])
+            except OSError:
+                return Delivery.failed("e_send_failed", "attachment storage unavailable")
+        delivery = await self._send(address, spell_options(text, options),
+            attachment=attachment, ticket_id=ticket_id, subject=subject,
+            in_reply_to=in_reply_to, message_id=message_id)
+        if not delivery.ok and ref:
+            file_store.delete(ref)
+        if delivery.ok and ref:
+            return Delivery(ok=True, ref=delivery.ref, file_ref=ref)
+        return delivery
 
     async def fetch_file(self, ref: str) -> bytes | None:
         # Inbound attachments are written to the same store the widget uses —
@@ -136,7 +199,8 @@ class EmailChannel:
                     *, attachment: tuple[str, bytes] | None = None,
                     ticket_id: int | None = None,
                     subject: str | None = None,
-                    in_reply_to: str | None = None) -> Delivery:
+                    in_reply_to: str | None = None,
+                    message_id: str | None = None) -> Delivery:
         from src.config import load_settings
 
         settings = load_settings()
@@ -152,7 +216,10 @@ class EmailChannel:
         message["From"] = formataddr((settings.email_from_name, settings.email_address))
         message["To"] = address
         message["Subject"] = subject or settings.email_subject
-        message["Message-ID"] = (
+        # RFC 5322 requires an origination date. SMTP submission does not add
+        # it for us; incomplete headers can be rejected or filtered downstream.
+        message["Date"] = formatdate(localtime=False, usegmt=True)
+        message["Message-ID"] = message_id or (
             thread_id(ticket_id, domain) if ticket_id else make_msgid(domain=domain)
         )
         if in_reply_to:
@@ -177,11 +244,15 @@ class EmailChannel:
             # Terminal, and worth marking the customer rather than retrying.
             return Delivery.failed("e_user_blocked_bot", address, blocked=True)
         except smtplib.SMTPAuthenticationError as e:
-            logger.error(f"Mail credentials rejected: {e}")
+            logger.error("Mail credentials rejected")
             return Delivery.failed("e_send_failed", "authentication refused")
+        except (smtplib.SMTPResponseException, smtplib.SMTPNotSupportedError) as e:
+            # An explicit server refusal is safe to distinguish from losing
+            # the connection after DATA may already have been accepted.
+            return Delivery.failed("e_send_rejected", type(e).__name__)
         except Exception as e:  # noqa: BLE001 — smtplib raises a wide family
-            logger.warning(f"Could not send mail to {address}: {e}")
-            return Delivery.failed("e_send_failed", f"{type(e).__name__}: {e}")
+            logger.warning("Mail delivery result unavailable (%s)", type(e).__name__)
+            return Delivery.failed("e_delivery_uncertain", type(e).__name__)
 
         return Delivery.sent(message["Message-ID"])
 

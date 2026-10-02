@@ -53,15 +53,13 @@ async def test_the_settings_load_without_a_token(no_telegram):
     assert settings.database_url and settings.access_password
 
 
-async def test_a_token_with_no_admin_chat_counts_as_no_telegram(
+async def test_a_token_without_admin_chat_supports_dashboard_operators(
     initialized_db, monkeypatch
 ):
-    """Half-configured is the dangerous state: it can send to customers but
-    has nowhere to show an operator a ticket, so it looks configured and
-    quietly loses half its job."""
+    """The dashboard receives tickets without requiring a Telegram operator group."""
     monkeypatch.setenv("BOT_TOKEN", "1000000:TEST")
     monkeypatch.delenv("ADMIN_CHAT_ID", raising=False)
-    assert load_settings().has_telegram is False
+    assert load_settings().has_telegram is True
 
 
 async def test_a_malformed_chat_id_does_not_take_the_dashboard_down(
@@ -72,7 +70,8 @@ async def test_a_malformed_chat_id_does_not_take_the_dashboard_down(
     monkeypatch.setenv("BOT_TOKEN", "1000000:TEST")
     monkeypatch.setenv("ADMIN_CHAT_ID", "not-a-number")
     settings = load_settings()
-    assert settings.has_telegram is False
+    assert settings.has_telegram is True
+    assert settings.admin_chat_id == 0
     assert settings.database_url
 
 
@@ -182,14 +181,15 @@ async def test_a_reply_still_reaches_a_widget_customer(no_telegram):
 # ---------------------------------------------------------------- the bot
 
 
-def test_the_bot_process_refuses_and_says_which_half_is_missing():
-    """The dashboard runs without Telegram; this process *is* Telegram. It
-    should name the variable rather than dying on the first API call with an
-    authentication error nobody can trace back."""
-    import inspect
-
+async def test_optional_bot_process_stays_off_without_telegram(monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
     from src import main
-
-    source = inspect.getsource(main.main)
-    assert "has_telegram" in source
-    assert "BOT_TOKEN" in source and "ADMIN_CHAT_ID" in source
+    from src.services import channel_runtime
+    monkeypatch.setattr('src.database.db.init_db', AsyncMock())
+    monkeypatch.setattr(channel_runtime, 'refresh', AsyncMock())
+    poll = AsyncMock()
+    monkeypatch.setattr(channel_runtime, 'telegram_loop', poll)
+    monkeypatch.setattr(main, 'load_settings', lambda: SimpleNamespace(has_telegram=False))
+    await main.main()
+    poll.assert_not_called()

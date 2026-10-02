@@ -33,6 +33,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from src.config import load_settings
+from src.services import template_service
+from src.services.operator_acl import operator_only
 from src.database.db import db_session
 from src.database.models import Message as MessageRecord, Team, Ticket, User
 from src.utils.callback_data import (
@@ -43,7 +45,7 @@ from src.utils.callback_data import (
 from src.utils.i18n import CLOSURE_SYSTEM_TEXT, get_text
 
 logger = logging.getLogger(__name__)
-settings = load_settings()
+from src.config import runtime_settings as settings
 
 ticket_actions_router = Router(name="ticket_actions")
 
@@ -106,10 +108,6 @@ def _filter_callback(scope: str, entity: str, action: str, payload_check=None):
 
 def _cb_ticket(action: str, ticket_id: int, **extra) -> str:
     return build_callback_data("admin", "ticket", action, {"i": ticket_id, **extra})
-
-
-def _cb_team(action: str, **payload) -> str:
-    return build_callback_data("admin", "team", action, payload)
 
 
 def _cb_noop() -> str:
@@ -185,6 +183,7 @@ async def _resolve_close_code(code: str) -> str | None:
 
 
 @ticket_actions_router.callback_query(_filter_callback("admin", "templates", "pick"))
+@operator_only()
 async def show_template_picker(callback: CallbackQuery, state: FSMContext) -> None:
     """Show top-N templates for a ticket — opened by the [📝 Шаблоны] button under a user message."""
     logger.info(f"🔔 show_template_picker: {callback.data}")
@@ -261,6 +260,7 @@ async def show_template_picker(callback: CallbackQuery, state: FSMContext) -> No
 
 
 @ticket_actions_router.callback_query(_filter_callback("admin", "templates", "apply"))
+@operator_only()
 async def apply_template_from_picker(callback: CallbackQuery, state: FSMContext) -> None:
     """Apply a template to a ticket: send rendered text to user + mirror + log."""
     logger.info(f"🔔 apply_template_from_picker: {callback.data}")
@@ -291,7 +291,6 @@ async def apply_template_from_picker(callback: CallbackQuery, state: FSMContext)
         if not result.success:
             await callback.answer(f"⚠️ {result.error}", show_alert=True)
             return
-
         await callback.answer(_op("op_sent"))
         # Remove the picker message — its job is done
         try:
@@ -313,6 +312,7 @@ async def apply_template_from_picker(callback: CallbackQuery, state: FSMContext)
 
 
 @ticket_actions_router.callback_query(_filter_callback("admin", "templates", "dismiss"))
+@operator_only()
 async def dismiss_template_picker(callback: CallbackQuery) -> None:
     """Close the template picker message."""
     try:
@@ -326,6 +326,7 @@ async def dismiss_template_picker(callback: CallbackQuery) -> None:
 
 
 @ticket_actions_router.callback_query(_filter_callback("admin", "ai", "ask"))
+@operator_only()
 async def ai_ask_button(callback: CallbackQuery) -> None:
     """Admin clicked [🤖 ИИ] under a user message — generate a suggestion on demand."""
     logger.info(f"🔔 ai_ask_button: {callback.data}")
@@ -353,6 +354,7 @@ async def ai_ask_button(callback: CallbackQuery) -> None:
 
 
 @ticket_actions_router.callback_query(_filter_callback("admin", "ai", "accept"))
+@operator_only()
 async def ai_suggestion_accept(callback: CallbackQuery) -> None:
     """Admin clicked [✅ Применить] on an AI-suggested template."""
     logger.info(f"🔔 ai_suggestion_accept: {callback.data}")
@@ -369,6 +371,14 @@ async def ai_suggestion_accept(callback: CallbackQuery) -> None:
             await callback.answer(_op("op_missing_params"), show_alert=True)
             return
 
+        from src.database.models import AICall
+        async with db_session() as session:
+            call = await session.get(AICall, ai_call_id)
+            if (call is None or call.ticket_id != ticket_id
+                    or call.suggested_template_id != template_id
+                    or call.use_case != "suggest_template" or call.shadow
+                    or not call.success or call.accepted is not None):
+                return
         admin = callback.from_user
         async with db_session() as session:
             result = await template_service.apply(
@@ -381,17 +391,16 @@ async def ai_suggestion_accept(callback: CallbackQuery) -> None:
             )
             await session.commit()
 
-        # Record accept-rate regardless of send success — admin DID choose to accept
+        if not result.success:
+            await callback.answer(f"⚠️ {result.error}", show_alert=True)
+            return
+
         if ai_call_id:
             from src.ai.suggest_template import mark_ai_call_outcome
             await mark_ai_call_outcome(
                 ai_call_id, accepted=True,
                 accepted_by=admin.id if admin else None,
             )
-
-        if not result.success:
-            await callback.answer(f"⚠️ {result.error}", show_alert=True)
-            return
 
         await callback.answer(_op("op_sent"))
         try:
@@ -413,6 +422,7 @@ async def ai_suggestion_accept(callback: CallbackQuery) -> None:
 
 
 @ticket_actions_router.callback_query(_filter_callback("admin", "ai", "accept_text"))
+@operator_only()
 async def ai_suggestion_accept_text(callback: CallbackQuery) -> None:
     """Admin clicked [✅ Отправить] on an AI history-based draft — send as-is."""
     logger.info(f"🔔 ai_suggestion_accept_text: {callback.data}")
@@ -432,7 +442,12 @@ async def ai_suggestion_accept_text(callback: CallbackQuery) -> None:
         from src.database.models import AICall
         async with db_session() as session:
             ai_row = (await session.execute(
-                select(AICall).where(AICall.id == ai_call_id)
+                select(AICall).where(
+                    AICall.id == ai_call_id, AICall.ticket_id == ticket_id,
+                    AICall.use_case == "suggest_from_history",
+                    AICall.shadow == False, AICall.success == True,
+                    AICall.accepted.is_(None),
+                )
             )).scalar_one_or_none()
             if ai_row is None or not ai_row.suggested_text:
                 await callback.answer(_op("op_ai_draft_missing"), show_alert=True)
@@ -451,15 +466,14 @@ async def ai_suggestion_accept_text(callback: CallbackQuery) -> None:
             )
             await session.commit()
 
+        if not result.success:
+            await callback.answer(f"⚠️ {result.error}", show_alert=True)
+            return
         from src.ai.suggest_template import mark_ai_call_outcome
         await mark_ai_call_outcome(
             ai_call_id, accepted=True,
             accepted_by=admin.id if admin else None,
         )
-
-        if not result.success:
-            await callback.answer(f"⚠️ {result.error}", show_alert=True)
-            return
 
         await callback.answer(_op("op_sent"))
         try:
@@ -481,6 +495,7 @@ async def ai_suggestion_accept_text(callback: CallbackQuery) -> None:
 
 
 @ticket_actions_router.callback_query(_filter_callback("admin", "ai", "edit_text"))
+@operator_only()
 async def ai_suggestion_edit_text(callback: CallbackQuery, state: FSMContext) -> None:
     """Admin clicked [✏️ Редактировать] — enter FSM to edit draft before sending."""
     logger.info(f"🔔 ai_suggestion_edit_text: {callback.data}")
@@ -499,7 +514,12 @@ async def ai_suggestion_edit_text(callback: CallbackQuery, state: FSMContext) ->
         from src.database.models import AICall
         async with db_session() as session:
             ai_row = (await session.execute(
-                select(AICall).where(AICall.id == ai_call_id)
+                select(AICall).where(
+                    AICall.id == ai_call_id, AICall.ticket_id == ticket_id,
+                    AICall.use_case == "suggest_from_history",
+                    AICall.shadow == False, AICall.success == True,
+                    AICall.accepted.is_(None),
+                )
             )).scalar_one_or_none()
             if ai_row is None or not ai_row.suggested_text:
                 await callback.answer(_op("op_ai_draft_missing"), show_alert=True)
@@ -507,7 +527,8 @@ async def ai_suggestion_edit_text(callback: CallbackQuery, state: FSMContext) ->
             draft_text = ai_row.suggested_text
 
         await state.set_state(AdminStates.AI_DRAFT_EDIT)
-        await state.update_data(ai_ticket_id=ticket_id, ai_call_id=ai_call_id)
+        await state.update_data(ai_ticket_id=ticket_id, ai_call_id=ai_call_id,
+                                ai_prompt_id=callback.message.message_id)
         try:
             await callback.message.edit_text(
                 _op("op_ai_current_draft", id=ticket_id, draft=draft_text),
@@ -527,11 +548,12 @@ async def ai_suggestion_edit_text(callback: CallbackQuery, state: FSMContext) ->
 
 
 @ticket_actions_router.callback_query(_filter_callback("admin", "ai", "edit_cancel"))
+@operator_only()
 async def ai_suggestion_edit_cancel(callback: CallbackQuery, state: FSMContext) -> None:
     """Cancel AI draft edit — clear state, keep audit row untouched."""
     try:
         await callback.answer(_op("op_cancelled"))
-        await state.set_state(AdminStates.MAIN_MENU)
+        await state.clear()
         try:
             await callback.message.delete()
         except Exception:
@@ -544,8 +566,14 @@ async def ai_suggestion_edit_cancel(callback: CallbackQuery, state: FSMContext) 
 
 
 @ticket_actions_router.message(AdminStates.AI_DRAFT_EDIT)
+@operator_only()
 async def handle_ai_draft_edited(message: Message, state: FSMContext, bot: Bot) -> None:
     """Admin typed the final edited text — send it to the user."""
+    data = await state.get_data()
+    replied_id = message.reply_to_message.message_id if message.reply_to_message else None
+    if not data.get("ai_prompt_id") or replied_id != data["ai_prompt_id"]:
+        from aiogram.dispatcher.event.bases import UNHANDLED
+        return UNHANDLED
     edited_text = (message.text or message.caption or "").strip()
     if not edited_text:
         await message.reply(_op("op_ai_empty"))
@@ -559,11 +587,21 @@ async def handle_ai_draft_edited(message: Message, state: FSMContext, bot: Bot) 
     ai_call_id = data.get("ai_call_id")
     if not ticket_id:
         await message.reply(_op("op_ai_session_lost"))
-        await state.set_state(AdminStates.MAIN_MENU)
+        await state.clear()
         return
 
     admin = message.from_user
     async with db_session() as session:
+        # An edited draft may have been accepted/dismissed while the operator
+        # was typing. The FSM's stored identifiers are not authorization.
+        from src.database.models import AICall
+        call = await session.get(AICall, ai_call_id) if ai_call_id else None
+        if (call is None or call.ticket_id != ticket_id
+                or call.use_case != "suggest_from_history" or call.shadow
+                or not call.success or call.accepted is not None):
+            await state.clear()
+            await message.reply(_op("op_ai_draft_missing"))
+            return
         result = await template_service.apply_text(
             session, bot,
             ticket_id=ticket_id,
@@ -574,6 +612,9 @@ async def handle_ai_draft_edited(message: Message, state: FSMContext, bot: Bot) 
         )
         await session.commit()
 
+    if not result.success:
+        await message.reply(f"⚠️ {result.error}")
+        return
     if ai_call_id:
         from src.ai.suggest_template import mark_ai_call_outcome
         # Accepted-with-edit still counts as accepted for accept-rate metrics
@@ -582,15 +623,13 @@ async def handle_ai_draft_edited(message: Message, state: FSMContext, bot: Bot) 
             accepted_by=admin.id if admin else None,
         )
 
-    await state.set_state(AdminStates.MAIN_MENU)
+    await state.clear()
 
-    if not result.success:
-        await message.reply(f"⚠️ {result.error}")
-        return
     await message.reply(_op("op_ai_sent", id=ticket_id))
 
 
 @ticket_actions_router.callback_query(_filter_callback("admin", "ai", "dismiss"))
+@operator_only()
 async def ai_suggestion_dismiss(callback: CallbackQuery) -> None:
     """Admin clicked [❌ Не то] on an AI suggestion."""
     try:
@@ -618,6 +657,7 @@ async def ai_suggestion_dismiss(callback: CallbackQuery) -> None:
 
 
 @ticket_actions_router.callback_query(_filter_callback("admin", "ticket", "close"))
+@operator_only()
 async def close_ticket_confirm(callback: CallbackQuery, state: FSMContext, bot: Bot) -> None:
     """Show confirmation for closing ticket."""
     logger.info(f"🔔 close_ticket_confirm called with callback_data: {callback.data}")
@@ -646,7 +686,7 @@ async def close_ticket_confirm(callback: CallbackQuery, state: FSMContext, bot: 
                 logger.error(f"Failed to parse ticket_id from old format: {e}, callback_data: {callback.data}")
                 return
         
-        await state.set_state(AdminStates.TICKET_CLOSE_CATEGORIES)
+        await state.clear()
         await state.update_data(ticket_id=ticket_id, selected_categories=[])
         
         # Extract all data while session is open
@@ -698,6 +738,7 @@ async def close_ticket_confirm(callback: CallbackQuery, state: FSMContext, bot: 
 
 
 @ticket_actions_router.callback_query(_filter_callback("admin", "ticket", "category_toggle"))
+@operator_only()
 async def toggle_ticket_category(callback: CallbackQuery, state: FSMContext) -> None:
     """Toggle admin category selection for ticket closure."""
     logger.info(f"🔔 toggle_ticket_category called with callback_data: {callback.data}")
@@ -737,6 +778,8 @@ async def toggle_ticket_category(callback: CallbackQuery, state: FSMContext) -> 
 
         # Get current state data
         data = await state.get_data()
+        if data.get("ticket_id") != ticket_id:
+            return
         selected_categories: List[str] = data.get("selected_categories", [])
 
         # Toggle category (store full value, not code)
@@ -771,6 +814,7 @@ async def toggle_ticket_category(callback: CallbackQuery, state: FSMContext) -> 
 
 
 @ticket_actions_router.callback_query(_filter_callback("admin", "ticket", "close_confirm"))
+@operator_only()
 async def close_ticket_execute(callback: CallbackQuery, state: FSMContext, bot: Bot) -> None:
     """Execute ticket closure."""
     logger.info(f"🔔 close_ticket_execute called with callback_data: {callback.data}")
@@ -801,6 +845,8 @@ async def close_ticket_execute(callback: CallbackQuery, state: FSMContext, bot: 
         
         # Get selected categories from state
         data = await state.get_data()
+        if data.get("ticket_id") != ticket_id:
+            return
         selected_categories: List[str] = data.get("selected_categories", [])
         custom_reason: str | None = data.get("custom_reason")
         
@@ -837,10 +883,11 @@ async def close_ticket_execute(callback: CallbackQuery, state: FSMContext, bot: 
             )
             return
         
+        from src.services import csat_service
         # Extract user_tg_id and calculate processing time while session is open
         user_tg_id = None
         processing_time_seconds = None
-        async with db_session() as session:
+        async with db_session(write=True) as session:
             result = await session.execute(
                 select(Ticket)
                 .where(Ticket.id == ticket_id, Ticket.status == "active")
@@ -878,13 +925,15 @@ async def close_ticket_execute(callback: CallbackQuery, state: FSMContext, bot: 
                     text=CLOSURE_SYSTEM_TEXT,
                 )
             )
+            job = await csat_service.enqueue_close_notification(session, ticket, ticket.user)
+            closing_job_id = job.id
             await session.commit()
 
         # Notify user outside of session (in their language) + ask for a CSAT rating
         if user_tg_id:
             from src.services import csat_service
             await csat_service.send_close_notification(
-                bot, user_tg_id=user_tg_id, ticket_id=ticket_id, lang=user_lang,
+                bot, user_tg_id=user_tg_id, ticket_id=ticket_id, lang=user_lang, job_id=closing_job_id,
             )
 
         try:
@@ -903,6 +952,7 @@ async def close_ticket_execute(callback: CallbackQuery, state: FSMContext, bot: 
 
 
 @ticket_actions_router.message(AdminStates.TICKET_CLOSE_CUSTOM_REASON)
+@operator_only()
 async def handle_custom_reason_input(message: Message, state: FSMContext, bot: Bot) -> None:
     """Handle custom reason text input for ticket closure.
 
@@ -956,12 +1006,13 @@ async def handle_custom_reason_input(message: Message, state: FSMContext, bot: B
         # Update state with custom reason
         await state.update_data(custom_reason=custom_reason)
         
+        from src.services import csat_service
         # Now proceed with ticket closure
         # We'll call close_ticket_execute logic here
         user_tg_id = None
         processing_time_seconds = None
         
-        async with db_session() as session:
+        async with db_session(write=True) as session:
             result = await session.execute(
                 select(Ticket)
                 .where(Ticket.id == ticket_id, Ticket.status == "active")
@@ -996,13 +1047,15 @@ async def handle_custom_reason_input(message: Message, state: FSMContext, bot: B
                     text=CLOSURE_SYSTEM_TEXT,
                 )
             )
+            job = await csat_service.enqueue_close_notification(session, ticket, ticket.user)
+            closing_job_id = job.id
             await session.commit()
 
         # Notify user (in their language) + ask for a CSAT rating
         if user_tg_id:
             from src.services import csat_service
             await csat_service.send_close_notification(
-                bot, user_tg_id=user_tg_id, ticket_id=ticket_id, lang=user_lang,
+                bot, user_tg_id=user_tg_id, ticket_id=ticket_id, lang=user_lang, job_id=closing_job_id,
             )
 
         await message.reply(_op("op_ticket_closed_reason", id=ticket_id, reason=custom_reason))
@@ -1014,6 +1067,7 @@ async def handle_custom_reason_input(message: Message, state: FSMContext, bot: B
 
 
 @ticket_actions_router.callback_query(_filter_callback("admin", "team", "assign"))
+@operator_only("owner", "admin")
 async def assign_team_execute(callback: CallbackQuery, state: FSMContext) -> None:
     """Execute team assignment with new format."""
     logger.info(f"🔔 assign_team_execute called with callback_data: {callback.data}")
@@ -1062,6 +1116,7 @@ async def assign_team_execute(callback: CallbackQuery, state: FSMContext) -> Non
 
 
 @ticket_actions_router.callback_query(CallbackDataFilter("team", "assign", None))
+@operator_only("owner", "admin")
 async def assign_team_legacy(callback: CallbackQuery, state: FSMContext) -> None:
     """Handle team assignment with legacy format: team:assign:user_id:team_name (backward compatibility)."""
     logger.info(f"🔔 assign_team_legacy called with callback_data: {callback.data}")
@@ -1094,12 +1149,14 @@ async def assign_team_legacy(callback: CallbackQuery, state: FSMContext) -> None
 
 
 @ticket_actions_router.callback_query(_filter_callback("admin", "noop", "noop"))
+@operator_only()
 async def noop_handler(callback: CallbackQuery) -> None:
     """Handle no-op callbacks (e.g., page number display)."""
     await callback.answer()
 
 
 @ticket_actions_router.callback_query()
+@operator_only()
 async def fallback_callback_handler(callback: CallbackQuery) -> None:
     """
     Fallback handler for any callback_query that wasn't handled by other handlers.
@@ -1148,7 +1205,7 @@ async def _assign_team_to_user(
     from src.services import user_service
 
     try:
-        async with db_session() as session:
+        async with db_session(write=True) as session:
             team = (await session.execute(
                 select(Team).where(Team.name == team_name)
             )).scalar_one_or_none()

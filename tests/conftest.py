@@ -23,16 +23,44 @@ os.environ["DATABASE_URL"] = (
     os.environ.get("TEST_DATABASE_URL")
     or f"sqlite+aiosqlite:///{(_TMPDIR / 'test.db').as_posix()}"
 )
+os.environ["POSTGRES_HOST"] = ""  # Never inherit a live split-credential database.
 os.environ["BOT_TOKEN"] = "1000000:TEST-not-a-real-token"
 os.environ["ADMIN_CHAT_ID"] = "-1001000000000"
 os.environ["ACCESS_PASSWORD"] = "test-password-123"
 os.environ["DASH_SECRET_KEY"] = "test-secret-key-for-sessions"
-os.environ.pop("GEMINI_API_KEY", None)  # AI stays off in tests
+os.environ["SECRETS_KEY"] = "test-only-encryption-key-never-use-in-production"
+os.environ["ATTACHMENTS_DIR"] = str(_TMPDIR / "attachments")
+os.environ["PYTHON_DOTENV_DISABLED"] = "1"
+for _provider_key in ("GEMINI_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"):
+    os.environ.pop(_provider_key, None)  # Never inherit real model credentials.
 os.environ.pop("DEMO_MODE", None)
 
 import itertools  # noqa: E402
 
 import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def no_external_services(monkeypatch):
+    """Unit/integration tests must never send real platform or mailbox traffic."""
+    from aiogram.client.session.aiohttp import AiohttpSession
+    import aiohttp
+    import smtplib
+    import imaplib
+    import httpx
+
+    async def blocked_async(*args, **kwargs):
+        raise RuntimeError("External service access is forbidden in tests; install a fake")
+
+    def blocked_sync(*args, **kwargs):
+        raise RuntimeError("External service access is forbidden in tests; install a fake")
+
+    monkeypatch.setattr(AiohttpSession, "make_request", blocked_async)
+    monkeypatch.setattr(aiohttp.TCPConnector, "_create_connection", blocked_async)
+    monkeypatch.setattr(smtplib.SMTP, "connect", blocked_sync)
+    monkeypatch.setattr(imaplib.IMAP4, "open", blocked_sync)
+    monkeypatch.setattr(httpx.AsyncHTTPTransport, "handle_async_request", blocked_async)
+    monkeypatch.setattr(httpx.HTTPTransport, "handle_request", blocked_sync)
 
 
 @pytest.fixture()
@@ -101,7 +129,7 @@ class RecordingChannel:
         self._n += 1
         return str(9000 + self._n)
 
-    async def send_text(self, address, text, *, options=None):
+    async def send_text(self, address, text, *, options=None, reply_ref=None):
         from src.channels.base import Delivery
 
         if self.fail_on is not None and self.sent + 1 == self.fail_on:
@@ -112,7 +140,7 @@ class RecordingChannel:
         self.offered.append(list(options or []))
         return Delivery.sent(self._next_ref())
 
-    async def send_file(self, address, *, filename, content, caption=None):
+    async def send_file(self, address, *, filename, content, caption=None, reply_ref=None):
         from src.channels.base import Delivery
 
         if self.fail_on is not None and self.sent + 1 == self.fail_on:

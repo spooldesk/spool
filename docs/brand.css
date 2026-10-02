@@ -1,0 +1,29 @@
+/* Spooldesk identity. Source of truth; distributed by scripts/build_brand.py. */
+:root {
+  --sd-font: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --sd-canvas: #fafafa;
+  --sd-panel: #ffffff;
+  --sd-control: #f4f4f5;
+  --sd-ink: #18181b;
+  --sd-muted: #61616a;
+  --sd-line: #e4e4e7;
+  --sd-accent: #7c3aed;
+  --sd-accent-hover: #6d28d9;
+  --sd-accent-ink: #6d28d9;
+  --sd-soft: #f5f3ff;
+  --sd-radius: 8px;
+  --sd-focus: 0 0 0 3px #7c3aed33;
+}
+:root.dark, :root[data-theme="dark"] {
+  --sd-canvas: #000000;
+  --sd-panel: #09090b;
+  --sd-control: #18181b;
+  --sd-ink: #fafafa;
+  --sd-muted: #a1a1aa;
+  --sd-line: #27272a;
+  --sd-accent-ink: #c4b5fd;
+  --sd-soft: #2e1c4a;
+}
+.sd-wordmark { display:inline-flex; align-items:center; gap:10px; font-family:var(--sd-font); font-weight:650; letter-spacing:-.045em; line-height:1; }
+.sd-brand-icon { display:block; flex:none; width:30px; height:30px; border-radius:8px; }
+.sd-brand-dot { color:var(--sd-accent-ink); }

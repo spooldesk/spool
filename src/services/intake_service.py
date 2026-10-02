@@ -76,6 +76,8 @@ class Inbound:
     #: matter how official it looks, and an operator acting on it — resetting
     #: an account, quoting a balance — is the incident this exists to stop.
     identity_verified: bool = False
+    identity_verified_fields: tuple[str, ...] = ()
+    conversation_key: str | None = None
     category: str | None = None
     attachment: Attachment | None = None
     #: Who wrote this, when that is not the same as whose conversation it is.
@@ -84,6 +86,9 @@ class Inbound:
     #: contradicting themselves. Left empty for one-to-one channels, where the
     #: speaker and the customer are the same and repeating it is noise.
     speaker: str | None = None
+    channel_ref: str | None = None
+    reply_to_ref: str | None = None
+    reply_to_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -99,7 +104,7 @@ class IntakeResult:
     rejected: str | None = None
 
 
-async def open_ticket_of(session: AsyncSession, user_id: int) -> Ticket | None:
+async def open_ticket_of(session: AsyncSession, user_id: int, conversation_key: str | None = None) -> Ticket | None:
     """The customer's one open ticket, if they have one.
 
     Ordered newest-first because a database that somehow holds two open
@@ -109,7 +114,8 @@ async def open_ticket_of(session: AsyncSession, user_id: int) -> Ticket | None:
     """
     return (await session.execute(
         select(Ticket)
-        .where(Ticket.user_id == user_id, Ticket.status == "active")
+        .where(Ticket.user_id == user_id, Ticket.status == "active",
+               Ticket.conversation_key == (conversation_key or ""))
         .order_by(Ticket.id.desc())
     )).scalars().first()
 
@@ -142,6 +148,9 @@ async def receive(session: AsyncSession, inbound: Inbound) -> IntakeResult:
     if not text and inbound.attachment is None:
         return IntakeResult(0, 0, False, False, rejected="empty")
 
+    from src.database.db import acquire_write_lock
+    await acquire_write_lock(session)
+
     user = await find_customer(session, channel=channel, address=inbound.address)
     new_customer = user is None
     if user is None:
@@ -150,6 +159,7 @@ async def receive(session: AsyncSession, inbound: Inbound) -> IntakeResult:
             username=inbound.display_name, language=inbound.language,
             email=inbound.email, external_id=inbound.external_id,
             identity_verified=inbound.identity_verified,
+            identity_verified_fields=inbound.identity_verified_fields,
         )
     else:
         _adopt_identity(user, inbound)
@@ -160,7 +170,10 @@ async def receive(session: AsyncSession, inbound: Inbound) -> IntakeResult:
         # feature by accident.
         return IntakeResult(0, 0, False, new_customer, rejected="blocked")
 
-    ticket = await open_ticket_of(session, user.id)
+    key = (inbound.conversation_key or "").strip()
+    if len(key) > 255:
+        raise ValueError("conversation_key exceeds 255 characters")
+    ticket = await open_ticket_of(session, user.id, key)
     opened = ticket is None
     if ticket is None:
         ticket = Ticket(
@@ -168,6 +181,7 @@ async def receive(session: AsyncSession, inbound: Inbound) -> IntakeResult:
             team_id=user.team_id,
             category=inbound.category if inbound.category is not None else UNSORTED,
             status="active",
+            conversation_key=key,
             stage="new",
             notification_sent=False,
             ticket_code="",
@@ -177,7 +191,21 @@ async def receive(session: AsyncSession, inbound: Inbound) -> IntakeResult:
         await session.flush()
         ticket.ticket_code = f"#{ticket.id}"
 
+    if ticket.stage == "waiting":
+        ticket.stage = "in_progress"
+        ticket.sla_breached_at = None
+
     att = inbound.attachment
+    parent_id = inbound.reply_to_id
+    if parent_id:
+        from src.services.conversation_service import reply_context
+        await reply_context(session, ticket.id, parent_id)
+    elif inbound.reply_to_ref:
+        parent_id = (await session.execute(select(MessageRecord.id).where(
+            MessageRecord.ticket_id == ticket.id,
+            MessageRecord.channel_ref == inbound.reply_to_ref,
+            MessageRecord.is_internal == False, MessageRecord.deleted_at.is_(None),
+        ).order_by(MessageRecord.id).limit(1))).scalar_one_or_none()
     record = MessageRecord(
         ticket_id=ticket.id,
         sender_type="user",
@@ -186,6 +214,8 @@ async def receive(session: AsyncSession, inbound: Inbound) -> IntakeResult:
         sender_id=user.tg_id,
         text=text,
         sender_label=inbound.speaker,
+        channel_ref=inbound.channel_ref,
+        reply_to_id=parent_id,
         file_id=att.ref if att else None,
         file_type=att.kind if att else None,
         file_name=att.name if att else None,
@@ -219,15 +249,29 @@ def _adopt_identity(user: User, inbound: Inbound) -> None:
     unsigned claim can touch it again — every field it set is non-empty, and
     only trust unlocks the overwrite.
     """
-    trusted = bool(inbound.identity_verified)
-    if inbound.display_name and (trusted or not user.username):
-        user.username = inbound.display_name
-    if inbound.email and (trusted or not user.email):
-        user.email = inbound.email
-    if inbound.external_id and (trusted or not user.external_id):
-        user.external_id = inbound.external_id
-    if trusted and not user.identity_verified:
-        user.identity_verified = True
+    allowed = {"name", "email", "external_id"}
+    trusted = set(inbound.identity_verified_fields or ()) & allowed
+    if not inbound.identity_verified:
+        trusted.clear()
+    verified = set(user.identity_verified_fields or ()) & allowed
+    # A proof belonging to an earlier signed principal cannot silently ride
+    # along when the host identifies a different account in this session.
+    if (("external_id" in trusted and user.external_id
+         and user.external_id != inbound.external_id)
+            or ("email" in trusted and not inbound.external_id and user.email
+                and user.email != inbound.email)):
+        verified.clear()
+    for field, attr, value in (
+        ("name", "username", inbound.display_name),
+        ("email", "email", inbound.email),
+        ("external_id", "external_id", inbound.external_id),
+    ):
+        if value and (field in trusted or not getattr(user, attr)):
+            setattr(user, attr, value)
+            if field in trusted:
+                verified.add(field)
+    user.identity_verified_fields = sorted(verified)
+    user.identity_verified = bool(verified)
 
 
 async def conversation(session: AsyncSession, ticket_id: int) -> list[MessageRecord]:
@@ -254,6 +298,7 @@ async def conversation(session: AsyncSession, ticket_id: int) -> list[MessageRec
             MessageRecord.ticket_id == ticket_id,
             MessageRecord.is_internal == False,  # noqa: E712 — SQL, not Python
             MessageRecord.deleted_at.is_(None),
+            MessageRecord.delivery_status == "delivered",
             ~MessageRecord.text.startswith(CLOSURE_SYSTEM_PREFIX),
         )
         .order_by(MessageRecord.id)

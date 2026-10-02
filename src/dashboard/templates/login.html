@@ -1,13 +1,15 @@
 <!doctype html>
+{% set workspace_brand = 'Spooldesk' if (g_brand_name or 'Support')|lower in ['support', 'spooldesk'] else g_brand_name %}
 <html lang="{{ T.html_lang }}" class="h-full dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Sign in · {{ g_brand_name or 'Support' }}</title>
+  <title>{{ T.sign_in }} · {{ workspace_brand }}</title>
 
   <script>
     (function(){
-      var t = localStorage.getItem('dash-theme');
+      var t; try { t = localStorage.getItem('dash-theme'); } catch (_) {}
+      if (!t) t = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
       if (t === 'light') document.documentElement.classList.remove('dark');
       else              document.documentElement.classList.add('dark');
     })();
@@ -30,22 +32,25 @@
   <link rel="stylesheet"
         href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
   <link rel="stylesheet" href="/static/app.css?v={{ g_asset_v }}">
+  <link rel="stylesheet" href="/static/brand.css?v={{ g_asset_v }}">
+  <link rel="stylesheet" href="/static/workspace.css?v={{ g_asset_v }}">
 </head>
-<body class="h-full antialiased bg-gray-50 dark:bg-zinc-950 flex items-center justify-center p-4">
+<body class="workspace-shell h-full antialiased bg-gray-50 dark:bg-zinc-950 flex items-center justify-center p-4">
 
   <!-- Card -->
   <div class="w-full max-w-sm">
 
     <!-- Logo + title -->
     <div class="text-center mb-8">
-      <div class="inline-flex w-12 h-12 rounded-xl bg-violet-600 items-center justify-center mb-4">
-        <i class="ti ti-headset text-white" style="font-size:24px" aria-hidden="true"></i>
-      </div>
-      <h1 class="text-xl font-semibold text-gray-900 dark:text-zinc-100">
-        {{ g_brand_name or 'Support' }}
-      </h1>
+      {% if (g_brand_name or 'Support')|lower in ['support', 'spooldesk'] %}
+        <img class="login-brand-icon" src="/static/icons/favicon-96x96.png?v={{ g_asset_v }}" width="52" height="52" alt="">
+        <h1 class="sd-wordmark login-wordmark">spooldesk<span class="sd-brand-dot">.</span></h1>
+      {% else %}
+        <div class="inline-flex w-12 h-12 rounded-xl bg-violet-600 items-center justify-center mb-4"><i class="ti ti-headset text-white" style="font-size:24px" aria-hidden="true"></i></div>
+        <h1 class="text-xl font-semibold">{{ g_brand_name }}</h1>
+      {% endif %}
       <p class="text-sm text-gray-400 dark:text-zinc-500 mt-1">
-        Sign in to the dashboard
+        {{ T.sign_in_dashboard }}
       </p>
     </div>
 
@@ -92,7 +97,7 @@
           <label for="password"
                  class="block text-xs font-medium uppercase tracking-wide
                         text-gray-400 dark:text-zinc-500 mb-1.5">
-            Password
+            {{ T.f_password }}
           </label>
           <div class="relative">
             <input id="password" type="password" name="password"
@@ -108,7 +113,7 @@
                           transition-colors"
                    placeholder="••••••••">
             <button type="button" id="pw-toggle"
-                    aria-label="Show/hide password"
+                    aria-label="{{ T.show_password }}"
                     class="absolute right-3 top-1/2 -translate-y-1/2
                            text-gray-300 dark:text-zinc-600
                            hover:text-gray-500 dark:hover:text-zinc-400 transition-colors">
@@ -122,14 +127,14 @@
                        bg-violet-600 hover:bg-violet-500 dark:bg-brand-600 dark:hover:bg-brand-500
                        transition-colors focus:outline-none focus:ring-2
                        focus:ring-violet-500/40 dark:focus:ring-brand-500/40">
-          Sign in
+          {{ T.sign_in }}
         </button>
       </form>
     </div>
 
     <!-- Footer hint -->
     <p class="mt-4 text-xs text-center text-gray-300 dark:text-zinc-600">
-      Per-operator access. First login: admin@local
+      {{ T.login_account_hint }}
     </p>
 
   </div>

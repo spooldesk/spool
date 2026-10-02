@@ -175,7 +175,8 @@ def test_the_theme_colour_is_the_brand_colour():
         html = (ROOT / rel).read_text(encoding="utf-8")
         found = re.search(r'name="theme-color"\s+content="(#[0-9a-fA-F]{6})"', html)
         assert found, f"{rel} declares no theme-color"
-        assert found.group(1).upper() == expected, (
+        page_colour = '#FFFFFF' if rel.startswith('docs/') else expected
+        assert found.group(1).upper() == page_colour, (
             f"{rel} says {found.group(1)}, but brand-600 is {expected}"
         )
 

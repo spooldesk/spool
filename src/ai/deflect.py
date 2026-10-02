@@ -100,6 +100,7 @@ async def try_deflect_for_ticket(ticket_id: int, user_text: str) -> DeflectResul
     """Gates + LLM call. Returns (answer|None, ai_call_id|None). Never raises."""
     try:
         from src.services import settings_service
+        from src.ai import policy
 
         if not (user_text or "").strip() or len(user_text.strip()) < _MIN_QUESTION_CHARS:
             return DeflectResult(None, None)
@@ -108,17 +109,11 @@ async def try_deflect_for_ticket(ticket_id: int, user_text: str) -> DeflectResul
         if not await settings_service.get_ai_deflection_enabled():
             return DeflectResult(None, None)
 
-        client = await get_client()
-        if client is None:
-            return DeflectResult(None, None)
-
         async with db_session() as session:
             ticket = (await session.execute(
                 select(Ticket).where(Ticket.id == ticket_id)
             )).scalar_one_or_none()
-            if ticket is None or ticket.status != "active":
-                return DeflectResult(None, None)
-            if await settings_service.is_category_ai_blacklisted(ticket.category):
+            if not await policy.allows(ticket, deflection=True):
                 return DeflectResult(None, None)
             category = ticket.category or ""
             team_id = ticket.team_id
@@ -128,12 +123,12 @@ async def try_deflect_for_ticket(ticket_id: int, user_text: str) -> DeflectResul
                 select(ReplyTemplate)
                 .where(ReplyTemplate.is_archived == False)  # noqa: E712
             )
-            if team_id:
-                tpl_stmt = tpl_stmt.where(ReplyTemplate.team_id == team_id)
-            tpls = list((await session.execute(tpl_stmt)).scalars().all())
+            tpl_stmt = tpl_stmt.where(ReplyTemplate.team_id == team_id)
+            tpls = await policy.permitted_sources(
+                list((await session.execute(tpl_stmt)).scalars().all()))
             tpls.sort(key=lambda t: (t.category != category, -(t.usage_count or 0)))
             templates_kb = [
-                {"title": t.title, "body": scrub(t.body)[:600]}
+                {"title": scrub(t.title), "body": scrub(t.body)[:600]}
                 for t in tpls[:_MAX_KB_TEMPLATES]
             ]
 
@@ -144,8 +139,9 @@ async def try_deflect_for_ticket(ticket_id: int, user_text: str) -> DeflectResul
 
             found = await article_service.candidates_for(
                 user_text, category=category, limit=_MAX_KB_ARTICLES)
+            found = await policy.permitted_sources(found)
             articles_kb = [
-                {"n": i, "id": a.id, "title": a.title,
+                {"n": i, "id": a.id, "title": scrub(a.title),
                  "body": scrub(a.body)[:900]}
                 for i, a in enumerate(found, start=1)
             ]
@@ -157,8 +153,14 @@ async def try_deflect_for_ticket(ticket_id: int, user_text: str) -> DeflectResul
                     session, team_id, category, exclude_ticket_id=ticket_id,
                 )
 
-        if not templates_kb and not examples and not articles_kb:
+        from src.ai import company_context
+        company = await company_context.load()
+        if not templates_kb and not examples and not articles_kb and not company.enabled:
             return DeflectResult(None, None)  # nothing to answer from
+
+        client = await get_client()
+        if client is None:
+            return DeflectResult(None, None)
 
         prompt = build_deflect_user_prompt(
             user_text=scrub(user_text)[:_MAX_QUESTION_CHARS],
@@ -173,7 +175,7 @@ async def try_deflect_for_ticket(ticket_id: int, user_text: str) -> DeflectResul
         try:
             response = await client.complete(
                 system=DEFLECT_SYSTEM,
-                user=prompt,
+                user=prompt + company.reference(),
                 max_output_tokens=400,
                 temperature=0.2,  # low — this goes straight to the user
             )
@@ -182,6 +184,8 @@ async def try_deflect_for_ticket(ticket_id: int, user_text: str) -> DeflectResul
 
         answer: Optional[str] = None
         article_id: Optional[int] = None
+        if response and not await company_context.current(company):
+            response, error_msg = None, 'company_reference_changed'
         if response is not None:
             raw = (response.text or "").strip()
             if len(raw) >= 2 and raw[0] in ('"', "'") and raw[-1] == raw[0]:
@@ -258,6 +262,9 @@ async def deflect_and_offer(bot: Bot, ticket_id: int, user_text: str,
     from src.services import settings_service
     if await settings_service.get_ai_shadow_mode():
         logger.info(f"deflect: answer withheld (shadow mode) for ticket #{ticket_id}")
+        return
+    from src.ai import policy
+    if not await policy.ticket_allowed(ticket_id, deflection=True):
         return
     # Sent *and* recorded. On a channel whose transcript is what the customer
     # reads, an answer that is sent without being recorded reached nobody —

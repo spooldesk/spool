@@ -4,7 +4,7 @@
 {% block content %}
 <div class="max-w-3xl">
   <h1 class="text-2xl font-semibold tracking-tight mb-1">{{ T.m_close_reasons_title }}</h1>
-  <p class="text-sm text-zinc-500 mb-6">{{ T.m_close_reasons_hint }}</p>
+  <p data-help class="text-sm text-zinc-500 mb-6">{{ T.m_close_reasons_hint }}</p>
 
   {% if flash_sent %}
     <div class="mb-4 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm">
@@ -89,7 +89,7 @@
       </tbody>
     </table>
   </div>
-  <p class="text-xs text-zinc-600 mt-3">
+  <p data-help class="text-xs text-zinc-600 mt-3">
     {{ T.m_close_reasons_note }}
   </p>
 </div>

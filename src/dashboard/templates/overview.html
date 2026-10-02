@@ -5,7 +5,7 @@
 <div class="mb-6 flex items-end justify-between gap-4 flex-wrap">
   <div>
     <h1 class="text-2xl font-semibold">{{ T.overview_title }}</h1>
-    <p class="text-sm text-zinc-400 mt-1">{{ T.overview_subtitle }}</p>
+    <p data-help class="text-sm text-zinc-400 mt-1">{{ T.overview_subtitle }}</p>
   </div>
   <div class="flex items-center gap-2">
     <span class="text-xs uppercase tracking-wide text-zinc-400 mr-1">{{ T.period }}</span>
@@ -30,7 +30,7 @@
       <div class="text-xs uppercase tracking-wide text-zinc-400">{{ kpi.label }}</div>
       <div class="mt-2 text-3xl font-semibold tabular-nums {% if kpi.alert %}text-amber-400{% endif %}">{{ kpi.value }}</div>
       {% if kpi.hint %}
-        <div class="mt-1 text-xs text-zinc-500">{{ kpi.hint }}</div>
+        <div data-help class="mt-1 text-xs text-zinc-500">{{ kpi.hint }}</div>
       {% endif %}
     </div>
   {% endfor %}
@@ -88,9 +88,7 @@
           </tbody>
         </table>
       </div>
-      <p class="mt-3 text-xs text-zinc-500">
-        {{ T.heatmap_hint }}
-      </p>
+      <p data-help class="mt-3 text-xs text-zinc-500">{{ T.heatmap_hint }}</p>
     {% endif %}
   </div>
 
@@ -125,7 +123,7 @@
         <div class="h-56"><canvas id="chart-close-time"></canvas></div>
       </div>
     </div>
-    <p class="mt-3 text-xs text-zinc-500">
+    <p data-help class="mt-3 text-xs text-zinc-500">
       {{ T.dynamics_note }}
     </p>
   </div>
@@ -152,9 +150,9 @@
   new Chart(document.getElementById('chart-trend'), {
     type: 'line',
     data: {
-      labels: {{ trend_labels_json|safe }},
+      labels: {{ trend_labels_json|tojson }},
       datasets: [{
-        data: {{ trend_values_json|safe }},
+        data: {{ trend_values_json|tojson }},
         borderColor: BRAND,
         backgroundColor: BRAND_FADED,
         fill: true,
@@ -179,9 +177,9 @@
   new Chart(document.getElementById('chart-categories'), {
     type: 'doughnut',
     data: {
-      labels: {{ category_labels_json|safe }},
+      labels: {{ category_labels_json|tojson }},
       datasets: [{
-        data: {{ category_values_json|safe }},
+        data: {{ category_values_json|tojson }},
         backgroundColor: PALETTE,
         borderColor: DONUT_BORDER,
         borderWidth: 2,
@@ -201,10 +199,10 @@
   new Chart(document.getElementById('chart-first-response'), {
     type: 'line',
     data: {
-      labels: {{ first_response_labels_json|safe }},
+      labels: {{ first_response_labels_json|tojson }},
       datasets: [{
         label: '{{ T.hour_short }}',
-        data: {{ first_response_values_json|safe }},
+        data: {{ first_response_values_json|tojson }},
         borderColor: '#06b6d4',  // cyan-500
         backgroundColor: 'rgba(6, 182, 212, 0.18)',
         fill: true,
@@ -233,10 +231,10 @@
   new Chart(document.getElementById('chart-close-time'), {
     type: 'line',
     data: {
-      labels: {{ close_time_labels_json|safe }},
+      labels: {{ close_time_labels_json|tojson }},
       datasets: [{
         label: '{{ T.hour_short }}',
-        data: {{ close_time_values_json|safe }},
+        data: {{ close_time_values_json|tojson }},
         borderColor: '#f59e0b',  // amber-500
         backgroundColor: 'rgba(245, 158, 11, 0.18)',
         fill: true,
@@ -265,9 +263,9 @@
   new Chart(document.getElementById('chart-users'), {
     type: 'bar',
     data: {
-      labels: {{ users_labels_json|safe }},
+      labels: {{ users_labels_json|tojson }},
       datasets: [{
-        data: {{ users_values_json|safe }},
+        data: {{ users_values_json|tojson }},
         backgroundColor: BRAND,
         borderRadius: 6,
       }],

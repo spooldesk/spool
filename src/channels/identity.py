@@ -20,8 +20,9 @@ about to send something.
 from __future__ import annotations
 
 import logging
+import secrets
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.channels import DEFAULT
@@ -59,19 +60,16 @@ def display_address(user: User) -> str:
     addr = address_of(user)
     # Widget sessions are opaque tokens; the tail is enough to tell two
     # visitors apart without pretending the whole thing means something.
-    return addr if len(addr) <= 32 else f"…{addr[-12:]}"
+    return f"…{addr[-12:]}" if channel_of(user) == 'widget' and len(addr) > 32 else addr
 
 
 async def allocate_routing_key(session: AsyncSession) -> int:
     """A fresh negative routing key for a customer arriving off-Telegram.
 
-    Derived from the current minimum rather than a counter table: there is
-    exactly one writer, the value only has to be unique, and a second table
-    would be a migration and a failure mode in exchange for nothing. The
-    unique index is the real guard — see `create_customer` for the retry.
+    Random keys avoid allocating the same minimum in concurrent transactions.
+    The unique constraint and savepoint retry are the final collision guard.
     """
-    lowest = (await session.execute(select(func.min(User.tg_id)))).scalar()
-    return min(-1, (lowest or 0) - 1)
+    return -(secrets.randbits(62) + 1)
 
 
 async def create_customer(
@@ -85,6 +83,7 @@ async def create_customer(
     email: str | None = None,
     external_id: str | None = None,
     identity_verified: bool = False,
+    identity_verified_fields: tuple[str, ...] = (),
 ) -> User:
     """Register a customer reachable on `channel` at `address`.
 
@@ -102,15 +101,17 @@ async def create_customer(
             username=username, language=language, team_id=team_id,
             email=email, external_id=external_id,
             identity_verified=identity_verified,
+            identity_verified_fields=list(identity_verified_fields),
             is_verified=True, is_active=True,
         )
         session.add(user)
         await session.flush()
         return user
 
-    # Retried because the key is derived from a read: two customers arriving
-    # in the same instant would compute the same one, and the unique index —
-    # not this function — is what guarantees they do not share it.
+    from sqlalchemy.exc import IntegrityError
+
+    # A savepoint isolates a uniqueness conflict without rolling back an
+    # adapter's durable event receipt or other work in the caller transaction.
     for attempt in range(5):
         key = await allocate_routing_key(session)
         user = User(
@@ -118,13 +119,19 @@ async def create_customer(
             username=username, language=language, team_id=team_id,
             email=email, external_id=external_id,
             identity_verified=identity_verified,
+            identity_verified_fields=list(identity_verified_fields),
             is_verified=True, is_active=True,
         )
-        session.add(user)
         try:
-            await session.flush()
-        except Exception:  # noqa: BLE001 — the DB tells us which failures exist
-            await session.rollback()
+            async with session.begin_nested():
+                session.add(user)
+                await session.flush()
+        except IntegrityError:
+            existing = await find_customer(session, channel=channel, address=address)
+            if existing is not None:
+                return existing
+            if attempt == 4:
+                raise
             continue
         return user
 

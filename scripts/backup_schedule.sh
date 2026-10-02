@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
 # Put the backup on a clock.
 #
-# `make backup` produces a good archive and always has. What it could not do
-# is run when nobody is at the keyboard, which is the only time a backup
-# matters — the machine fails on a Tuesday, not during a maintenance window.
-# So this installs a cron entry that runs it every night.
+# Installs a nightly run of the verified PostgreSQL backup wrapper. Each run briefly
+# pauses the app services; choose a suitable maintenance window.
 #
-# Deliberately host cron rather than a container: scripts/backup.sh drives
+# Deliberately host cron rather than a container: scripts/backup_postgres.sh drives
 # `docker compose` from outside, and giving a container the Docker socket so
 # it can back up its neighbour is a much larger hole than this closes.
 #
@@ -25,6 +23,14 @@ set -euo pipefail
 MARKER="# spooldesk-backup"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LOG="$ROOT/logs/backup.log"
+# These characters need a different cron/shell quoting strategy. Reject them
+# rather than turning a checkout directory name into an executable cron fragment.
+case "$ROOT" in
+    *\$*|*\`*|*\"*|*\\*|*%*|*$'\n'*|*$'\r'*)
+        echo "This checkout path cannot be safely embedded in a cron entry." >&2
+        exit 1
+        ;;
+esac
 
 have_cron() {
 	command -v crontab >/dev/null 2>&1
@@ -76,7 +82,7 @@ On Debian/Ubuntu:  sudo apt install cron
 Then run this again.
 
 If this host uses systemd timers instead, the command to schedule is:
-  cd $ROOT && bash scripts/backup.sh
+  cd $ROOT && bash scripts/backup_postgres.sh
 EOF
 	exit 1
 fi
@@ -85,7 +91,7 @@ mkdir -p "$ROOT/logs"
 
 # Output goes to a log rather than to cron's mail, which on most servers is
 # nowhere. A backup whose failure is invisible is not a backup.
-ENTRY="$MIN $HOUR * * * cd $ROOT && bash scripts/backup.sh >> $LOG 2>&1 $MARKER"
+ENTRY="$MIN $HOUR * * * cd \"$ROOT\" && bash scripts/backup_postgres.sh >> \"$LOG\" 2>&1 $MARKER"
 
 { without_ours; echo "$ENTRY"; } | crontab -
 
@@ -94,15 +100,14 @@ Scheduled. Spooldesk will back itself up every day at $AT.
 
   entry:  $ENTRY
   log:    $LOG
-  keep:   ${BACKUP_KEEP_DAYS:-14} days of archives, older ones deleted
+  keep:   14 days by default; configure BACKUP_KEEP_DAYS in cron's environment
 
 Two things this does NOT do, and both of them matter:
 
-  1. The archives stay on this machine. The disk holding the only copy is
-     the disk that fails. Copy them somewhere else — a Hetzner Storage Box,
-     S3, another server, anything with a different power supply.
+  1. Configure BACKUP_OFFSITE_DIR in cron's environment, or copy verified
+     archives to independent storage through your own backup system.
 
   2. Nothing has restored one. A backup nobody has restored is a hypothesis.
-     Try it once, now, while it is cheap: the restore steps are at the top
-     of scripts/backup.sh.
+     Follow docs/BACKUP_RESTORE.md and configure an external failure/freshness
+     alarm; a log file alone does not alert anybody.
 EOF

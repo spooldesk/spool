@@ -23,7 +23,6 @@ async def users_page(
     sort: str | None = None,
     dir: str | None = None,
 ):
-    import json as _json
     from sqlalchemy import select
     from src.database.models import User
 
@@ -48,14 +47,9 @@ async def users_page(
         sort=sort, direction=direction,
     )
 
-    # Full user list for the search box (everyone, not only those with tickets)
-    async with db_session() as session:
-        users = (await session.execute(select(User).order_by(User.username.asc()))).scalars().all()
-        search_users = [
-            {"id": u.id,
-             "label": (f"@{u.username}" if u.username else f"id {u.tg_id}")}
-            for u in users
-        ]
+    # Search resolves every linked address to the shared customer card.
+    all_customers = await queries.users_with_ticket_stats()
+    search_users = [{'id': u['user_db_id'], 'label': u['label'], 'search': u['search']} for u in all_customers]
 
     return templates.TemplateResponse(
         request,
@@ -70,7 +64,7 @@ async def users_page(
             "unassigned_count": len(
                 await queries.users_with_ticket_stats(unassigned_only=True)
             ),
-            "search_users_json": _json.dumps(search_users, ensure_ascii=False),
+            "search_users_json": search_users,
         },
     )
 
@@ -78,6 +72,8 @@ async def users_page(
 @router.get("/users/{user_db_id}", response_class=HTMLResponse)
 async def user_detail_page(request: Request, user_db_id: int, sent: str | None = None, err: str | None = None):
     templates = request.app.state.templates
+    from src.services import customer_profiles
+    import secrets
     detail = await queries.user_detail(user_db_id)
     if detail is None:
         raise HTTPException(status_code=404, detail=tr("e_user_not_found"))
@@ -87,6 +83,8 @@ async def user_detail_page(request: Request, user_db_id: int, sent: str | None =
         {
             "active_page": "users",
             "u": detail,
+            "contacts": await customer_profiles.details(user_db_id),
+            "message_request_key": secrets.token_hex(16),
             "fmt_seconds": _fmt_seconds,
             "flash_sent": sent,
             "flash_err": err,
@@ -99,128 +97,67 @@ def _back(uid: int, *, sent: str | None = None, err: str | None = None) -> Redir
     return RedirectResponse(f"/users/{uid}{q}", status_code=303)
 
 
-@router.post("/users/{user_db_id}/block")
-async def user_block(user_db_id: int):
-    from src.dashboard.bot_client import get_bot
-    from src.utils.i18n import get_text
+async def _profile_action(request, user_db_id, action, team_id=0):
+    from src.services import customer_profiles
+    from src.dashboard.routes.workspace import actor_id
     try:
-        async with db_session() as session:
-            tg_id, lang = await user_service.set_active(session, user_db_id, active=False)
-            await session.commit()
-        try:
-            await get_bot().send_message(tg_id, get_text("access_restricted", lang))
-        except Exception:
-            pass
-    except user_service.UserServiceError as e:
-        return _back(user_db_id, err=str(e))
-    return _back(user_db_id, sent="blocked")
+        await customer_profiles.update_profile(user_db_id, actor_id(request), action=action, team_id=team_id)
+    except (ValueError, user_service.UserServiceError) as exc:
+        return _back(user_db_id, err=tr(str(exc)))
+    return _back(user_db_id, sent={'block':'blocked','unblock':'unblocked','remove':'removed','team':'team'}[action])
 
 
-@router.post("/users/{user_db_id}/remove")
-async def user_remove(user_db_id: int):
-    """Retire a user: close their open tickets, cut account links, revoke access.
+@router.post('/users/{user_db_id}/block')
+async def user_block(request: Request, user_db_id: int):
+    return await _profile_action(request, user_db_id, 'block')
 
-    No notification is sent. Blocking tells someone they were blocked; retiring
-    is bookkeeping after they have already left, and a message would be noise
-    to a person who no longer works there.
-    """
+
+@router.post('/users/{user_db_id}/unblock')
+async def user_unblock(request: Request, user_db_id: int):
+    return await _profile_action(request, user_db_id, 'unblock')
+
+
+@router.post('/users/{user_db_id}/remove')
+async def user_remove(request: Request, user_db_id: int):
+    return await _profile_action(request, user_db_id, 'remove')
+
+
+@router.post('/users/{user_db_id}/team')
+async def user_change_team(request: Request, user_db_id: int, team_id: int = Form(...)):
+    return await _profile_action(request, user_db_id, 'team', team_id)
+
+
+@router.post('/users/{user_db_id}/accounts/link')
+async def user_link(request: Request, user_db_id: int, channel: str = Form(...),
+                    address: str = Form(...), confirmed: str = Form('')):
+    from src.services import customer_profiles
+    from src.dashboard.routes.workspace import actor_id
     try:
-        async with db_session() as session:
-            await user_service.remove(session, user_db_id)
-            await session.commit()
-    except user_service.UserServiceError as e:
-        return _back(user_db_id, err=str(e))
-    return _back(user_db_id, sent="removed")
+        await customer_profiles.link(user_db_id, channel, address, actor_id(request), confirmed=confirmed == '1')
+    except ValueError as exc:
+        return _back(user_db_id, err=tr(str(exc)))
+    return _back(user_db_id, sent='linked')
 
 
-@router.post("/users/{user_db_id}/unblock")
-async def user_unblock(user_db_id: int):
-    from src.dashboard.bot_client import get_bot
-    from src.utils.i18n import get_text
-    from src.services import settings_service
+@router.post('/users/{user_db_id}/accounts/{account_id}/unlink')
+async def user_unlink(request: Request, user_db_id: int, account_id: int):
+    from src.services import customer_profiles
+    from src.dashboard.routes.workspace import actor_id
     try:
-        async with db_session() as session:
-            tg_id, lang = await user_service.set_active(session, user_db_id, active=True)
-            await session.commit()
-        try:
-            brand = await settings_service.get_brand_name()
-            await get_bot().send_message(tg_id, get_text("access_restored", lang, brand=brand))
-        except Exception:
-            pass
-    except user_service.UserServiceError as e:
-        return _back(user_db_id, err=str(e))
-    return _back(user_db_id, sent="unblocked")
+        await customer_profiles.unlink(user_db_id, account_id, actor_id(request))
+    except ValueError as exc:
+        return _back(user_db_id, err=tr(str(exc)))
+    return _back(user_db_id, sent='unlinked')
 
 
-@router.post("/users/{user_db_id}/team")
-async def user_change_team(user_db_id: int, team_id: int = Form(...)):
-    from src.dashboard.bot_client import get_bot
+@router.post('/users/{user_db_id}/message')
+async def user_message(request: Request, user_db_id: int, text: str = Form(...),
+                       account_id: int = Form(...), request_key: str = Form(...)):
+    from src.services import customer_profiles, outbound
+    from src.dashboard.routes.workspace import actor_id
     try:
-        async with db_session() as session:
-            res = await user_service.change_team(session, user_db_id, team_id)
-            await session.commit()
-        if not res.is_change:  # first assignment → notify the user
-            try:
-                from src.utils.i18n import get_text
-                await get_bot().send_message(
-                    res.user_tg_id,
-                    get_text("account_approved", res.user_language),
-                )
-            except Exception:
-                pass
-    except user_service.UserServiceError as e:
-        return _back(user_db_id, err=str(e))
-    return _back(user_db_id, sent="team")
-
-
-@router.post("/users/{user_db_id}/link")
-async def user_link(user_db_id: int, identifier: str = Form(...)):
-    async with db_session() as session:
-        res = await user_service.link_account(session, user_db_id, identifier)
-        await session.commit()
-    if res.status == "error":
-        return _back(user_db_id, err=res.message)
-    return _back(user_db_id, sent="linked")
-
-
-@router.post("/users/{user_db_id}/unlink")
-async def user_unlink(user_db_id: int):
-    try:
-        async with db_session() as session:
-            await user_service.unlink_account(session, user_db_id)
-            await session.commit()
-    except user_service.UserServiceError as e:
-        return _back(user_db_id, err=str(e))
-    return _back(user_db_id, sent="unlinked")
-
-
-@router.post("/users/{user_db_id}/unlink-personals")
-async def user_unlink_personals(user_db_id: int):
-    async with db_session() as session:
-        await user_service.unlink_personals_of(session, user_db_id)
-        await session.commit()
-    return _back(user_db_id, sent="unlinked")
-
-
-@router.post("/users/{user_db_id}/message")
-async def user_message(user_db_id: int, text: str = Form(...)):
-    """Send a one-off direct message to the user from the web admin (not a ticket)."""
-    from sqlalchemy import select
-    from src.dashboard.bot_client import get_bot
-    from src.database.models import User
-
-    text = (text or "").strip()
-    if not text:
-        return _back(user_db_id, err=tr("e_empty_message"))
-
-    async with db_session() as session:
-        user = await session.get(User, user_db_id)
-        if user is None:
-            return _back(user_db_id, err=tr("e_user_not_found"))
-        tg_id = user.tg_id
-
-    try:
-        await get_bot().send_message(tg_id, text)
-    except Exception as e:
-        return _back(user_db_id, err=tr("e_not_delivered_x", what=type(e).__name__))
-    return _back(user_db_id, sent="messaged")
+        ticket_id, job_id = await customer_profiles.send(user_db_id, account_id, text, actor_id(request), request_key=request_key)
+    except (ValueError, LookupError) as exc:
+        return _back(user_db_id, err=tr(str(exc)))
+    await outbound.deliver(job_id)
+    return _back(user_db_id, sent='queued')

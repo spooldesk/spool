@@ -54,6 +54,18 @@
     </form>
   </div>
 
+  <section class="bg-zinc-950 border border-zinc-900 rounded-xl p-5 mb-6">
+    <div class="flex justify-between flex-wrap gap-2"><h2 class="font-semibold">{{ T.lead_queue }}</h2><span class="text-xs text-zinc-500">{{ T.lead_as_of }} {{ operations.as_of.strftime('%Y-%m-%d %H:%M') }} UTC</span></div>
+    <div class="grid grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
+      {% for key in ['open','unanswered','waiting','sla_breached','oldest_hours','delivery_attention'] %}
+      <div><div class="text-xs text-zinc-500">{{ T['lead_' ~ key] }}</div><strong class="text-xl tabular-nums">{{ fmt_hours(operations[key]) if key == 'oldest_hours' else operations[key] }}</strong></div>
+      {% endfor %}
+    </div>
+    <div class="grid grid-cols-2 gap-4 mt-5 pt-4 border-t border-zinc-800">
+      <div><p class="text-sm">{{ T.lead_response_p50 }}: <strong>{{ fmt_minutes(operations.response_p50) }}</strong> · p90: <strong>{{ fmt_minutes(operations.response_p90) }}</strong></p><p class="text-xs text-zinc-500">{{ T.lead_response_count }}: {{ operations.response_count }}</p></div>
+      <div><p class="text-sm">{{ T.lead_resolution_p50 }}: <strong>{{ fmt_hours(operations.resolution_p50) }}</strong> · p90: <strong>{{ fmt_hours(operations.resolution_p90) }}</strong></p><p class="text-xs text-zinc-500">{{ T.lead_resolution_count }}: {{ operations.resolution_count }}</p></div>
+    </div><p data-help class="text-xs text-zinc-500 mt-3">{{ T.lead_cohort_hint }}</p>
+  </section>
   <!-- Summary cards with deltas -->
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
     {% for c in cards %}
@@ -76,7 +88,7 @@
           {% endif %}
         </div>
         {% if c.hint %}
-          <div class="mt-1 text-xs text-zinc-500">{{ c.hint }}</div>
+          <div data-help class="mt-1 text-xs text-zinc-500">{{ c.hint }}</div>
         {% endif %}
       </div>
     {% endfor %}
@@ -88,7 +100,7 @@
     <div class="bg-zinc-950 border border-zinc-900 rounded-xl overflow-hidden">
       <div class="px-5 pt-4 pb-2">
         <h2 class="font-medium">{{ T.r_operators }}</h2>
-        <p class="text-xs text-zinc-500 mt-0.5">{{ T.r_operators_hint }}</p>
+        <p data-help class="text-xs text-zinc-500 mt-0.5">{{ T.r_operators_hint }}</p>
       </div>
       <table class="w-full text-sm">
         <thead class="bg-zinc-950/80 border-b border-zinc-900">
@@ -149,7 +161,7 @@
     <div class="bg-zinc-950 border border-zinc-900 rounded-xl overflow-hidden">
       <div class="px-5 pt-4 pb-2">
         <h2 class="font-medium">{{ T.r_teams }}</h2>
-        <p class="text-xs text-zinc-500 mt-0.5">{{ T.r_teams_hint }}</p>
+        <p data-help class="text-xs text-zinc-500 mt-0.5">{{ T.r_teams_hint }}</p>
       </div>
       <table class="w-full text-sm">
         <thead class="bg-zinc-950/80 border-b border-zinc-900">
@@ -189,7 +201,7 @@
   <!-- What the AI cost and what it saved -->
   <div class="mt-6 bg-zinc-950 border border-zinc-900 rounded-xl p-5">
     <h2 class="font-medium">{{ T.r_savings_title }}</h2>
-    <p class="text-xs text-zinc-500 mt-0.5 mb-4">{{ T.r_savings_hint }}</p>
+    <p data-help class="text-xs text-zinc-500 mt-0.5 mb-4">{{ T.r_savings_hint }}</p>
 
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
       <div>

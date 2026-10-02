@@ -130,23 +130,69 @@ async def _dispatch(payload: str, *, ticket_id: int, user_tg_id: int) -> Outcome
             return Outcome(True, "csat_already")
         return Outcome(False)
 
-    if parts[0] == "deflect" and len(parts) == 4:
-        from src.ai import deflect
-
-        verdict, _tid, raw_call = parts[1], parts[2], parts[3]
+    if parts[0] in ("defl", "deflect") and len(parts) == 4:
+        verdict, raw_ticket, raw_call = parts[1], parts[2], parts[3]
         try:
             ai_call_id = int(raw_call)
+            if int(raw_ticket) != ticket_id:
+                return Outcome(False)
         except ValueError:
             return Outcome(False)
-
-        if verdict == "ok":
-            await deflect.mark_outcome(ai_call_id, True)
-            closed = await deflect.close_ticket_by_ai(ticket_id, user_tg_id)
-            return Outcome(True, "deflect_solved_ack", closed=closed)
-        if verdict == "no":
-            await deflect.mark_outcome(ai_call_id, False)
-            return Outcome(True, "deflect_operator_wait")
-        return Outcome(False)
+        if verdict not in ("ok", "no"):
+            return Outcome(False)
+        return await apply_deflection_verdict(
+            ticket_id=ticket_id, ai_call_id=ai_call_id,
+            user_tg_id=user_tg_id, accepted=verdict == "ok",
+        )
 
     logger.info(f"No handler for a choice payload starting {parts[0]!r}")
     return Outcome(False)
+
+
+async def apply_deflection_verdict(*, ticket_id: int, ai_call_id: int,
+                                   user_tg_id: int, accepted: bool) -> Outcome:
+    """Bind customer, ticket and AI call; commit verdict/closure/credit once.
+
+    Shared by Telegram callbacks and widget/Slack choices. A call from another
+    ticket or from shadow mode must never acquire a customer acceptance.
+    """
+    from datetime import datetime
+
+    from src.ai.deflect import AI_CLOSE_REASON
+    from src.database.db import db_session
+    from src.database.models import AICall, Article, User
+    from src.utils.i18n import CLOSURE_SYSTEM_TEXT
+
+    if not (0 < ticket_id <= 2 ** 31 - 1 and 0 < ai_call_id <= 2 ** 31 - 1):
+        return Outcome(False)
+    async with db_session(write=True) as session:
+        ticket = await session.get(Ticket, ticket_id)
+        call = await session.get(AICall, ai_call_id)
+        if (ticket is None or ticket.status != "active" or call is None
+                or call.ticket_id != ticket_id or call.use_case != "deflect"
+                or call.shadow or not call.success or call.accepted is not None):
+            return Outcome(False)
+        user = await session.get(User, ticket.user_id)
+        if user is None or not user.is_active or user.tg_id != user_tg_id:
+            return Outcome(False)
+        call.accepted = accepted
+        if accepted:
+            ticket.status = "closed"
+            ticket.closed_at = datetime.utcnow()
+            ticket.notification_sent = False
+            ticket.admin_categories = [AI_CLOSE_REASON]
+            if ticket.created_at:
+                ticket.processing_time_seconds = int(
+                    (ticket.closed_at - ticket.created_at).total_seconds())
+            session.add(MessageRecord(
+                ticket_id=ticket_id, sender_type="admin", sender_id=0,
+                text=f"{CLOSURE_SYSTEM_TEXT} {AI_CLOSE_REASON}",
+            ))
+            if call.article_id:
+                article = await session.get(Article, call.article_id)
+                if article is not None:
+                    article.deflected_count += 1
+            from src.services import csat_service
+            await csat_service.enqueue_close_notification(session, ticket, user)
+        return Outcome(True, "deflect_solved_ack" if accepted else "deflect_operator_wait",
+                       closed=accepted)

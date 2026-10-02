@@ -436,11 +436,18 @@ async def test_version_needs_a_login(initialized_db):
 
 async def test_version_moves_when_a_ticket_is_reassigned(initialized_db):
     """Two operators on one board must not disagree about who owns a ticket."""
+    from src.services.admin_user_service import create_admin
+
     tid = await _seed_wf(initialized_db)
+    operator = await create_admin(
+        email=f"workflow-version-{next_tg_id()}@example.test",
+        password="test-version-password",
+        role="agent",
+    )
     before = await queries.tickets_version()
     async with db_session() as session:
         t = await session.get(Ticket, tid)
-        t.assigned_admin_id = 7
+        t.assigned_admin_id = operator.id
         await session.commit()
     assert await queries.tickets_version() != before
 

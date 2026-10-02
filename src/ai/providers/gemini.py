@@ -12,7 +12,7 @@ import asyncio
 import logging
 import time
 
-from src.ai.client import LLMResponse, LLMUnavailable
+from src.ai.client import LLMResponse, LLMUnavailable, provider_error_code
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +42,7 @@ class GeminiClient:
         user: str,
         max_output_tokens: int = 256,
         temperature: float = 0.2,
+        timeout_seconds: float = _TIMEOUT_SEC,
     ) -> LLMResponse:
         from google.genai import types
 
@@ -69,15 +70,18 @@ class GeminiClient:
                     contents=user,
                     config=config,
                 ),
-                timeout=_TIMEOUT_SEC,
+                timeout=timeout_seconds,
             )
         except asyncio.TimeoutError:
-            logger.warning(f"Gemini timeout after {_TIMEOUT_SEC}s")
-            raise LLMUnavailable("Gemini timed out") from None
+            logger.warning("Gemini timeout after %ss", timeout_seconds)
+            raise LLMUnavailable("Gemini timed out", code="timeout") from None
         except Exception as e:
             # Includes ResourceExhausted (429), permission errors, network issues
-            logger.warning(f"Gemini call failed: {type(e).__name__}: {e}")
-            raise LLMUnavailable(f"{type(e).__name__}: {e}") from e
+            status = getattr(e, "code", None)
+            status = status if isinstance(status, int) else None
+            code = provider_error_code(status)
+            logger.warning("Gemini call failed (%s, status=%s)", code, status)
+            raise LLMUnavailable(f"Gemini {code}", code=code, status_code=status) from None
 
         latency_ms = int((time.monotonic() - started) * 1000)
 
@@ -109,7 +113,7 @@ class GeminiClient:
             # or hitting max_output_tokens before producing visible text.
             raise LLMUnavailable(
                 f"Gemini returned empty response "
-                f"(tokens_out={tokens_out}, latency={latency_ms}ms)"
+                f"(tokens_out={tokens_out}, latency={latency_ms}ms)", code="empty"
             )
 
         return LLMResponse(

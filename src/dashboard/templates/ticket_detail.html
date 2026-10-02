@@ -27,7 +27,7 @@
         <div class="flex items-center gap-3">
           {# href is rewritten by ui.js to wherever this ticket was opened
              from; /tickets is the fallback for a direct link. #}
-          <a href="/tickets" id="back-link"
+          <a href="{{ '/tickets?status=closed' if t.status == 'closed' else '/tickets' }}" id="back-link"
              class="text-zinc-500 hover:text-zinc-200 text-sm">←</a>
           {% if queue_source %}
             <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs
@@ -65,9 +65,7 @@
           · {{ t.category or '—' }}
           · <span id="live-dot" class="text-emerald-500">● live</span>
         </div>
-        <!-- Somebody else has this ticket open. Shown in the header rather than
-             next to the composer: the point is to be noticed before typing a
-             reply, not after. -->
+        <!-- Shared presence is also shown next to the reply composer. -->
         <div id="presence" class="hidden mt-1.5 text-xs text-amber-400 items-center gap-1.5">
           <i class="ti ti-eye" style="font-size:12px" aria-hidden="true"></i>
           <span id="presence-text"></span>
@@ -85,10 +83,10 @@
     {% endif %}
 
     <!-- Timeline -->
-    <div id="timeline" class="flex-1 overflow-y-auto px-6 py-5 space-y-4 scroll-pretty" data-user-label="{{ t.user_label }}">
+    <div id="timeline" class="conversation-timeline flex-1 overflow-y-auto px-6 py-5 space-y-4 scroll-pretty" data-user-label="{{ t.user_label }}">
       {% for m in t.messages %}
         <div class="msg group flex {% if m.is_internal %}justify-center{% elif m.sender_type == 'admin' %}justify-end{% endif %}"
-             data-message-id="{{ m.id }}">
+             data-message-id="{{ m.id }}" data-chat="{{ {'id':m.id,'text':m.text,'sender_type':m.sender_type,'is_internal':m.is_internal,'revision':m.revision,'edited_at':m.edited_at,'deleted_at':(true if m.deleted_at else false),'reply':m.reply,'can_reply':m.can_reply,'can_edit':m.can_edit,'can_delete':m.can_delete,'operator_id':m.operator_id,'mutation_status':m.mutation_status,'file_name':m.file_name}|tojson|forceescape }}">
           <div class="{% if m.is_internal %}w-full max-w-[92%] rounded-xl px-4 py-3 bg-amber-500/[0.07] border border-dashed border-amber-500/40
                       {% else %}max-w-[80%] rounded-2xl px-4 py-3
                         {% if m.sender_type == 'admin' %}bg-brand-600/20 border border-brand-500/25{% else %}bg-zinc-900 border border-zinc-800{% endif %}
@@ -99,7 +97,7 @@
                   <i class="ti ti-notes text-amber-400" style="font-size:11px" aria-hidden="true"></i>
                   <span class="text-amber-400">{{ T.internal_note }}</span>
                 {% elif m.sender_type == 'admin' %}
-                  <i class="ti ti-tool" style="font-size:11px" aria-hidden="true"></i> admin
+                  <i class="ti ti-tool" style="font-size:11px" aria-hidden="true"></i> {{ m.operator_name }}
                 {% else %}
                   {# In a shared conversation the customer is the room, and
                      each line has its own author. Elsewhere they are the same
@@ -128,15 +126,15 @@
               {% endif %}
             </div>
             {% if m.deleted_at %}
-              <div class="text-sm italic text-zinc-500 flex items-center gap-1.5">
+              <div class="revision-label text-sm italic text-zinc-500 flex items-center gap-1.5">
                 <i class="ti ti-trash" style="font-size:12px" aria-hidden="true"></i>
                 {{ T.msg_withdrawn }}
               </div>
               {# The text stays in the transcript. The next operator needs to
                  know what was said and taken back, not just that something was. #}
-              <div class="text-xs text-zinc-600 line-through whitespace-pre-wrap break-words mt-1">{{ m.text }}</div>
+              <div class="message-text text-xs text-zinc-600 line-through whitespace-pre-wrap break-words mt-1">{{ m.text }}</div>
             {% else %}
-              <div class="text-sm whitespace-pre-wrap break-words text-zinc-100">{{ m.text }}</div>
+              <div class="message-text text-sm whitespace-pre-wrap break-words text-zinc-100">{{ m.text }}</div>
             {% endif %}
             {% if m.has_attachment %}
               {% if m.is_image and m.attachment_url %}
@@ -157,13 +155,35 @@
                 </div>
               {% endif %}
             {% endif %}
+            <div class="delivery-state mt-2 text-xs" data-delivery-message="{{ m.id }}">
+              {% if t.channel == 'email' and m.sender_type == 'admin' and not m.is_internal and not m.deleted_at and m.delivery_status == 'delivered' %}
+                <span class="text-zinc-500">{{ T.email_submitted }}</span>
+              {% endif %}
+              {% if m.delivery_status and m.delivery_status != 'delivered' %}
+                <span class="text-amber-400">{{ T['e_delivery_' ~ m.delivery_status] }}</span>
+                {% if not m.deleted_at and m.delivery_status in ['failed', 'uncertain'] and section_editable %}
+                  <form method="post" action="/tickets/{{ t.id }}/message/{{ m.id }}/retry" class="mt-2">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    {% if m.delivery_status == 'uncertain' %}
+                      <label class="flex gap-2 items-start text-zinc-400">
+                        <input type="checkbox" name="acknowledge_duplicate" value="yes" required>
+                        {{ T.delivery_duplicate_risk }}
+                      </label>
+                    {% endif %}
+                    <button class="mt-1 text-brand-400 hover:text-brand-300">{{ T.delivery_retry }}</button>
+                  </form>
+                {% endif %}
+              {% endif %}
+            </div>
           </div>
         </div>
       {% endfor %}
     </div>
 
     <!-- Reply composer -->
-    <div id="composer" class="border-t border-zinc-900 px-6 py-4 {% if t.status != 'active' %}hidden{% endif %}">
+    <div id="composer" class="conversation-composer border-t border-zinc-900 px-6 py-4 {% if t.status != 'active' %}hidden{% endif %}">
+      {% set channel_help = T['chat_channel_' ~ t.channel] if ('chat_channel_' ~ t.channel) in T else T.chat_channel_other %}
+      <p class="channel-explainer">{{ channel_help.split(' · ')[0] if ' · ' in channel_help else t.channel }} <span data-help>{{ channel_help }}</span></p>
       <!-- Reply vs Note: two modes on one composer. Note mode never calls the
            Bot API — the text stays in the dashboard. -->
       <div class="flex items-center gap-1 mb-2 text-xs">
@@ -178,6 +198,10 @@
       </div>
       <form id="reply-form" method="post" action="/tickets/{{ t.id }}/reply" enctype="multipart/form-data" class="space-y-2"
             data-reply-action="/tickets/{{ t.id }}/reply" data-note-action="/tickets/{{ t.id }}/note">
+        <p id="composer-presence" class="composer-presence" role="status" aria-live="polite" hidden></p>
+        <input type="hidden" id="reply-parent" name="reply_to_id" value="">
+        <div id="reply-context" class="reply-context" hidden></div>
+        <div id="knowledge-sources" class="sources-list" aria-live="polite"></div>
         <div class="flex items-end gap-2">
           <textarea id="reply-text" name="text" rows="2" placeholder="{{ T.reply_placeholder }}"
                     data-reply-placeholder="{{ T.reply_placeholder }}" data-note-placeholder="{{ T.note_placeholder }}"
@@ -194,15 +218,13 @@
             {{ T.q_send_and_next if queue_source else T.send }}
           </button>
         </div>
+        <p id="composer-error" role="alert" class="text-sm text-red-500"></p>
         <div id="reply-tools" class="flex items-center gap-3 text-xs relative">
           <button type="button" id="tpl-btn"
                   class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800">
             <i class="ti ti-message-dots" style="font-size:13px" aria-hidden="true"></i> {{ T.templates }}
           </button>
-          <button type="button" id="ai-btn"
-                  class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800">
-            <i class="ti ti-robot" style="font-size:13px" aria-hidden="true"></i> {{ T.ask_ai }}
-          </button>
+
           {# The input is always here; only the button that opens it is
              conditional. The composer's script reads this element on load,
              and making the element itself conditional silently killed every
@@ -219,7 +241,7 @@
             </label>
           {% endif %}
           <span id="ai-status" class="text-zinc-500"></span>
-          <span class="ml-auto text-zinc-600 hidden sm:inline">{{ T.composer_hint }}</span>
+          <span data-help class="ml-auto text-zinc-600 hidden sm:inline">{{ T.composer_hint }}</span>
 
           <!-- Templates popup -->
           <div id="tpl-popup"
@@ -276,19 +298,21 @@
           <div class="flex items-center gap-1.5 text-xs">
             <i class="ti ti-mail text-zinc-500 shrink-0" style="font-size:13px" aria-hidden="true"></i>
             <a href="mailto:{{ t.user_email }}" class="text-zinc-300 hover:text-brand-400 truncate">{{ t.user_email }}</a>
+            <span class="text-[10px] {{ 'text-emerald-400' if 'email' in t.user_identity_verified_fields else 'text-amber-400' }}">{{ T.id_verified if 'email' in t.user_identity_verified_fields else T.id_claimed }}</span>
           </div>
         {% endif %}
         {% if t.user_external_id %}
           <div class="flex items-center gap-1.5 text-xs">
             <i class="ti ti-id text-zinc-500 shrink-0" style="font-size:13px" aria-hidden="true"></i>
             <span class="text-zinc-300 font-mono truncate">{{ t.user_external_id }}</span>
+            <span class="text-[10px] {{ 'text-emerald-400' if 'external_id' in t.user_identity_verified_fields else 'text-amber-400' }}">{{ T.id_verified if 'external_id' in t.user_identity_verified_fields else T.id_claimed }}</span>
           </div>
         {% endif %}
         {% if t.user_email or t.user_external_id %}
           {% if t.user_identity_verified %}
             <div class="inline-flex items-center gap-1 text-xs text-emerald-400">
               <i class="ti ti-rosette-discount-check shrink-0" style="font-size:12px" aria-hidden="true"></i>
-              {{ T.id_verified }}
+              {{ T.id_verified_fields }}: {{ t.user_identity_verified_fields|join(', ') }}
             </div>
           {% else %}
             {# Deliberately not styled as an error: unverified is the normal
@@ -301,17 +325,7 @@
             </div>
           {% endif %}
         {% endif %}
-        {% if t.linked_work %}
-          <div class="inline-flex items-start gap-1 text-xs text-amber-400/90 mt-1">
-            <i class="ti ti-link shrink-0 mt-0.5" style="font-size:11px" aria-hidden="true"></i>
-            {{ T.writes_from_personal|safe }} {{ t.linked_work }}
-          </div>
-        {% elif t.linked_personals %}
-          <div class="inline-flex items-start gap-1 text-xs text-zinc-400 mt-1">
-            <i class="ti ti-link shrink-0 mt-0.5" style="font-size:11px" aria-hidden="true"></i>
-            {{ T.work_account_personals }} {{ t.linked_personals|join(', ') }}
-          </div>
-        {% endif %}
+
       </div>
     </div>
 
@@ -427,7 +441,16 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/message-menu.js?v={{ g_asset_v }}"></script>
+<script src="/static/conversation.js?v={{ g_asset_v }}"></script>
+<script src="/static/composer-submit.js?v={{ g_asset_v }}"></script>
+<script src="/static/ticket-presence.js?v={{ g_asset_v }}"></script>
 <script>
+SpConversation.boot({ticket:{{ t.id }}, csrf:{{ csrf_token|tojson }},
+ operator:{{ current_user.id if current_user else 'null' }}, role:{{ (current_user.role if current_user else 'owner')|tojson }},
+ canWrite:{{ section_editable|tojson }},
+ labels:{{ {'actions':T.chat_actions,'copy':T.chat_copy,'removeUnavailable':T.chat_remove_unavailable,'reply':T.chat_reply,'edit':T.chat_edit,'remove':T.msg_unsend,'confirmRemove':T.msg_unsend_confirm,'save':T.save,'cancel':T.cancel,'edited':T.chat_edited,'withdrawn':T.msg_withdrawn,'uncertain':T.chat_edit_uncertain,'pending':T.e_delivery_pending,'failed':T.js_error,'sources':T.chat_sources,'reconcile':T.chat_reconcile,'reconcileHint':T.chat_reconcile_hint,'reconcileApplied':T.chat_reconcile_applied,'reconcileUnchanged':T.chat_reconcile_unchanged}|tojson }} });
+
 (function () {
   const root = document.querySelector('[data-ticket-id]');
   const ticketId = root.dataset.ticketId;
@@ -443,26 +466,6 @@
   let lastSeenId = rendered.length
     ? parseInt(rendered[rendered.length - 1].dataset.messageId, 10) || 0
     : 0;
-
-  // ---- AI suggest ----
-  const aiBtn = document.getElementById('ai-btn');
-  const aiStatus = document.getElementById('ai-status');
-  if (aiBtn) {
-    aiBtn.addEventListener('click', async () => {
-      aiBtn.disabled = true; aiStatus.textContent = '{{ T.js_thinking }}';
-      try {
-        const r = await fetch(`/tickets/${ticketId}/ai-suggest`, { method: 'POST' });
-        const data = await r.json();
-        if (data.ok) {
-          document.getElementById('reply-text').value = data.draft;
-          aiStatus.textContent = '{{ T.js_ai_inserted }}';
-        } else {
-          aiStatus.textContent = '! ' + (data.error || '{{ T.js_ai_none }}');
-        }
-      } catch (e) { aiStatus.textContent = '! {{ T.js_error }}'; }
-      aiBtn.disabled = false;
-    });
-  }
 
   // ---- Templates popup ----
   const tplBtn = document.getElementById('tpl-btn');
@@ -490,6 +493,7 @@
            <div class="text-xs text-zinc-500 truncate mt-0.5">${escapeHtml(t.body.slice(0,90))}</div>`;
         item.addEventListener('click', () => {
           document.getElementById('reply-text').value = t.body;
+          SpAutoGrow.resize(document.getElementById('reply-text'));
           tplPopup.classList.add('hidden');
           document.getElementById('reply-text').focus();
         });
@@ -568,18 +572,19 @@
   }
 
   function showFiles() {
+    fileChips.querySelectorAll('[data-preview-url]').forEach(n => URL.revokeObjectURL(n.dataset.previewUrl));
     fileChips.innerHTML = '';
     fileChips.classList.toggle('hidden', picked.length === 0);
     fileChips.classList.toggle('flex', picked.length > 0);
     picked.forEach((f, i) => {
       const chip = document.createElement('span');
-      chip.className = 'inline-flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-lg ' +
-                       // max-w is one the committed tw.css already carries: the
-                       // build needs Node, and one chip is not worth that.
-                       'bg-zinc-900 border border-zinc-800 text-zinc-300 max-w-[170px]';
-      const label = document.createElement('span');
-      label.className = 'truncate';
-      label.textContent = f.name;
+      chip.className = 'file-preview-card';
+      const url = URL.createObjectURL(f); chip.dataset.previewUrl = url;
+      if (/^image\/(png|jpeg|gif|webp)$/.test(f.type)) {
+        const preview = document.createElement('img'); preview.src = url; preview.alt = f.name; chip.append(preview);
+      }
+      const label = document.createElement('a'); label.href = url; label.target = '_blank'; label.rel = 'noopener'; label.textContent = f.name;
+      if (!/^(image\/(png|jpeg|gif|webp)|application\/pdf)$/.test(f.type)) label.download = f.name;
       const size = document.createElement('span');
       size.className = 'text-zinc-600 shrink-0';
       size.textContent = humanSize(f.size);
@@ -625,62 +630,8 @@
     });
   }
 
-  // ---- Who else is on this ticket ----
-  // Two operators answering the same customer at once is the failure this
-  // prevents; it is worth a request every few seconds to avoid.
-  (function () {
-    const box = document.getElementById('presence');
-    const label = document.getElementById('presence-text');
-    if (!box || !label) return;
-
-    const HERE = {{ T.presence_here|tojson }};
-    const HERE_MANY = {{ T.presence_here_many|tojson }};
-    const TYPING = {{ T.presence_typing|tojson }};
-    let typingUntil = 0;
-
-    function render(others) {
-      if (!others.length) { box.classList.add('hidden'); box.classList.remove('flex'); return; }
-      const typing = others.filter(o => o.typing);
-      const names = (typing.length ? typing : others).map(o => o.name);
-      const tmpl = typing.length ? TYPING : (others.length > 1 ? HERE_MANY : HERE);
-      label.textContent = tmpl.replace('{who}', names.join(', '));
-      box.classList.remove('hidden');
-      box.classList.add('flex');
-    }
-
-    async function beat(extra) {
-      // A background tab is not "watching" — stop claiming the ticket.
-      if (document.hidden && !extra) return;
-      try {
-        const body = new FormData();
-        body.append('csrf_token', CSRF_TOKEN);
-        Object.entries(extra || {}).forEach(([k, v]) => body.append(k, v));
-        const r = await fetch(`/api/tickets/${ticketId}/presence`, { method: 'POST', body });
-        const d = await r.json();
-        if (d.ok) render(d.others || []);
-      } catch (e) { /* a missed beat expires on its own */ }
-    }
-
-    const ta = document.getElementById('reply-text');
-    if (ta) {
-      ta.addEventListener('input', function () {
-        const now = Date.now();
-        if (now < typingUntil) return;   // one signal per few seconds, not per keystroke
-        typingUntil = now + 3000;
-        beat({ typing: '1' });
-      });
-    }
-
-    beat();
-    setInterval(beat, 5000);
-    // Tell the others straight away instead of making them wait out the TTL.
-    window.addEventListener('pagehide', function () {
-      const body = new FormData();
-      body.append('csrf_token', CSRF_TOKEN);
-      body.append('leaving', '1');
-      navigator.sendBeacon(`/api/tickets/${ticketId}/presence`, body);
-    });
-  })();
+  SpTicketPresence.boot({ticket:ticketId, csrf:CSRF_TOKEN, canWrite:{{ section_editable|tojson }},
+    labels:{{ {'here':T.presence_here,'hereMany':T.presence_here_many,'replying':T.presence_replying,'note':T.presence_note,'customer':T.presence_customer}|tojson }} });
 
   // ---- Ctrl+Enter sends ----
   // Enter alone stays a newline: support replies are often several lines, and
@@ -688,7 +639,7 @@
   const replyBox = document.getElementById('reply-text');
   if (replyBox) {
     replyBox.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      if ({{ (prefs.hotkeys if prefs else True)|tojson }} && !e.isComposing && !e.repeat && e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         const form = document.getElementById('reply-form');
         if (form && replyBox.value.trim()) form.requestSubmit();
@@ -728,6 +679,8 @@
   const modeReply = document.getElementById('mode-reply');
   const modeNote = document.getElementById('mode-note');
   const submitBtn = document.getElementById('composer-submit');
+  SpComposerSubmit(form, submitBtn, document.getElementById('composer-error'),
+    {{ {'sessionExpired':T.get('session_expired', T.js_error),'failed':T.js_error,'uncertain':T.get('composer_uncertain', T.js_error)}|tojson }});
   const replyTools = document.getElementById('reply-tools');
   const noteHint = document.getElementById('note-hint');
   const textArea = document.getElementById('reply-text');
@@ -791,9 +744,51 @@
     bubble.innerHTML =
       `<div class="text-[10px] uppercase tracking-wide text-zinc-500 flex items-center gap-2 mb-1">
          <span>${who}</span>${noteBadge}${tpl}<span class="text-zinc-600">${m.created_at}</span></div>
-       <div class="text-sm whitespace-pre-wrap break-words text-zinc-100">${escapeHtml(m.text)}</div>${att}`;
+       <div class="message-text text-sm whitespace-pre-wrap break-words text-zinc-100">${escapeHtml(m.text)}</div>${att}`;
+    const delivery = document.createElement('div');
+    delivery.className = 'delivery-state mt-2 text-xs';
+    delivery.dataset.deliveryMessage = m.id;
+    bubble.appendChild(delivery);
     wrap.appendChild(bubble);
+    SpConversation.decorate(wrap, m);
     return wrap;
+  }
+
+  const DELIVERY_LABELS = {{ {'pending': T.e_delivery_pending, 'sending': T.e_delivery_sending,
+    'retry': T.e_delivery_retry, 'failed': T.e_delivery_failed, 'uncertain': T.e_delivery_uncertain,
+    'cancelled': T.e_delivery_cancelled,
+    'delivered': T.email_submitted if t.channel == 'email' else ''}|tojson }};
+  function updateDelivery(item) {
+    const box = timeline.querySelector(`[data-delivery-message="${Number(item.message_id)}"]`);
+    const state = item.status + ':' + Boolean(item.can_retry);
+    if (!box || box.dataset.deliveryStatus === state) return;
+    box.dataset.deliveryStatus = state;
+    box.replaceChildren();
+    if (!DELIVERY_LABELS[item.status]) return;
+    const badge = document.createElement('span');
+    badge.className = item.status === 'delivered' ? 'text-zinc-500' : 'text-amber-400';
+    badge.textContent = DELIVERY_LABELS[item.status];
+    box.appendChild(badge);
+    if (!item.can_retry || !['failed', 'uncertain'].includes(item.status)) return;
+    const form = document.createElement('form');
+    form.method = 'post';
+    form.action = `/tickets/${ticketId}/message/${Number(item.message_id)}/retry`;
+    form.className = 'mt-2';
+    const csrf = document.createElement('input');
+    csrf.type = 'hidden'; csrf.name = 'csrf_token'; csrf.value = CSRF_TOKEN;
+    form.appendChild(csrf);
+    if (item.status === 'uncertain') {
+      const label = document.createElement('label');
+      label.className = 'flex gap-2 items-start text-zinc-400';
+      const check = document.createElement('input');
+      check.type = 'checkbox'; check.name = 'acknowledge_duplicate'; check.value = 'yes'; check.required = true;
+      label.append(check, document.createTextNode({{ T.delivery_duplicate_risk|tojson }}));
+      form.appendChild(label);
+    }
+    const button = document.createElement('button');
+    button.className = 'mt-1 text-brand-400 hover:text-brand-300';
+    button.textContent = {{ T.delivery_retry|tojson }};
+    form.appendChild(button); box.appendChild(form);
   }
 
   const liveDot = document.getElementById('live-dot');
@@ -816,6 +811,8 @@
       // Advance even on an empty batch: the server reports the newest id it
       // knows, which is also how the cursor recovers if a message is deleted.
       if (typeof data.latest_id === 'number') lastSeenId = data.latest_id;
+      (data.deliveries || []).forEach(updateDelivery);
+      SpConversation.updates(data.updates || []);
       if (data.status !== 'active') {
         document.getElementById('composer')?.classList.add('hidden');
         document.getElementById('closed-note')?.classList.remove('hidden');

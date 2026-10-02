@@ -120,27 +120,13 @@ def test_only_ticket_scoped_states_remain():
 
 # ---------- router order ----------
 
-async def test_catch_all_is_registered_last():
-    """ticket_actions ends with a handler that matches every callback.
-
-    Any router that needs its own callbacks has to be registered before it, or
-    its buttons silently hit the "that menu is gone" message instead. Nothing
-    else would fail if somebody reordered these calls, so assert the order in
-    main.py directly rather than trusting the comment next to it.
-    """
-    import inspect
-
-    from src import main as bot_main
-
-    source = inspect.getsource(bot_main)
-    registrations = [
-        line.strip()
-        for line in source.splitlines()
-        if "dp.include_router(" in line
-    ]
-    assert registrations[-2] == "dp.include_router(ticket_actions_router)", (
-        f"ticket_actions must be second-to-last, got {registrations}"
-    )
-    # admin_router is genuinely last: its final handler treats any message in
-    # the admin chat as a ticket reply.
-    assert registrations[-1] == "dp.include_router(admin_router)"
+async def test_live_dispatcher_excludes_retired_operator_mutations():
+    """Old group buttons only explain where to work; customer callbacks survive."""
+    from src.services.channel_runtime import dispatcher
+    from src.handlers.admin_handlers import admin_router
+    from src.handlers.retired_operator_actions import retired_operator_router
+    from src.handlers.user_handlers import user_router
+    registrations = dispatcher().sub_routers
+    assert registrations == [retired_operator_router, user_router]
+    assert ticket_actions.ticket_actions_router not in registrations
+    assert admin_router not in registrations

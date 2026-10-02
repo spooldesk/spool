@@ -11,11 +11,13 @@ channel, and an operator who only ever looks at Telegram sees them.
 """
 
 import json
-import time
+import asyncio
+from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
+from aiogram.types import Chat, ChatFullInfo, ForumTopic, Message as TelegramMessage
 
 import src.channels as channels
 from src.dashboard.app import app
@@ -26,19 +28,32 @@ from tests.conftest import next_tg_id
 
 
 class FakeBot:
-    """The operators' Telegram, recording what the group would have seen.
-
-    `topic_id` mimics a forum: Telegram answers a header sent with no
-    `message_thread_id` by opening a topic and numbering it with that
-    message's own id. Getting that wrong is the difference between one topic
-    per ticket and every ticket landing in the same one.
-    """
+    """API-shaped responses: only createForumTopic creates a new topic."""
 
     def __init__(self, *, forum: bool = True, fail: bool = False):
         self.forum = forum
         self.fail = fail
         self.sent: list[dict] = []
         self._next_id = 1000
+        self.topics: list[int] = []
+
+    async def get_chat(self, chat_id):
+        return ChatFullInfo(id=chat_id, type="supergroup", is_forum=self.forum,
+                            accent_color_id=0, max_reaction_count=11,
+                            accepted_gift_types={
+                                "unlimited_gifts": False, "limited_gifts": False,
+                                "unique_gifts": False, "premium_subscription": False,
+                                "gifts_from_channels": False,
+                            })
+
+    async def create_forum_topic(self, chat_id, name):
+        self._next_id += 1
+        self.topics.append(self._next_id)
+        return ForumTopic(message_thread_id=self._next_id, name=name, icon_color=0x6FB9F0)
+
+    async def delete_forum_topic(self, chat_id, message_thread_id):
+        self.topics.remove(message_thread_id)
+        return True
 
     async def send_message(self, chat_id, text, **kw):
         if self.fail:
@@ -46,16 +61,18 @@ class FakeBot:
         self._next_id += 1
         thread = kw.get("message_thread_id")
         if thread is None and self.forum:
-            # A new topic, numbered after the message that opened it.
-            thread = self._next_id
+            thread = 1  # General; sending text does not create a topic.
         self.sent.append({"chat_id": chat_id, "text": text,
                           "thread": kw.get("message_thread_id"),
                           "reply_to": kw.get("reply_to_message_id"),
                           "markup": kw.get("reply_markup")})
-        return type("Sent", (), {
-            "message_id": self._next_id,
-            "message_thread_id": thread,
-        })()
+        return TelegramMessage(message_id=self._next_id,
+                               date=datetime.now(timezone.utc),
+                               chat=Chat(id=chat_id, type="supergroup"),
+                               text=text, message_thread_id=thread)
+
+    async def send_document(self, document, caption, **kw):
+        return await self.send_message(text=caption, **kw)
 
     @property
     def texts(self) -> list[str]:
@@ -103,26 +120,15 @@ async def test_a_ticket_from_any_channel_reaches_the_operators(
     assert any("our exports stopped overnight" in t for t in bot.texts)
 
 
-async def test_the_operator_gets_the_buttons_to_answer_without_leaving(
-    initialized_db,
-):
-    """Templates, ask the AI, close. If the message arrives without them the
-    operator has to go to the dashboard, which is the thing we are avoiding."""
+async def test_operator_group_receives_read_only_copies(initialized_db):
     tid = await _ticket_from("widget", f"btn-{next_tg_id()}", "help please")
     bot = FakeBot()
     await announce_service.announce_ticket(bot, tid)
-
-    with_markup = [m for m in bot.sent if m["markup"] is not None]
-    assert len(with_markup) == 1, "the customer's message came without buttons"
-    payloads = [b.callback_data
-                for row in with_markup[0]["markup"].inline_keyboard for b in row]
-    assert any("templates" in p for p in payloads)
-    assert any("close" in p for p in payloads)
+    assert bot.sent and all(m['markup'] is None for m in bot.sent)
 
 
 async def test_a_topic_is_opened_per_ticket_not_per_channel(initialized_db):
-    """Telegram opens a topic for a header sent with no thread id, and numbers
-    it after that message. Two tickets must not share one."""
+    """Two actual createForumTopic responses address two distinct tickets."""
     first = await _ticket_from("widget", f"t1-{next_tg_id()}", "one")
     second = await _ticket_from("widget", f"t2-{next_tg_id()}", "two")
     bot = FakeBot()
@@ -138,14 +144,13 @@ async def test_a_topic_is_opened_per_ticket_not_per_channel(initialized_db):
     assert a.header_message_id and b.header_message_id
 
 
-async def test_the_header_is_sent_without_a_thread_id(initialized_db):
-    """That absence is what creates the topic. Passing one would file the
-    ticket under an existing conversation instead — which looks like a
-    harmless extra argument and is not."""
+async def test_the_header_is_sent_into_the_created_topic(initialized_db):
+    """The createForumTopic result must be supplied to sendMessage."""
     tid = await _ticket_from("slack", f"C0{next_tg_id()}", "hello")
     bot = FakeBot()
     await announce_service.announce_ticket(bot, tid)
-    assert bot.sent[0]["thread"] is None
+    assert len(bot.topics) == 1
+    assert bot.sent[0]["thread"] == bot.topics[0]
 
 
 async def test_an_ordinary_group_still_works(initialized_db):
@@ -176,6 +181,147 @@ async def test_announcing_twice_does_not_open_two_topics(initialized_db):
 
     assert await announce_service.announce_ticket(bot, tid) is True
     assert len(bot.sent) == first_count, "a retry opened a second topic"
+
+
+async def test_missing_topic_permission_falls_back_without_storing_general(initialized_db):
+    tid = await _ticket_from("widget", f"fallback-{next_tg_id()}", "help")
+
+    class NoTopicPermission(FakeBot):
+        async def create_forum_topic(self, **kwargs):
+            raise RuntimeError("not enough rights to create a topic")
+
+    bot = NoTopicPermission()
+    assert await announce_service.announce_ticket(bot, tid)
+    async with db_session() as session:
+        ticket = await session.get(Ticket, tid)
+    assert ticket.thread_id is None
+    assert ticket.header_message_id is not None
+    assert all(m["thread"] is None for m in bot.sent)
+    assert bot.sent[1]["reply_to"] == ticket.header_message_id
+
+
+async def test_concurrent_announcements_share_one_header_and_one_mirror(initialized_db):
+    tid = await _ticket_from("widget", f"parallel-{next_tg_id()}", "only once")
+    async with db_session() as session:
+        mid = (await session.execute(select(Message.id).where(Message.ticket_id == tid))).scalar_one()
+    bot = FakeBot()
+    assert all(await asyncio.gather(*[
+        announce_service.announce_message(bot, tid, mid) for _ in range(3)
+    ]))
+    assert len(bot.topics) == 1
+    assert len(bot.sent) == 2
+    async with db_session() as session:
+        row = await session.get(Message, mid)
+    assert row.admin_message_id == bot._next_id
+
+
+async def test_followups_are_mirrored_by_exact_id_without_replaying_upgrade_history(initialized_db):
+    tid = await _ticket_from("widget", f"followup-{next_tg_id()}", "old message")
+    header = next_tg_id()
+    async with db_session() as session:
+        ticket = await session.get(Ticket, tid)
+        ticket.header_message_id = header
+        ticket.thread_id = 1  # Stored by the old, incorrect topic implementation.
+        followup = Message(ticket_id=tid, sender_type="user", sender_id=1, text="new message")
+        session.add(followup)
+        await session.commit()
+    bot = FakeBot()
+    assert await announce_service.announce_ticket(bot, tid)
+    assert bot.sent == []
+    assert await announce_service.announce_message(bot, tid, followup.id)
+    assert await announce_service.announce_message(bot, tid, followup.id)
+    assert len(bot.sent) == 1
+    assert bot.sent[0]["text"] == "new message"
+    assert bot.sent[0]["thread"] is None
+    assert bot.sent[0]["reply_to"] == header
+
+
+async def test_long_followup_is_bounded_without_losing_the_source(initialized_db):
+    tid = await _ticket_from("widget", f"long-{next_tg_id()}", "first")
+    text = "a" * 8000
+    async with db_session() as session:
+        followup = Message(ticket_id=tid, sender_type="user", sender_id=1, text=text)
+        session.add(followup)
+        await session.commit()
+    bot = FakeBot()
+    assert await announce_service.announce_message(bot, tid, followup.id)
+    assert len(bot.texts[-1]) == 4096
+    async with db_session() as session:
+        assert (await session.get(Message, followup.id)).text == text
+
+
+async def test_an_inbound_file_uses_its_channel_fetch_api(initialized_db):
+    from tests.conftest import RecordingChannel
+    pipe = RecordingChannel(name="relay")
+    pipe.fetched["provider-ref"] = b"file-bytes"
+    channels.register(pipe)
+    try:
+        tid = await _ticket_from("relay", f"file-{next_tg_id()}", "first")
+        async with db_session() as session:
+            row = Message(ticket_id=tid, sender_type="user", sender_id=1, text="caption",
+                          file_id="provider-ref", file_name="notes.txt", file_type="document")
+            session.add(row)
+            await session.commit()
+
+        class FileBot(FakeBot):
+            async def send_document(self, document, caption, **kwargs):
+                assert document.data == b"file-bytes"
+                assert document.filename == "notes.txt"
+                return await super().send_document(document, caption, **kwargs)
+
+        bot = FileBot()
+        assert await announce_service.announce_message(bot, tid, row.id)
+        assert bot.texts[-1] == "caption"
+    finally:
+        channels.reset()
+
+
+@pytest.mark.parametrize("status,visible", [("delivered", True), ("failed", False),
+                                         ("pending", False), ("uncertain", False)])
+async def test_outgoing_mirror_only_shows_confirmed_deliveries(initialized_db, status, visible):
+    tid = await _ticket_from("widget", f"outgoing-{next_tg_id()}", "question")
+    async with db_session() as session:
+        row = Message(ticket_id=tid, sender_type="admin", sender_id=1, text="answer",
+                      delivery_status=status)
+        session.add(row)
+        await session.commit()
+    bot = FakeBot()
+    assert await announce_service.announce_message(bot, tid, row.id) is visible
+    assert any("📤 answer" in text for text in bot.texts) is visible
+
+
+async def test_pending_operator_file_mirrors_from_durable_bytes_after_delivery(
+    initialized_db, tmp_path, monkeypatch,
+):
+    from src.services import outbound
+    from tests.conftest import RecordingChannel
+    from src.channels.identity import address_of
+    from src.database.models import User
+    monkeypatch.setenv("ATTACHMENTS_DIR", str(tmp_path))
+    pipe = RecordingChannel(name="relay")
+    channels.register(pipe)
+    try:
+        tid = await _ticket_from("relay", f"retained-{next_tg_id()}", "question")
+        async with db_session() as session:
+            ticket = await session.get(Ticket, tid)
+            user = await session.get(User, ticket.user_id)
+            job = await outbound.enqueue(session, ticket_id=tid, channel="relay", address=address_of(user),
+                                         text="file reply", filename="report.txt", content=b"saved-report")
+            await session.commit()
+        assert (await outbound.deliver(job.id)).ok
+
+        class FileBot(FakeBot):
+            async def send_document(self, document, caption, **kwargs):
+                assert document.data == b"saved-report"
+                return await super().send_document(document, caption, **kwargs)
+
+        # The provider's recorder cannot download its opaque fid-1 ref. The
+        # original bytes on the durable job must still reach the operator view.
+        bot = FileBot()
+        assert await announce_service.announce_message(bot, tid, job.message_id)
+        assert bot.texts[-1] == "📤 file reply"
+    finally:
+        channels.reset()
 
 
 async def test_a_customer_is_never_refused_because_the_admin_chat_is_down(
