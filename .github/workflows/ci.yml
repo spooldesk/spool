@@ -117,12 +117,27 @@ jobs:
   # deploy did. A dependency that loses its wheel breaks here now, on a pull
   # request, instead of on the production host.
   image:
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
     runs-on: ubuntu-latest
+    env:
+      DOCKER_DEFAULT_PLATFORM: linux/${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v4
 
+      - name: Enable ARM64 image execution on the build runner
+        if: matrix.arch == 'arm64'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
       - name: Build the container
-        run: docker build -t spooldesk:ci .
+        run: |
+          docker build --platform linux/${{ matrix.arch }} -t spooldesk:ci .
+          test "$(docker image inspect spooldesk:ci --format '{{.Architecture}}')" = '${{ matrix.arch }}'
+          docker run --rm spooldesk:ci python -c "from importlib.metadata import version; assert version('multidict') == '6.9.1'"
 
       - name: It starts and answers
         run: |
@@ -132,7 +147,7 @@ jobs:
             -p 8000:8000 spooldesk:ci \
             python -m uvicorn src.dashboard.app:app --host 0.0.0.0 --port 8000 \
             --no-proxy-headers
-          for i in $(seq 1 30); do
+          for i in $(seq 1 90); do
             if curl -fsS http://localhost:8000/healthz > /dev/null; then
               echo "dashboard is up"
               exit 0
@@ -150,7 +165,7 @@ jobs:
           docker run -d --name ci-pg --network ci-db \
             -e POSTGRES_DB=spooldesk -e POSTGRES_USER=spooldesk \
             -e 'POSTGRES_PASSWORD=ci@only/word:#%+?' postgres:16-alpine
-          for i in $(seq 1 30); do
+          for i in $(seq 1 90); do
             if docker exec ci-pg pg_isready -U spooldesk -d spooldesk; then break; fi
             sleep 2
           done
@@ -159,7 +174,7 @@ jobs:
             -e 'POSTGRES_PASSWORD=ci@only/word:#%+?' \
             -e ACCESS_PASSWORD=ci-long-bootstrap-password spooldesk:ci \
             python -m uvicorn src.dashboard.app:app --host 0.0.0.0 --port 8000 --no-proxy-headers
-          for i in $(seq 1 30); do
+          for i in $(seq 1 90); do
             if docker exec ci-pg-dash python -c "import urllib.request; assert urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3).status == 200"; then
               exit 0
             fi
@@ -173,14 +188,15 @@ jobs:
         shell: bash
         run: |
           mkdir candidate-image
-          docker tag spooldesk:ci spooldesk:rc-${{ github.sha }}
-          docker image inspect spooldesk:rc-${{ github.sha }} --format '{{.Id}}' > candidate-image/IMAGE_ID
-          docker save spooldesk:rc-${{ github.sha }} | gzip > candidate-image/spooldesk-image.tar.gz
+          docker tag spooldesk:ci spooldesk:rc-${{ github.sha }}-${{ matrix.arch }}
+          docker image inspect spooldesk:rc-${{ github.sha }}-${{ matrix.arch }} --format '{{.Id}}' > candidate-image/IMAGE_ID
+          printf '%s\n' 'spooldesk:rc-${{ github.sha }}-${{ matrix.arch }}' > candidate-image/IMAGE_TAG
+          docker save spooldesk:rc-${{ github.sha }}-${{ matrix.arch }} | gzip > candidate-image/spooldesk-image.tar.gz
 
       - uses: actions/upload-artifact@v4
         if: github.event_name == 'workflow_dispatch'
         with:
-          name: candidate-image-${{ github.sha }}
+          name: candidate-image-${{ github.sha }}-${{ matrix.arch }}
           path: candidate-image/
           if-no-files-found: error
           retention-days: 7
@@ -360,14 +376,20 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: candidate-image-${{ github.sha }}
+          name: candidate-image-${{ github.sha }}-amd64
           path: candidate
+      - uses: actions/download-artifact@v4
+        with:
+          name: candidate-image-${{ github.sha }}-arm64
+          path: candidate-arm64
       - name: Package the same commit after all release checks pass
         run: |
           git archive --format=tar.gz --prefix=spooldesk/ -o candidate/spooldesk-source.tar.gz HEAD
           git archive --format=zip --prefix=spooldesk/ -o candidate/spooldesk-source.zip HEAD
           git rev-parse HEAD > candidate/SOURCE_COMMIT
-          printf '%s\n' 'spooldesk:rc-${{ github.sha }}' > candidate/IMAGE_TAG
+          mv candidate-arm64/spooldesk-image.tar.gz candidate/spooldesk-image-arm64.tar.gz
+          mv candidate-arm64/IMAGE_ID candidate/IMAGE_ID_ARM64
+          mv candidate-arm64/IMAGE_TAG candidate/IMAGE_TAG_ARM64
           cp docs/SECOND_COMPUTER_INSTALL.md candidate/INSTALL-RU.md
           python3 - <<'PY'
           import json
@@ -377,15 +399,29 @@ jobs:
               'source_commit': candidate.joinpath('SOURCE_COMMIT').read_text().strip(),
               'image_id': candidate.joinpath('IMAGE_ID').read_text().strip(),
               'image_tag': candidate.joinpath('IMAGE_TAG').read_text().strip(),
+              'images': {
+                  'linux/amd64': {
+                      'archive': 'spooldesk-image.tar.gz',
+                      'image_id': candidate.joinpath('IMAGE_ID').read_text().strip(),
+                      'image_tag': candidate.joinpath('IMAGE_TAG').read_text().strip(),
+                      'execution': 'native Linux amd64 CI',
+                  },
+                  'linux/arm64': {
+                      'archive': 'spooldesk-image-arm64.tar.gz',
+                      'image_id': candidate.joinpath('IMAGE_ID_ARM64').read_text().strip(),
+                      'image_tag': candidate.joinpath('IMAGE_TAG_ARM64').read_text().strip(),
+                      'execution': 'QEMU ARM64 on Linux amd64 CI; native host trial pending',
+                  },
+              },
               'ci_run_url': '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}',
-              'automated_checks': 'passed: Windows/Linux tests, PostgreSQL tests, image startup, dependencies, deployment, landing',
+              'automated_checks': 'passed: Windows/Linux tests, PostgreSQL tests, amd64/arm64 image startup with SQLite and PostgreSQL, patched runtime dependency, dependencies, deployment, landing',
               'second_computer_acceptance': 'pending owner confirmation',
               'release_status': 'candidate; not stable production acceptance',
           }
           candidate.joinpath('VALIDATION.json').write_text(json.dumps(validation, indent=2) + '\n')
           PY
           cd candidate
-          sha256sum spooldesk-image.tar.gz spooldesk-source.tar.gz spooldesk-source.zip IMAGE_ID IMAGE_TAG SOURCE_COMMIT INSTALL-RU.md VALIDATION.json > SHA256SUMS
+          sha256sum spooldesk-image.tar.gz spooldesk-image-arm64.tar.gz spooldesk-source.tar.gz spooldesk-source.zip IMAGE_ID IMAGE_TAG IMAGE_ID_ARM64 IMAGE_TAG_ARM64 SOURCE_COMMIT INSTALL-RU.md VALIDATION.json > SHA256SUMS
           sha256sum --check SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:

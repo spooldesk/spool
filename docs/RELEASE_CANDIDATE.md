@@ -1,19 +1,27 @@
-# Spooldesk v0.1.0-rc.5 — GitHub installation candidate
+# Spooldesk v0.1.0-rc.6 — GitHub installation candidate
 
-Prepared 2026-10-02 for a single-organization self-hosted installation trial.
+Prepared 2026-10-13 for a single-organization self-hosted installation trial.
 The GitHub prerelease identifies its exact commit; downloaded CI assets contain
 `SOURCE_COMMIT`, `IMAGE_ID`, `IMAGE_TAG`, `VALIDATION.json` and `SHA256SUMS`.
 The release is a candidate, not a claim of stable production acceptance.
 
-## Changes from local rc.4
+## Changes from rc.5
 
-The previously local self-hosted candidate is prepared for a versioned GitHub
-prerelease. CI now packages a Windows-friendly source ZIP, the tested image,
-its tag, commit, validation provenance and an installation guide together.
-Instructions cover downloading private GitHub release assets. One-off worker
-tasks stay outside Git. Application behavior and dashboard design match rc.4.
-The worker tooling normalizes repository paths before relative-path checks,
-including Windows short user-directory aliases found by GitHub CI.
+- Runtime `multidict` is patched from 6.9.0 to 6.9.1 (CVE-2026-104874).
+- The separate maintenance tool lock updates `uv` from 0.12.17 to 0.12.18
+  (CVE-2026-104843). Other package versions are unchanged.
+- The obsolete Render demo blueprint is removed, and the README language check
+  is repaired. Runtime application behavior and dashboard design are unchanged.
+- The repository home links directly to the complete transfer ZIP and checksum.
+  The Windows and macOS/Linux guides follow an ordered path through verification,
+  image loading, fresh configuration and startup.
+- The package includes Linux/amd64 and Linux/arm64 images. Both are built from
+  the same locked source and checked for startup with SQLite and PostgreSQL;
+  ARM64 runs under QEMU in CI. Native host installation acceptance is pending.
+
+The image is rebuilt from this candidate's locked dependencies. The rc.5 image
+and assets are preserved for traceability; updating source does not update an
+existing installation. Use rc.6 for the clean installation trial.
 
 The owner reports manual functional testing completed. Installation on a second
 computer is pending; follow [SECOND_COMPUTER_INSTALL.md](SECOND_COMPUTER_INSTALL.md).
@@ -68,6 +76,9 @@ Never use preview credentials, demo keys or seeded AI TEST data for production.
   support hours, update ownership and backup/restore ownership for the pilot.
 
 ## Known limits
+
+Generic outgoing webhooks are deferred to a later update; they are not part of
+this candidate. Existing channel-specific inbound handlers remain available.
 
 One organization per installation; teams are routing groups, not tenant isolation.
 Several request limits remain process-local and write transactions share a DB

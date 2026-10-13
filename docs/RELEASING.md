@@ -27,13 +27,15 @@ requires the reviewed commit and CI procedure below.
    the actual production image checks, dependency audit, deployment checks and
    the bilingual landing build.
 4. Download `spooldesk-release-candidate-<commit>`. It contains the source archive
-   (ZIP and tar.gz) made by `git archive` from that commit, the **same image**
+   (ZIP and tar.gz) made by `git archive` from that commit, the **same images**
    that passed Docker startup checks, `SOURCE_COMMIT`, `IMAGE_ID`, `IMAGE_TAG`,
    `INSTALL-RU.md`, `VALIDATION.json` and `SHA256SUMS`.
    The earlier `candidate-image-*` artifact alone does not mean all checks passed.
-5. Verify `sha256sum --check SHA256SUMS`. Load the image using
-   `docker load --input spooldesk-image.tar.gz`; its local tag is
-   `spooldesk:rc-<commit>`. Check `docker image inspect` against `IMAGE_ID`.
+5. Verify `sha256sum --check SHA256SUMS` (`shasum -a 256 --check` on macOS).
+   For amd64 load `spooldesk-image.tar.gz` and use `IMAGE_TAG` / `IMAGE_ID`.
+   For arm64 load `spooldesk-image-arm64.tar.gz` and use `IMAGE_TAG_ARM64` /
+   `IMAGE_ID_ARM64`. Tags are `spooldesk:rc-<commit>-<arch>`.
+   Check `docker image inspect` against the corresponding image ID.
    `IMAGE_ID` identifies a local image; it is not a registry manifest digest.
 
 The workflow only creates temporary GitHub Actions artifacts. It does **not**
@@ -50,7 +52,15 @@ required. Keep the project name stable and use empty, separate storage.
 After loading the accepted image, persist its tag as `SPOOLDESK_IMAGE` in `.env`
 and use `--no-build`; rebuilding would produce a different artifact.
 Both local and CI candidates include `IMAGE_TAG`; CI uses
-`spooldesk:rc-<commit>`. Preserve LICENSE in source and the runtime image.
+`spooldesk:rc-<commit>-amd64` or `spooldesk:rc-<commit>-arm64` starting with rc.6.
+Preserve LICENSE in source and both runtime images. CI validates ARM64 startup
+under QEMU; this does not replace a native second-computer installation trial.
+
+For the repository home download, ZIP the verified candidate files as
+`spooldesk-<version>-transfer.zip` and generate a separate `.zip.sha256` file.
+Keep the original CI files unchanged inside this wrapper. Upload the individual
+files and wrapper to the same draft release, verify their hashes and identities,
+then publish it as a prerelease. Do not overwrite assets in an older release.
 
 The owner reports the manual functional tests are done. Record that provenance;
 repeat affected flows when code/configuration changes, not the whole manual

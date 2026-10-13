@@ -12,26 +12,28 @@ open-source licence. Paid installation and maintenance are separate services.
 
 ### Download and install
 
-**[↓ Download Spooldesk v0.1.0-rc.5 — complete installation package (101 MiB)](https://github.com/spooldesk/spool/releases/download/v0.1.0-rc.5/spooldesk-v0.1.0-rc.5-transfer.zip)**
+**[↓ Download Spooldesk v0.1.0-rc.6 — complete installation package](https://github.com/spooldesk/spool/releases/download/v0.1.0-rc.6/spooldesk-v0.1.0-rc.6-transfer.zip)**
 
-One ZIP contains the tested Docker image, source, checksums and `INSTALL-RU.md`.
-Extract it and follow that guide. The image runs on Linux/amd64, including
-Docker Desktop with Linux containers on Windows x64. PostgreSQL is downloaded
-separately; Docker Compose v2, Python 3.12+ and internet access are required.
+One ZIP contains tested Linux/amd64 and Linux/arm64 Docker images, source,
+checksums and `INSTALL-RU.md`. Follow the Windows or macOS/Linux instructions;
+they select the image for your Docker architecture, including Apple Silicon.
+Use Docker Desktop with Linux containers on Windows/macOS, or Docker Engine
+on Linux. PostgreSQL is downloaded separately; Docker Compose v2, Python 3.12+
+and internet access are required. ARM64 image startup is checked under QEMU;
+installation acceptance on a real second computer remains pending.
 
 [Installation guide (Russian)](docs/SECOND_COMPUTER_INSTALL.md) ·
-[ZIP checksum](https://github.com/spooldesk/spool/releases/download/v0.1.0-rc.5/spooldesk-v0.1.0-rc.5-transfer.zip.sha256) ·
-[Release notes](https://github.com/spooldesk/spool/releases/tag/v0.1.0-rc.5)
+[ZIP checksum](https://github.com/spooldesk/spool/releases/download/v0.1.0-rc.6/spooldesk-v0.1.0-rc.6-transfer.zip.sha256) ·
+[Release notes](https://github.com/spooldesk/spool/releases/tag/v0.1.0-rc.6)
 
 This is an installation candidate; second-computer acceptance is pending.
 **Private preview:** sign in with a GitHub account that has repository access.
 The direct download does not grant access to an otherwise unauthorized account.
 
-**Security update (2026-10-13):** the `rc.5` ZIP predates the `multidict 6.9.1`
-fix for [CVE-2026-104874](https://github.com/aio-libs/multidict/security/advisories/GHSA-54p9-h82j-f925).
-The patched dependency is in the current source; the existing release image
-still contains `6.9.0`. For a new deployment, use the source-build option below
-until a replacement image has been built, tested and published.
+**Security update (2026-10-13):** `rc.6` includes `multidict 6.9.1`, fixing
+[CVE-2026-104874](https://github.com/aio-libs/multidict/security/advisories/GHSA-54p9-h82j-f925),
+and the maintenance tool lock pins `uv 0.12.18`. Use this candidate for a new
+installation; the older `rc.5` assets have not been replaced.
 
 ### Download from a terminal
 
@@ -39,7 +41,7 @@ With [GitHub CLI](https://cli.github.com/) installed, sign in once using
 `gh auth login`, then run this command in PowerShell, Bash or another terminal:
 
 ```sh
-gh release download v0.1.0-rc.5 --repo spooldesk/spool --pattern 'spooldesk-v0.1.0-rc.5-transfer.zip*' --dir spooldesk-download
+gh release download v0.1.0-rc.6 --repo spooldesk/spool --pattern 'spooldesk-v0.1.0-rc.6-transfer.zip*' --dir spooldesk-download
 ```
 
 This downloads the same ZIP and its SHA-256 file. It does not start an installer

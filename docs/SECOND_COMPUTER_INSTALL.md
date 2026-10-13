@@ -1,179 +1,248 @@
-# Первая установка Spooldesk на другом компьютере
+# Чистая установка Spooldesk v0.1.0-rc.6
 
-Выбранная модель — **self-hosted: одна организация на одной установке**.
-Для этого теста VPS и домен не нужны. Компьютер запускает PostgreSQL,
-дашборд и обработчики подключённых каналов. Лендинг — отдельный статический
-сайт, запускать его для работы helpdesk не требуется.
+Self-hosted: одна организация на одной установке. Для первого локального теста
+VPS и домен не нужны. Будут запущены два сервиса: приложение `dashboard`
+(включая обработчики каналов) и PostgreSQL. Лендинг устанавливать не требуется.
 
-Инструкция для Windows / PowerShell. Нужны работающий Docker Desktop с Linux
-containers, Docker Compose v2 и Python 3.12+. Установку этих инструментов
-выполняет владелец компьютера. Нужен интернет для загрузки PostgreSQL и сборки.
+## 1. Подготовить компьютер
 
-## 1. Скачать или перенести кандидат
+| ОС | Что установить самостоятельно | Архитектура образа |
+|---|---|---|
+| Windows с поддержкой Docker Desktop | [Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/) в режиме Linux containers, Python 3.12+ | Обычно amd64; ARM64 — если поддерживается установленным Docker |
+| macOS, Intel | [Docker Desktop для Intel](https://docs.docker.com/desktop/setup/install/mac-install/), Python 3.12+ | amd64 |
+| macOS, Apple Silicon | [Docker Desktop для Apple Silicon](https://docs.docker.com/desktop/setup/install/mac-install/), Python 3.12+ | arm64 |
+| Linux x86-64 / ARM64 | [Docker Engine](https://docs.docker.com/engine/install/) и [Compose plugin](https://docs.docker.com/compose/install/linux/), Python 3.12+, unzip | amd64 / arm64 |
 
-**[Скачать Spooldesk v0.1.0-rc.5 одним ZIP (101 МиБ)](https://github.com/spooldesk/spool/releases/download/v0.1.0-rc.5/spooldesk-v0.1.0-rc.5-transfer.zip)**
+Запусти Docker Desktop либо службу Docker. Команда `docker version` должна
+показывать и Client, и Server; `docker compose version` — Compose v2.
+На Linux настрой доступ своего пользователя к Docker по инструкции Docker.
+Готовые образы — **Linux/amd64 и Linux/arm64**, не нативные Windows-контейнеры.
+32-битные ОС не поддерживаются этим пакетом. ARM64 проверяется в CI под QEMU;
+проверка на твоём реальном устройстве остаётся частью установочной приёмки.
 
-Скачай также [контрольную сумму ZIP](https://github.com/spooldesk/spool/releases/download/v0.1.0-rc.5/spooldesk-v0.1.0-rc.5-transfer.zip.sha256).
-Ссылка есть наверху главной страницы репозитория — искать файлы в Releases не
-нужно. Пока репозиторий приватный, необходим вход в GitHub под аккаунтом с доступом.
+Нужен интернет для загрузки пакета и PostgreSQL: это не offline-установщик.
+Python нужен только для мастера настройки, библиотеки проекта на хост ставить
+не нужно. На Windows ниже используется PowerShell, на macOS/Linux — Bash или zsh.
+Команды рассчитаны на **новую установку**; если проект Docker `spooldesk` на
+компьютере уже существует, остановись и используй процедуру обновления/backup.
 
-Либо скачай оба файла через терминал с установленным **GitHub CLI**.
-Для первого входа выполни `gh auth login`, затем:
+## 2. Скачать пакет
 
-```powershell
-gh release download v0.1.0-rc.5 --repo spooldesk/spool --pattern 'spooldesk-v0.1.0-rc.5-transfer.zip*' --dir spooldesk-download
+**[Скачать Spooldesk v0.1.0-rc.6 одним ZIP](https://github.com/spooldesk/spool/releases/download/v0.1.0-rc.6/spooldesk-v0.1.0-rc.6-transfer.zip)**
+
+Рядом скачай [SHA-256 ZIP](https://github.com/spooldesk/spool/releases/download/v0.1.0-rc.6/spooldesk-v0.1.0-rc.6-transfer.zip.sha256).
+Ссылки также находятся наверху главной страницы репозитория. Пока репозиторий
+приватный, нужен вход в GitHub под аккаунтом с доступом. Не выбирай стандартный
+GitHub «Source code»: он не содержит готовых Docker-образов.
+
+Альтернатива — [GitHub CLI](https://cli.github.com/). Авторизуйся один раз
+через `gh auth login`, затем выполни:
+
+```sh
+gh release download v0.1.0-rc.6 --repo spooldesk/spool --pattern 'spooldesk-v0.1.0-rc.6-transfer.zip*' --dir spooldesk-download
+cd spooldesk-download
 ```
 
-Это только скачивание, без запуска программ или изменения существующей установки.
-В каталоге с ZIP и его `.sha256` проверь архив и распакуй его в **новый** каталог:
+Если скачивал браузером, открой терминал в папке с ZIP и `.sha256`.
+Пакет содержит исходники, оба образа, их ID/теги, `SOURCE_COMMIT`,
+`VALIDATION.json`, `SHA256SUMS` и автономную копию этой инструкции `INSTALL-RU.md`.
+
+## 3. Установить — выбери раздел для своей ОС
+
+Не переноси `.env`, базы, тома, ключи и AI TEST данные с основного компьютера.
+Не запускай `docker-compose.preview.yml` или скрипты заполнения демо.
+
+### Windows / PowerShell
+
+Выполняй блоки по порядку **в одном окне PowerShell**. При любой ошибке
+не переходи к следующему блоку.
+
+Проверь ZIP, распакуй пакет и проверь его внутренние файлы:
 
 ```powershell
-$package = 'spooldesk-v0.1.0-rc.5-transfer.zip'
+$ErrorActionPreference = 'Stop'
+$package = 'spooldesk-v0.1.0-rc.6-transfer.zip'
 $expected = ((Get-Content "$package.sha256" -Raw).Trim() -split '\s+')[0]
 $actual = (Get-FileHash -LiteralPath $package -Algorithm SHA256).Hash.ToLower()
 if ($actual -ne $expected) { throw 'Package checksum mismatch' }
 if (Test-Path -LiteralPath '.\spooldesk-install') { throw 'Choose a new empty destination' }
 Expand-Archive -LiteralPath $package -DestinationPath '.\spooldesk-install'
 Set-Location '.\spooldesk-install'
-```
-
-Продолжай по инструкции ниже. Внутри ZIP лежит и автономная копия инструкции
-`INSTALL-RU.md`. При желании отдельные файлы доступны на странице
-[релиза](https://github.com/spooldesk/spool/releases/tag/v0.1.0-rc.5).
-Автоматические ссылки GitHub «Source code» не содержат Docker-образа;
-для установки используй вложенный `spooldesk-source.zip`.
-
-В пакете CI есть `spooldesk-source.zip`, `spooldesk-source.tar.gz`,
-`spooldesk-image.tar.gz`, `IMAGE_ID`, `IMAGE_TAG`, `SOURCE_COMMIT`,
-`SHA256SUMS`, `VALIDATION.json` и `INSTALL-RU.md`. `VALIDATION.json` содержит
-ссылку на CI той же ревизии. Для перенесённого локального rc.4 имена архивов
-содержат версию, а описание находится в `README-RC.md`.
-Проверь контрольные суммы **до** установки:
-
-```powershell
 Get-Content .\SHA256SUMS | ForEach-Object {
     $parts = $_ -split '  ', 2
     $actual = (Get-FileHash -LiteralPath $parts[1] -Algorithm SHA256).Hash.ToLower()
     if ($actual -ne $parts[0]) { throw "Checksum mismatch: $($parts[1])" }
 }
-```
-
-Распакуй ZIP исходников в новый каталог. Далее работай внутри `spooldesk`,
-где лежат `docker-compose.yml`, `Dockerfile` и `scripts`. Если получены только
-исходники проверенной версии, используй вариант сборки ниже.
-
-**Не переноси `.env`, базу, тома Docker, demo/AI TEST данные и ключи с основного
-компьютера.** Первый тест должен подтвердить чистую установку. Не используй
-`docker-compose.preview.yml`, порт 8011 или скрипты заполнения демо.
-
-## 2. Создать собственные настройки
-
-```powershell
 docker version
+if ($LASTEXITCODE -ne 0) { throw 'Start Docker Desktop first' }
 docker compose version
+if ($LASTEXITCODE -ne 0) { throw 'Docker Compose v2 is required' }
 python --version
-python scripts/setup.py
+if ($LASTEXITCODE -ne 0) { throw 'Install Python 3.12 or newer first' }
+python -c "import sys; sys.exit(0 if sys.version_info >= (3, 12) else 1)"
+if ($LASTEXITCODE -ne 0) { throw 'Python 3.12+ is required' }
 ```
 
-На вопрос о пароле нажми Enter для генерации. Сохрани выведенный пароль в
-менеджере паролей. Логин первого владельца — `admin@local`. Скрипт создаёт
-локальный `.env` и независимые пароли/ключи. Он не подключает каналы и ИИ.
-
-Не запускай мастер повторно для обычного перезапуска: смена пароля PostgreSQL
-в `.env` не меняет пароль уже созданной БД, а потеря `SECRETS_KEY` делает
-зашифрованные данные нечитаемыми. Ключ хранится отдельно от резервных копий.
-
-## 3. Запустить один из двух вариантов
-
-### A. Готовый образ из кандидата — рекомендуется для проверки релиза
-
-Из каталога кандидата, перед переходом в распакованный `spooldesk`:
+Выбери образ по архитектуре **Docker**, загрузи и сверь его ID:
 
 ```powershell
-$releaseImage = (Get-Content .\IMAGE_TAG -Raw).Trim()
-$expectedImageId = (Get-Content .\IMAGE_ID -Raw).Trim()
-# Для пакета из GitHub Releases:
-docker load --input .\spooldesk-image.tar.gz
-# Для старого локального rc.4 имя: spooldesk-v0.1.0-rc.4-image.tar.gz.
+$dockerArch = (docker info --format '{{.Architecture}}').Trim()
+if ($LASTEXITCODE -ne 0) { throw 'Cannot read Docker architecture' }
+switch ($dockerArch) {
+    { $_ -in 'x86_64', 'amd64' } { $suffix = ''; $imageFile = 'spooldesk-image.tar.gz' }
+    { $_ -in 'aarch64', 'arm64' } { $suffix = '_ARM64'; $imageFile = 'spooldesk-image-arm64.tar.gz' }
+    default { throw "Unsupported Docker architecture: $dockerArch" }
+}
+$releaseImage = (Get-Content "IMAGE_TAG$suffix" -Raw).Trim()
+$expectedImageId = (Get-Content "IMAGE_ID$suffix" -Raw).Trim()
+docker load --input $imageFile
+if ($LASTEXITCODE -ne 0) { throw 'Image load failed' }
 $loadedImageId = (docker image inspect $releaseImage --format '{{.Id}}').Trim()
-if ($loadedImageId -ne $expectedImageId) { throw 'Loaded image differs from tested image' }
+if ($LASTEXITCODE -ne 0 -or $loadedImageId -ne $expectedImageId) { throw 'Image ID mismatch' }
+Expand-Archive -LiteralPath .\spooldesk-source.zip -DestinationPath .
+Set-Location .\spooldesk
+python scripts/setup.py
+if ($LASTEXITCODE -ne 0) { throw 'Setup did not finish' }
+Add-Content -LiteralPath .env -Value "`nSPOOLDESK_IMAGE=$releaseImage" -Encoding UTF8
 ```
 
-Открой `.env` в распакованном `spooldesk` и добавь отдельную строку
-`SPOOLDESK_IMAGE=` со значением из файла `IMAGE_TAG` после знака `=`.
-Это сохраняет точную версию и для следующих терминалов. Перейди в каталог
-распакованных исходников `spooldesk`, затем выполни:
+Мастер спросит пароль. Нажми Enter для генерации и сохрани показанный пароль
+в менеджере паролей. Логин владельца — **`admin@local`**.
+
+Запусти установку:
 
 ```powershell
 docker pull postgres:16-alpine
+if ($LASTEXITCODE -ne 0) { throw 'PostgreSQL download failed' }
 docker compose -p spooldesk up -d --no-build --pull never dashboard
+if ($LASTEXITCODE -ne 0) { throw 'Startup failed; inspect the logs' }
+docker compose -p spooldesk ps
 ```
 
-`--no-build` сохраняет проверенный образ. Архив приложения не содержит образ
-PostgreSQL, поэтому он загружается отдельно. Пакет не является offline-установщиком.
+### macOS / Linux — Bash или zsh
 
-### B. Сборка из исходников
+Выполняй блоки по порядку в одном терминале. При любой ошибке остановись.
+Ниже `set -e` прекращает выполнение при ошибке; контрольные проверки
+используют `exit 1`, поэтому могут закрыть текущую оболочку.
 
-Не задавай `SPOOLDESK_IMAGE` из варианта A. В каталоге исходников:
+Проверь пакет и инструменты:
 
-```powershell
-docker compose -p spooldesk up -d --build dashboard
+```sh
+set -e
+package=spooldesk-v0.1.0-rc.6-transfer.zip
+if command -v sha256sum >/dev/null 2>&1; then
+  sha256sum --check "$package.sha256"
+else
+  shasum -a 256 --check "$package.sha256"
+fi
+if [ -e spooldesk-install ]; then echo 'Choose a new empty destination'; exit 1; fi
+unzip -q "$package" -d spooldesk-install
+cd spooldesk-install
+if command -v sha256sum >/dev/null 2>&1; then
+  sha256sum --check SHA256SUMS
+else
+  shasum -a 256 --check SHA256SUMS
+fi
+docker version
+docker compose version
+python3 --version
+python3 -c 'import sys; assert sys.version_info >= (3, 12), "Python 3.12+ is required"'
 ```
 
-Это создаёт новый локальный образ из выбранных исходников. Его ID может
-отличаться от проверенного бинарного образа кандидата: не выдавай его за тот
-же бинарный артефакт.
+Загрузи соответствующий образ и создай собственные настройки:
+
+```sh
+docker_arch=$(docker info --format '{{.Architecture}}')
+case "$docker_arch" in
+  x86_64|amd64) suffix=''; image_file=spooldesk-image.tar.gz ;;
+  aarch64|arm64) suffix=_ARM64; image_file=spooldesk-image-arm64.tar.gz ;;
+  *) echo "Unsupported Docker architecture: $docker_arch"; exit 1 ;;
+esac
+release_image=$(cat "IMAGE_TAG$suffix")
+expected_image_id=$(cat "IMAGE_ID$suffix")
+docker load --input "$image_file"
+loaded_image_id=$(docker image inspect "$release_image" --format '{{.Id}}')
+if [ "$loaded_image_id" != "$expected_image_id" ]; then echo 'Image ID mismatch'; exit 1; fi
+unzip -q spooldesk-source.zip
+cd spooldesk
+python3 scripts/setup.py
+printf '\nSPOOLDESK_IMAGE=%s\n' "$release_image" >> .env
+chmod 600 .env
+docker pull postgres:16-alpine
+docker compose -p spooldesk up -d --no-build --pull never dashboard
+docker compose -p spooldesk ps
+```
+
+На вопрос мастера о пароле можно нажать Enter для генерации. Сохрани пароль;
+логин первого владельца — **`admin@local`**. Если команда `python3` запускает
+старую версию, используй установленную `python3.12` или новее в обоих блоках.
 
 ## 4. Открыть и проверить
 
-```powershell
-docker compose -p spooldesk ps
-Invoke-RestMethod http://localhost:8000/healthz
-```
+Открой **http://localhost:8000** на том же компьютере, где работает Docker.
+Первый запуск может занять минуту. Войди новым паролем. Если страница не
+открывается, проверь `docker compose -p spooldesk ps` и
+`docker compose -p spooldesk logs --tail 100 dashboard postgres` из папки `spooldesk`.
+`http://localhost:8000/healthz` должен возвращать успешный ответ.
 
-Открой **http://localhost:8000** и войди своим новым паролем. В Docker будут
-два необходимых сервиса: `dashboard` и `postgres`. Отдельный `bot` не нужен:
-дашборд запускает обработчики каналов. Chatwoot, Redis и отдельный SaaS-сервис
-не входят в эту установку.
+Для первой приёмки:
 
-Для проверки установки достаточно:
-
-1. Войти в чистую базу без старых тестовых тикетов; стандартная команда и
-   категории создаются автоматически.
-2. Создать оператора, включить виджет в **Интеграциях**, пройти обращение и ответ.
-3. Проверить загрузку/скачивание вложения и сохранение данных после перезапуска.
-4. Убедиться, что выбранные каналы на этой машине действительно подключены.
-   Функциональные тесты, которые уже пройдены, не нужно повторять целиком без
-   изменений соответствующего кода. Но настройки провайдеров на новой машине
-   проверяются отдельно.
+1. Убедись, что база чистая; стандартная команда и категории создаются автоматически.
+2. Создай оператора, включи виджет в **Интеграциях** и пройди обращение → ответ.
+3. Проверь загрузку/скачивание вложения, смену статуса и сохранение после перезапуска.
+4. Настрой нужные каналы в **Интеграциях**, ИИ — отдельно в **Настройках ИИ**.
+   Пройди входящее сообщение → тикет → ответ → получение клиентом. Настройки
+   провайдеров на новой машине проверяются отдельно от уже пройденных тестов кода.
 
 Не подключай один рабочий mailbox/Telegram bot одновременно к двум активным
-установкам: конкурирующие обработчики могут перехватывать входящие сообщения.
-Для проверки используй отдельные тестовые подключения либо сначала отключи
-соответствующий канал на прежней установке. Slack и внешний виджет требуют
-публичного HTTPS; `localhost` другого компьютера им недоступен.
+установкам: обработчики могут перехватывать входящие сообщения. Используй
+отдельные тестовые подключения либо отключи канал на прежней установке.
+Входящие Slack HTTP events и виджет на внешнем сайте требуют публичного HTTPS;
+`localhost` снаружи недоступен. Почта IMAP/SMTP работает через исходящие подключения.
+Доступ с других устройств/из интернета настраивается отдельно по `DEPLOY.md`.
 
 ## 5. Остановка и следующий запуск
 
-Всегда используй тот же каталог и имя проекта `-p spooldesk`:
+Всегда открывай терминал в той же папке `spooldesk` с созданным `.env` и
+используй то же имя проекта `-p spooldesk`:
 
-```powershell
+```sh
 docker compose -p spooldesk stop
 docker compose -p spooldesk start
 docker compose -p spooldesk restart dashboard
 docker compose -p spooldesk logs --tail 100 dashboard
 ```
 
-При обычном запуске не нужны пересборка и мастер настройки. Docker Desktop
-должен работать; сон/выключение ноутбука останавливает доступность сервиса.
-**Не выполняй `down -v`**: этот флаг удаляет данные в томах. При ошибке не
-пересоздавай БД; сохрани лог без секретов и разбери причину.
+При обычном запуске не нужны пересборка и мастер настройки. Docker должен
+работать; сон/выключение компьютера останавливает доступность сервиса.
+**Не выполняй `down -v`**: флаг удаляет данные в томах. Не запускай setup повторно:
+смена пароля PostgreSQL в `.env` не меняет его в уже созданной БД, а потеря
+`SECRETS_KEY` делает зашифрованные данные нечитаемыми. Храни ключ отдельно от backup.
 
-## 6. Когда тест считать завершённым
+## Сборка из исходников вместо готового образа
 
-Запиши версию, ID образа, ОС, результат входа, вложения и перезапуска. Пришли
-результат без паролей и содержимого `.env`. Этот шаг закрывает проверку
-переносимости установки. Для публикации ещё нужны зафиксированная проверенная
-ревизия, артефакты и release notes; для работающей клиентской установки — HTTPS,
-backup/restore и ответственный за поддержку. См. [SELF_HOSTED_RELEASE.md](SELF_HOSTED_RELEASE.md)
-и [DEPLOY.md](../DEPLOY.md).
+Это альтернативный путь для новой установки, не следующий шаг после инструкции
+выше. Распакуй проверенный `spooldesk-source.zip` в другую пустую папку, перейди
+в `spooldesk`, выполни `python scripts/setup.py` (Windows) либо
+`python3 scripts/setup.py` (macOS/Linux), затем:
+
+```sh
+docker compose -p spooldesk up -d --build dashboard
+```
+
+Не задавай `SPOOLDESK_IMAGE` из готового пакета. Сборка создаёт другой локальный
+образ; его ID не обязан совпадать с CI. Для установочной приёмки rc.6 используй
+готовый образ из основного сценария. Не запускай два варианта на одном проекте
+Docker и не используй этот путь поверх существующей БД без процедуры обновления.
+
+## Когда тест считать завершённым
+
+Запиши версию rc.6, ОС/архитектуру, ID выбранного образа, результат входа,
+обращения/ответа, вложения и перезапуска. Пришли результат без паролей и `.env`.
+До этого шага кандидат остаётся **prerelease**, не принятой стабильной версией.
+CI проверяет код на Windows/Linux и запуск обоих образов; это не утверждение,
+что ручная установка на каждом варианте macOS/Windows/Linux уже выполнена.
+
+Для клиентской эксплуатации также нужны HTTPS, backup/restore и ответственный
+за поддержку. Документы находятся внутри распакованных исходников:
+`docs/SELF_HOSTED_RELEASE.md`, `docs/BACKUP_RESTORE.md` и `DEPLOY.md`.
