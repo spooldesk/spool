@@ -124,7 +124,7 @@ Before upgrading, back up DB/files and keep the previous image. Install an
 explicit reviewed version, not an unqualified `git pull` or moving `latest`.
 Startup applies ordered transactional schema revisions. Rollback uses the
 pre-upgrade backup and matching application; an older image may not read the
-new schema. See [RELEASING.md](internal/RELEASING.md).
+new schema. See [backup and restore](BACKUP_RESTORE.md).
 
 ## Channels
 
