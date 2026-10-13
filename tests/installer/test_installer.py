@@ -44,7 +44,7 @@ class ConfigurationTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.root = fixture(Path(self.temp.name) / 'release bundle')
+        self.root = fixture(Path(self.temp.name) / 'release bundle').resolve()
         self.identity = configure.image_identity(self.root, 'amd64')
 
     def test_fresh_and_resume_preserve_independent_secrets(self):
@@ -129,7 +129,7 @@ class LauncherTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.root = fixture(Path(self.temp.name) / 'release bundle')
+        self.root = fixture(Path(self.temp.name) / 'release bundle').resolve()
         package(self.root, 'v0.1.0-rc.7')
         self.bin = Path(self.temp.name) / 'bin'
         self.bin.mkdir()
