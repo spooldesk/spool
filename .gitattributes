@@ -2,3 +2,11 @@
 *.sh text eol=lf
 *.command text eol=lf
 *.cmd text eol=crlf
+
+# Maintainer notes and agent tooling are not part of customer source archives.
+docs/internal export-ignore
+AGENTS.md export-ignore
+CLAUDE.md export-ignore
+agents export-ignore
+tests/agents export-ignore
+scripts/claude_worker.py export-ignore

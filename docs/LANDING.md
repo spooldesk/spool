@@ -76,6 +76,6 @@ Prices remain indicative while the commercial service is being prepared.
 Edit `assets/landing/legal.html` and the two `*-legal.json` files for `/legal/`
 and `/ru/legal/`. These pages explain the existing license and data flows;
 they do not substitute for completed seller details, commercial terms and a
-privacy policy. See [LEGAL_READINESS.md](LEGAL_READINESS.md) before paid launch.
+privacy policy. See [business readiness](https://github.com/spooldesk/spool/blob/main/docs/internal/BUSINESS_READINESS.md) before paid launch.
 The builder copies `LICENSE` to public `license.txt`; never hand-edit that copy.
 Check four-card layout, EN/RU, both themes, mobile, sales anchors and legal links.

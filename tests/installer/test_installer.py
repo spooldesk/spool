@@ -5,11 +5,13 @@ import io
 import json
 import os
 import shutil
+import socket
 import stat
 import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 import zipfile
@@ -74,7 +76,8 @@ class ConfigurationTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.root = fixture(Path(self.temp.name) / 'release bundle').resolve()
+        self.root = fixture(Path(self.temp.name) / 'release bundle тест').resolve()
+        self.archive = package(self.root, 'v0.1.0-rc.9')
         self.identity = configure.image_identity(self.root, 'amd64')
 
     def test_fresh_and_resume_preserve_independent_secrets(self):
@@ -103,7 +106,7 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual((target / '.env').read_text(), 'do not replace\n')
 
     def test_existing_directory_and_cancellation_preserved(self):
-        with patch('builtins.input', side_effect=['1', '', 'n']), patch('getpass.getpass', return_value=PASSWORD):
+        with patch('builtins.input', side_effect=['1', '', 'n']), patch('scripts.installer.configure.read_password', return_value=PASSWORD):
             # Custom passwords require confirmation before the final install prompt.
             self.assertEqual(configure.main(self.root, 'amd64'), 3)
         self.assertFalse((self.root / 'spooldesk').exists())
@@ -112,6 +115,30 @@ class ConfigurationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             configure.create_installation(self.root, self.identity, 8000, PASSWORD, 0)
         self.assertEqual((self.root / 'spooldesk' / 'keep').read_text(), 'retain')
+
+    def test_confirmation_accepts_numeric_default_and_localized_answers(self):
+        for answer in ('', '1', '  Д  ', 'да', 'YES', 'так', '１'):
+            with self.subTest(answer=answer), patch('builtins.input', return_value=answer):
+                self.assertTrue(configure.confirm_install(1))
+        for answer in ('0', 'n', ' НЕТ ', 'ні'):
+            with self.subTest(answer=answer), patch('builtins.input', return_value=answer):
+                self.assertFalse(configure.confirm_install(1))
+        with patch('builtins.input', side_effect=['garbled', '?', '1']), patch('sys.stdout', new_callable=io.StringIO) as out:
+            self.assertTrue(configure.confirm_install(1))
+        self.assertEqual(out.getvalue().count(configure.TEXT['bad_choice'][1]), 2)
+
+    def test_generated_password_displayed_once_and_saved(self):
+        generated = 'GeneratedTestValue123'
+        with patch('builtins.input', side_effect=['1', '', '']), patch('scripts.installer.configure.read_password', return_value=''), \
+                patch('secrets.token_urlsafe', side_effect=lambda n: generated if n == 18 else 'x' * n), \
+                patch('sys.stdout', new_callable=io.StringIO) as out:
+            self.assertEqual(configure.main(self.root, 'amd64'), 0)
+        self.assertEqual(out.getvalue().count(generated), 1)
+        self.assertIn(generated, (self.root / 'spooldesk/.env').read_text())
+        with patch('builtins.input', side_effect=AssertionError('Resume must not prompt')), \
+                patch('sys.stdout', new_callable=io.StringIO) as out:
+            self.assertEqual(configure.main(self.root, 'amd64'), 0)
+        self.assertNotIn(generated, out.getvalue())
 
     def test_password_interpolation_and_reserved_port_rejected(self):
         for password in ('short', 'unsafe$ENV-password', "quote'password-long", 'line\nbreak-password'):
@@ -144,13 +171,13 @@ class ConfigurationTests(unittest.TestCase):
             configure.extract_source(self.root / 'case.zip', self.root)
 
     def test_bundle_contains_launchers_with_executable_permissions(self):
-        archive = package(self.root, 'v0.1.0-rc.7')
+        archive = self.archive
         with zipfile.ZipFile(archive) as contents:
-            self.assertEqual(len(contents.namelist()), 20)
-            for name in ('INSTALL-LINUX.sh', 'INSTALL-MAC.command', 'installer/install.sh'):
+            self.assertEqual(len(contents.namelist()), 23)
+            for name in ('INSTALL-LINUX.sh', 'INSTALL-MACOS.command', 'installer/install.sh'):
                 self.assertEqual(stat.S_IMODE(contents.getinfo(name).external_attr >> 16), 0o755)
-            self.assertEqual(contents.read('spooldesk-source.zip'), (self.root / 'spooldesk-source.zip').read_bytes())
-        self.assertEqual(len((self.root / 'SHA256SUMS').read_text().splitlines()), 19)
+            self.assertEqual(contents.read('package/spooldesk-source.zip'), (self.root / 'spooldesk-source.zip').read_bytes())
+        self.assertEqual(len((self.root / 'SHA256SUMS').read_text().splitlines()), 22)
         with self.assertRaises(ValueError):
             package(self.root, 'v0.1.0-rc.7')
 
@@ -188,7 +215,7 @@ class LauncherTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.root = fixture(Path(self.temp.name) / 'release bundle').resolve()
+        self.root = fixture(Path(self.temp.name) / 'release bundle тест').resolve()
         package(self.root, 'v0.1.0-rc.7')
         self.bin = Path(self.temp.name) / 'bin'
         self.bin.mkdir()
@@ -196,22 +223,23 @@ class LauncherTests(unittest.TestCase):
         mock.write_text((REPO / 'tests/installer/docker_mock.py').read_text(encoding='utf-8'), encoding='utf-8')
         if os.name == 'nt':
             (self.bin / 'docker.cmd').write_text(f'@"{sys.executable}" "{mock}" %*\n')
-            self.command = ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(self.root / 'installer/install.ps1')]
+            self.command = ['cmd.exe', '/d', '/c', str(self.root / 'INSTALL-WINDOWS.cmd')]
         else:
             shim = self.bin / 'docker'
             shim.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{mock}" "$@"\n')
             shim.chmod(0o755)
-            self.command = ['/bin/bash', str(self.root / 'INSTALL-MAC.command' if sys.platform == 'darwin' else self.root / 'INSTALL-LINUX.sh')]
+            self.command = ['/bin/bash', str(self.root / 'INSTALL-MACOS.command' if sys.platform == 'darwin' else self.root / 'INSTALL-LINUX.sh')]
         self.env = {**os.environ, 'PATH': str(self.bin) + os.pathsep + os.environ['PATH'],
+                    'PYTHONUTF8': '1', 'PYTHONIOENCODING': 'utf-8',
                     'INSTALLER_TEST_BUNDLE': str(self.root), 'INSTALLER_TEST_REPO': str(REPO),
                     'SPOOLDESK_INSTALLER_NO_PAUSE': '1', 'SPOOLDESK_INSTALLER_NO_BROWSER': '1'}
         self.env.pop('DOCKER_HOST', None)
         self.env.pop('PSModulePath', None)  # Match the Windows .cmd launcher boundary.
         self.env.pop('PSMODULEPATH', None)
 
-    def run_launcher(self, **extra):
+    def run_launcher(self, input=None, **extra):
         return subprocess.run(self.command, cwd=self.root, env={**self.env, **extra},
-                              capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60)
+                              input=input, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60)
 
     def test_fresh_resume_and_host_overrides(self):
         result = self.run_launcher(POSTGRES_PASSWORD='unrelated-shell-value', SPOOLDESK_IMAGE='other:image')
@@ -255,7 +283,7 @@ class LauncherTests(unittest.TestCase):
         self.assertFalse(any(args[0] in ('create', 'run', 'pull', 'rm') for args in calls))
 
     def test_tampered_accepted_ids_fail_checksum_before_load(self):
-        (self.root / 'IMAGE_IDS').write_text('sha256:' + 'd' * 64 + '\n')
+        (self.root / 'package/IMAGE_IDS').write_text('sha256:' + 'd' * 64 + '\n')
         result = self.run_launcher()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('checksum', result.stdout + result.stderr)
@@ -277,6 +305,98 @@ class LauncherTests(unittest.TestCase):
         second = self.run_launcher()
         self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
         self.assertEqual(original, (self.root / 'spooldesk/.env').read_bytes())
+
+    def test_actual_russian_wizard_reprompts_and_preserves_hidden_password(self):
+        answers = ['bad language', '2', '80', '8011', 'bad port', '8123',
+                   'short', 'unsupported$character', PASSWORD, 'different-password',
+                   PASSWORD, PASSWORD, 'unknown answer', '1']
+        result = self.run_launcher(input='\n'.join(answers) + '\n', INSTALLER_TEST_INTERACTIVE='1')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        output = result.stdout + result.stderr
+        for key in ('password_length', 'password_chars', 'password_mismatch', 'bad_choice'):
+            self.assertIn(configure.TEXT[key][1], output)
+        self.assertNotIn(PASSWORD, output)
+        state = json.loads((self.root / 'spooldesk/INSTALLATION.json').read_text())
+        self.assertEqual((state['port'], state['language']), (8123, 1))
+
+    def test_explicit_cancel_and_eof_are_not_docker_errors(self):
+        for input_text in (f'2\n8123\n{PASSWORD}\n{PASSWORD}\n0\n', ''):
+            with self.subTest(input=input_text == ''):
+                result = self.run_launcher(input=input_text, INSTALLER_TEST_INTERACTIVE='1')
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertNotIn('Installation stopped', result.stdout + result.stderr)
+                self.assertFalse((self.root / 'spooldesk').exists())
+                self.assertFalse((self.root / 'mock-lock').exists())
+        calls = [json.loads(line) for line in (self.root / 'mock-calls.jsonl').read_text().splitlines()]
+        self.assertFalse(any(a[0] == 'pull' or 'up' in a for a in calls))
+
+    def test_docker_and_compose_unavailable_do_not_create_settings(self):
+        for extra in ({'INSTALLER_TEST_DOCKER_DOWN': '1'}, {'INSTALLER_TEST_NO_COMPOSE': '1'}):
+            result = self.run_launcher(**extra)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse((self.root / 'spooldesk').exists())
+            self.assertFalse((self.root / 'mock-lock').exists())
+
+    def test_occupied_port_stops_before_services_and_can_resume(self):
+        with socket.socket() as listener:
+            listener.bind(('127.0.0.1', 0))
+            listener.listen()
+            port = listener.getsockname()[1]
+            identity = configure.image_identity(self.root, 'amd64')
+            configure.create_installation(self.root, identity, port, PASSWORD, 0)
+            original = (self.root / 'spooldesk/.env').read_bytes()
+            first = self.run_launcher()
+            self.assertNotEqual(first.returncode, 0, first.stdout + first.stderr)
+            self.assertIn(f'Port {port} is unavailable', first.stdout + first.stderr)
+            self.assertFalse((self.root / 'mock-active').exists())
+        second = self.run_launcher()
+        self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
+        self.assertEqual(original, (self.root / 'spooldesk/.env').read_bytes())
+
+    def test_unhealthy_dashboard_exits_without_waiting_full_timeout(self):
+        result = self.run_launcher(INSTALLER_TEST_HEALTH='unhealthy')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('did not become healthy', result.stdout + result.stderr)
+        self.assertTrue((self.root / 'spooldesk/.env').exists())
+        self.assertFalse((self.root / 'mock-lock').exists())
+
+    @unittest.skipUnless(sys.platform == 'linux', 'Linux PTY coverage; Windows has native cmd input coverage')
+    def test_terminal_dialog_masks_password_and_accepts_russian_confirmation(self):
+        import pty
+        import select
+        master, slave = pty.openpty()
+        process = subprocess.Popen(self.command, cwd=self.root,
+                                   env={**self.env, 'INSTALLER_TEST_INTERACTIVE': '1'},
+                                   stdin=slave, stdout=slave, stderr=slave, start_new_session=True)
+        os.close(slave)
+        output = bytearray()
+        deadline = time.monotonic() + 45
+
+        def receive_until(marker):
+            while marker.encode('utf-8') not in output:
+                if time.monotonic() > deadline:
+                    self.fail('Terminal dialog timed out: ' + output.decode('utf-8', errors='replace'))
+                if select.select([master], [], [], 0.2)[0]:
+                    try:
+                        output.extend(os.read(master, 65536))
+                    except OSError:
+                        self.fail('Terminal closed before expected prompt')
+
+        try:
+            for marker, answer in [('Language /', '2'), ('Порт кабинета', '8123'),
+                                   ('Пароль владельца', PASSWORD), ('Повтори пароль', PASSWORD),
+                                   ('1 = установить', '?'), ('Ответ не распознан', 'д')]:
+                receive_until(marker)
+                os.write(master, (answer + '\n').encode('utf-8'))
+            receive_until('Ready:')
+            self.assertEqual(process.wait(timeout=10), 0)
+            self.assertNotIn(PASSWORD, output.decode('utf-8'))
+            self.assertTrue((self.root / 'spooldesk/.env').exists())
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=5)
+            os.close(master)
 
 
 if __name__ == '__main__':

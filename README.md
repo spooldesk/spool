@@ -12,14 +12,14 @@ open-source licence. Paid installation and maintenance are separate services.
 
 ### Download and install
 
-**[↓ Download Spooldesk v0.1.0-rc.8 — complete installation package](https://github.com/spooldesk/spool/releases/download/v0.1.0-rc.8/spooldesk-v0.1.0-rc.8-transfer.zip)**
+**[↓ Download Spooldesk v0.1.0-rc.9 — complete installation package](https://github.com/spooldesk/spool/releases/download/v0.1.0-rc.9/spooldesk-v0.1.0-rc.9-installer.zip)**
 
 Extract the entire ZIP into a permanent folder and open one file:
 
 | OS | Launcher |
 | --- | --- |
 | Windows | `INSTALL-WINDOWS.cmd` |
-| macOS Intel / Apple Silicon | `INSTALL-MAC.command` |
+| macOS Intel / Apple Silicon | `INSTALL-MACOS.command` |
 | Linux x86-64 / ARM64 | `INSTALL-LINUX.sh` (Run in Terminal) |
 
 The wizard checks files and Docker, selects the image, asks for a password and
@@ -31,17 +31,19 @@ or Docker Engine with Compose v2 on Linux. No host Python or Git is needed.
 Internet is required for the first PostgreSQL download. This is a terminal wizard,
 not a signed native installer; macOS/Linux may ask you to allow execution.
 
-[Installation guide (Russian)](docs/SECOND_COMPUTER_INSTALL.md) ·
-[ZIP checksum](https://github.com/spooldesk/spool/releases/download/v0.1.0-rc.8/spooldesk-v0.1.0-rc.8-transfer.zip.sha256) ·
-[Release notes](https://github.com/spooldesk/spool/releases/tag/v0.1.0-rc.8)
+[Installation guide](docs/INSTALLATION.md) ·
+[Russian guide](docs/INSTALLATION_RU.md) ·
+[Troubleshooting](docs/TROUBLESHOOTING.md) ·
+[ZIP checksum](https://github.com/spooldesk/spool/releases/download/v0.1.0-rc.9/spooldesk-v0.1.0-rc.9-installer.zip.sha256) ·
+[Release notes](https://github.com/spooldesk/spool/releases/tag/v0.1.0-rc.9)
 
-This is an installation candidate; second-computer acceptance is pending.
-Rc.8 fixes the rc.7 image identity rejection on Docker Desktop/containerd while
-retaining archive checksums and strict image/platform verification.
+This is a prerelease, with manual installation acceptance still pending.
+Rc.9 improves confirmation, cancellation and input validation, adds customer
+installation guides and keeps strict archive/image/platform verification.
 **Private preview:** sign in with a GitHub account that has repository access.
 The direct download does not grant access to an otherwise unauthorized account.
 
-**Security update (2026-10-13):** `rc.8` retains `multidict 6.9.1`, fixing
+**Security update (2026-10-13):** `rc.9` retains `multidict 6.9.1`, fixing
 [CVE-2026-104874](https://github.com/aio-libs/multidict/security/advisories/GHSA-54p9-h82j-f925),
 and the maintenance tool lock pins `uv 0.12.18`. Use this candidate for a new
 installation; the older release assets have not been replaced.
@@ -52,19 +54,18 @@ With [GitHub CLI](https://cli.github.com/) installed, sign in once using
 `gh auth login`, then run this command in PowerShell, Bash or another terminal:
 
 ```sh
-gh release download v0.1.0-rc.8 --repo spooldesk/spool --pattern 'spooldesk-v0.1.0-rc.8-transfer.zip*' --dir spooldesk-download
+gh release download v0.1.0-rc.9 --repo spooldesk/spool --pattern 'spooldesk-v0.1.0-rc.9-installer.zip*' --dir spooldesk-download
 ```
 
 This downloads the same ZIP and its SHA-256 file. It does not start an installer
-or modify an existing deployment. After extraction, open the launcher for your OS. See `INSTALL-RU.md` for prerequisites
+or modify an existing deployment. After extraction, open the launcher for your OS. See `INSTALLATION.md` for prerequisites
 and troubleshooting; the wizard checks package integrity automatically.
 
 <details>
 <summary>Build from source instead</summary>
 
-For a clean installation on another Windows computer, use the
-[step-by-step guide](docs/SECOND_COMPUTER_INSTALL.md). Docker Desktop must use
-Linux containers. Linux hosts use Docker Engine with Compose.
+The [installation wizard](docs/INSTALLATION.md) needs only Docker.
+Building from source additionally requires Python 3.12+ for setup.
 
 Extract a versioned source archive into a new directory, then run:
 
@@ -75,13 +76,13 @@ docker compose -p spooldesk ps
 ```
 
 Open `http://127.0.0.1:8000`. Sign in as `admin@local` with the password you
-chose or generated during setup. This is a fresh PostgreSQL installation,
-not the developer demo. Configure channels in the owner's **Integrations** tab.
+chose or generated during setup. This is a fresh PostgreSQL installation.
+Configure channels in the owner's **Integrations** tab.
 The dashboard process runs the channel workers; a separate `bot` service is
 available for legacy deployments but is not needed for this first installation.
 
 The local address is only for testing on that computer. For a public installation,
-use HTTPS and the production configuration in [DEPLOY.md](DEPLOY.md).
+use HTTPS and the production configuration in [deployment guide](docs/DEPLOYMENT.md).
 Prebuilt images must be selected by their supplied versioned tag using
 `SPOOLDESK_IMAGE`; see the installation guide. Do not rebuild when testing the
 prebuilt release artifact.
@@ -105,7 +106,7 @@ The AI provider is selected in settings: supported external providers include
 OpenRouter; a supported Ollama endpoint can be used locally. Provider costs
 and infrastructure are separate. The assistant does not execute arbitrary code.
 Channel capabilities differ: an email already delivered cannot be withdrawn
-from a recipient's inbox. See [USING.md](USING.md) and [FAQ.md](FAQ.md).
+from a recipient's inbox. See [operator guide](docs/USER_GUIDE.md) and [FAQ.md](FAQ.md).
 
 ![Ticket board with synthetic data](docs/img/01_board.png)
 ![Conversation with synthetic data](docs/img/03_ticket_detail.png)
@@ -136,10 +137,9 @@ lock; no horizontal-scaling or load-capacity guarantee is made.
 
 ## Release and operations
 
-Current scope, remaining gates and the distinction between code publication
-and paid service launch: [self-hosted release](docs/SELF_HOSTED_RELEASE.md).
-Local RC archives are not Git tags. Publish only the reviewed, versioned source
-and matching tested container, with checksums and release notes.
+See [self-hosting](docs/SELF_HOSTING.md) for infrastructure responsibilities,
+[release notes](docs/RELEASE_NOTES.md) for changes and current limits, and the
+release asset `package/VALIDATION.json` for the exact commit and CI evidence.
 
 Persist PostgreSQL and attachments, keep the encryption key separately, and
 practice restoration. Backups and external uptime monitoring remain the
@@ -151,21 +151,21 @@ features; self-hosting alone does not establish privacy-law compliance.
 
 | Guide | Purpose |
 | --- | --- |
-| [Second computer](docs/SECOND_COMPUTER_INSTALL.md) | Clean Windows installation, image loading and acceptance |
-| [Deployment](DEPLOY.md) | Docker, TLS, configuration, channel setup and troubleshooting |
-| [Operator guide](USING.md) | Daily ticket and customer workflows |
+| [Installation](docs/INSTALLATION.md) / [Russian](docs/INSTALLATION_RU.md) | Windows, macOS and Linux setup |
+| [Troubleshooting](docs/TROUBLESHOOTING.md) | Installation errors and safe recovery |
+| [Self-hosting](docs/SELF_HOSTING.md) | Availability, security and maintenance responsibilities |
+| [Deployment](docs/DEPLOYMENT.md) | Docker, TLS, configuration, channel setup and troubleshooting |
+| [Operator guide](docs/USER_GUIDE.md) | Daily ticket and customer workflows |
 | [FAQ](FAQ.md) | Requirements, licensing and current limits |
-| [Connections](docs/CONNECTION_CENTER.md) | What integration diagnostics do and do not prove |
+| [Connections](docs/INTEGRATIONS.md) | What integration diagnostics do and do not prove |
 | [AI assistant](docs/AI_ASSISTANT.md) | Permissions, context, files and chat history |
 | [PostgreSQL](docs/POSTGRESQL.md) | Database setup and migration policy |
 | [Backup and restore](docs/BACKUP_RESTORE.md) | Recovery and outbound quarantine |
-| [Releasing](docs/RELEASING.md) | Source/image provenance, checksums, publication procedure |
-| [Legal preparation](docs/LEGAL_READINESS.md) | Licence, seller setup and privacy work before paid services |
 | [Landing](docs/LANDING.md) | Bilingual site sources and public-only export |
 | [Security](SECURITY.md) | Reporting issues and deployment boundaries |
 
-Date-stamped audits in `docs/` are historical snapshots, not current product
-instructions. [LOCAL_PREVIEW.md](LOCAL_PREVIEW.md) describes this repository's
+Date-stamped audits in `docs/internal/archive/` are historical snapshots, not current product
+instructions. [Local development](https://github.com/spooldesk/spool/blob/main/docs/internal/LOCAL_DEVELOPMENT.md) describes this repository's
 developer preview only; never use its demo credentials for a customer install.
 
 ## Development

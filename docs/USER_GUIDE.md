@@ -15,7 +15,7 @@ are disabled; use the dashboard on desktop or a suitable mobile browser.
    operations, including connection credentials, remain owner-only.
 5. Configure teams, categories, working hours and response targets as needed.
 
-See [connection diagnostics](docs/CONNECTION_CENTER.md). Dashboard language,
+See [connection diagnostics](INTEGRATIONS.md). Dashboard language,
 theme and row density are individual operator preferences; customer language
 settings govern customer-facing messages separately.
 
@@ -62,7 +62,7 @@ Disabling multi-team routing leaves the single-team workflow. Linking email,
 Slack or Telegram identities groups a customer's contact history; it does not
 prove identity automatically. Verify ownership before linking accounts or
 disclosing private information. Widget-signed identity and support approval
-are different checks. See [deployment](DEPLOY.md) for signed widget identities.
+are different checks. See [deployment](DEPLOYMENT.md) for signed widget identities.
 
 ## Knowledge and templates
 
@@ -83,7 +83,7 @@ Confirm status/assignee changes only when the proposed action is correct.
 Chats and supported document excerpts are private to the operator and encrypted
 at rest. History survives reload; current access is checked again when it is
 read. Upload text formats or DOCX to the chat. PDF/image OCR and arbitrary agent
-code execution are outside this release. See [AI_ASSISTANT.md](docs/AI_ASSISTANT.md).
+code execution are outside this release. See [AI_ASSISTANT.md](AI_ASSISTANT.md).
 
 ## Reports and working preferences
 

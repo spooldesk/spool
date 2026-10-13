@@ -133,9 +133,9 @@ LOG_LEVEL=INFO
     print("\nNext:")
     print("  From source: docker compose -p spooldesk up -d --build dashboard")
     print("  Open http://localhost:8000 (local access only).")
-    print("  Prebuilt release image: follow docs/SECOND_COMPUTER_INSTALL.md;")
+    print("  Prebuilt release image: follow docs/INSTALLATION.md;")
     print("  select SPOOLDESK_IMAGE and use --no-build instead of --build.")
-    print("  By hand:  see DEPLOY.md for the dashboard and optional channels.\n")
+    print("  By hand:  see docs/DEPLOYMENT.md for the dashboard and optional channels.\n")
     return 0
 
 

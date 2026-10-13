@@ -224,8 +224,8 @@ async def test_language_defaults_survive_the_settings_form(initialized_db):
 def test_what_a_newcomer_reads_is_english():
     """The guard on src/ says nothing about the files someone meets first.
 
-    DEPLOY.md was Russian while the README that links to it was English, and
-    scripts/setup.py — the very first command in both DEPLOY.md and the
+    docs/DEPLOYMENT.md was Russian while the README that links to it was English, and
+    scripts/setup.py — the very first command in both docs/DEPLOYMENT.md and the
     docker-compose header — asked its questions in Russian too.
     """
     import re
@@ -240,8 +240,8 @@ def test_what_a_newcomer_reads_is_english():
     # and agent instructions can use the owner's language; git tracking must
     # not change this contract or hide a new public document from the check.
     reader_facing = [
-        "README.md", "CONTRIBUTING.md", "DEPLOY.md", "FAQ.md", "SECURITY.md",
-        "USING.md", "Makefile", "Dockerfile", "scripts/setup.py",
+        "README.md", "CONTRIBUTING.md", "docs/DEPLOYMENT.md", "FAQ.md", "SECURITY.md",
+        "docs/USER_GUIDE.md", "Makefile", "Dockerfile", "scripts/setup.py",
         *(str(p) for p in Path(".").glob("docker-compose*.yml")),
     ]
     assert all(Path(f).is_file() for f in reader_facing)

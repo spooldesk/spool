@@ -120,7 +120,7 @@ In **Integrations → Slack → Connection settings**, also save the tunnel's HT
 origin without a path. The page generates both callback URLs and provides an
 explicit credential check. This does not set up the tunnel or subscribe Slack
 events for you. A successful credential check alone is not proof that inbound
-events can reach your computer. See [Connection diagnostics](docs/CONNECTION_CENTER.md)
+events can reach your computer. See [Connection diagnostics](../INTEGRATIONS.md)
 for the complete test and the meaning of each status.
 
 Stop the tunnel with Ctrl+C. Docker alone does not start it. If its public

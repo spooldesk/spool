@@ -407,7 +407,6 @@ jobs:
           mv candidate-arm64/spooldesk-image.tar.gz candidate/spooldesk-image-arm64.tar.gz
           mv candidate-arm64/IMAGE_ID candidate/IMAGE_ID_ARM64
           mv candidate-arm64/IMAGE_TAG candidate/IMAGE_TAG_ARM64
-          cp docs/SECOND_COMPUTER_INSTALL.md candidate/INSTALL-RU.md
           python3 - <<'PY'
           import json
           from pathlib import Path
@@ -433,34 +432,37 @@ jobs:
               'ci_run_url': '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}',
               'installer_checks': 'native Windows/macOS/Linux shell tests; actual Linux installs and restart on classic and containerd image stores gate artifact upload',
               'automated_checks': 'passed: Windows/Linux tests, PostgreSQL tests, amd64/arm64 image startup with SQLite and PostgreSQL, patched runtime dependency, dependencies, deployment, landing',
-              'second_computer_acceptance': 'pending owner confirmation',
+              'manual_installation_acceptance': 'pending manual trial on native customer platforms',
               'release_status': 'candidate; not stable production acceptance',
           }
           candidate.joinpath('VALIDATION.json').write_text(json.dumps(validation, indent=2) + '\n')
           PY
           cd candidate
-          sha256sum spooldesk-image.tar.gz spooldesk-image-arm64.tar.gz spooldesk-source.tar.gz spooldesk-source.zip IMAGE_ID IMAGE_TAG IMAGE_ID_ARM64 IMAGE_TAG_ARM64 SOURCE_COMMIT INSTALL-RU.md VALIDATION.json > SHA256SUMS
+          sha256sum spooldesk-image.tar.gz spooldesk-image-arm64.tar.gz spooldesk-source.tar.gz spooldesk-source.zip IMAGE_ID IMAGE_TAG IMAGE_ID_ARM64 IMAGE_TAG_ARM64 SOURCE_COMMIT VALIDATION.json > SHA256SUMS
           sha256sum --check SHA256SUMS
       - name: Add launchers and build the installation ZIP
-        run: python3 scripts/package_install_bundle.py candidate --version v0.1.0-rc.8
+        run: python3 scripts/package_install_bundle.py candidate --version v0.1.0-rc.9
       - name: Exercise the actual extracted installer and repeat startup
         env:
+          INSTALLER_SMOKE_PASSWORD: ci-installer-test-password
           SPOOLDESK_INSTALLER_NO_BROWSER: "1"
           SPOOLDESK_INSTALLER_NO_PAUSE: "1"
         run: |
           python3 - <<'PY'
           from pathlib import Path
           import zipfile
-          with zipfile.ZipFile('candidate/spooldesk-v0.1.0-rc.8-transfer.zip') as archive:
+          with zipfile.ZipFile('candidate/spooldesk-v0.1.0-rc.9-installer.zip') as archive:
               archive.extractall('installer trial')
           PY
           cd 'installer trial'
-          printf '1\n8000\nci-installer-test-password\nci-installer-test-password\ny\n' | bash INSTALL-LINUX.sh
+          printf '1\n8000\nci-installer-test-password\nci-installer-test-password\n1\n' | bash INSTALL-LINUX.sh
           test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/healthz)" = 200
+          python3 ../tests/installer/http_smoke.py
           sha256sum spooldesk/.env > before-restart.sha256
           bash INSTALL-LINUX.sh < /dev/null
           sha256sum --check before-restart.sha256
           test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/healthz)" = 200
+          python3 ../tests/installer/http_smoke.py
       - name: Remove only this CI installation
         if: always()
         run: |
@@ -476,6 +478,7 @@ jobs:
             {"features": {"containerd-snapshotter": true}}
       - name: Exercise the same ZIP with containerd image identities
         env:
+          INSTALLER_SMOKE_PASSWORD: ci-installer-test-password
           SPOOLDESK_INSTALLER_NO_BROWSER: "1"
           SPOOLDESK_INSTALLER_NO_PAUSE: "1"
         run: |
@@ -483,20 +486,22 @@ jobs:
           docker info --format '{{json .DriverStatus}}' | grep -q 'io.containerd.snapshotter.v1'
           python3 - <<'PY'
           import zipfile
-          with zipfile.ZipFile('candidate/spooldesk-v0.1.0-rc.8-transfer.zip') as archive:
+          with zipfile.ZipFile('candidate/spooldesk-v0.1.0-rc.9-installer.zip') as archive:
               archive.extractall('containerd installer trial')
           PY
           cd 'containerd installer trial'
-          printf '1\n8000\nci-installer-test-password\nci-installer-test-password\ny\n' | bash INSTALL-LINUX.sh
+          printf '1\n8000\nci-installer-test-password\nci-installer-test-password\n1\n' | bash INSTALL-LINUX.sh
           # Prove this exercised the previously rejected ID, not the classic path.
-          actual=$(docker image inspect "$(cat IMAGE_TAG)" --format '{{.Id}}')
-          test "$actual" = "$(sed -n '2p' IMAGE_IDS)"
-          test "$actual" != "$(sed -n '1p' IMAGE_IDS)"
+          actual=$(docker image inspect "$(cat package/IMAGE_TAG)" --format '{{.Id}}')
+          test "$actual" = "$(sed -n '2p' package/IMAGE_IDS)"
+          test "$actual" != "$(sed -n '1p' package/IMAGE_IDS)"
           test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/healthz)" = 200
+          python3 ../tests/installer/http_smoke.py
           sha256sum spooldesk/.env > before-restart.sha256
           bash INSTALL-LINUX.sh < /dev/null
           sha256sum --check before-restart.sha256
           test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/healthz)" = 200
+          python3 ../tests/installer/http_smoke.py
       - name: Remove only the containerd CI installation
         if: always()
         run: |
@@ -508,7 +513,7 @@ jobs:
         with:
           name: spooldesk-release-candidate-${{ github.sha }}
           path: |
-            candidate/spooldesk-v0.1.0-rc.8-transfer.zip
-            candidate/spooldesk-v0.1.0-rc.8-transfer.zip.sha256
+            candidate/spooldesk-v0.1.0-rc.9-installer.zip
+            candidate/spooldesk-v0.1.0-rc.9-installer.zip.sha256
           if-no-files-found: error
           retention-days: 14
