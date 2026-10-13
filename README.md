@@ -12,28 +12,37 @@ open-source licence. Paid installation and maintenance are separate services.
 
 ### Download and install
 
-**[↓ Download Spooldesk v0.1.0-rc.6 — complete installation package](https://github.com/spooldesk/spool/releases/download/v0.1.0-rc.6/spooldesk-v0.1.0-rc.6-transfer.zip)**
+**[↓ Download Spooldesk v0.1.0-rc.7 — complete installation package](https://github.com/spooldesk/spool/releases/download/v0.1.0-rc.7/spooldesk-v0.1.0-rc.7-transfer.zip)**
 
-One ZIP contains tested Linux/amd64 and Linux/arm64 Docker images, source,
-checksums and `INSTALL-RU.md`. Follow the Windows or macOS/Linux instructions;
-they select the image for your Docker architecture, including Apple Silicon.
-Use Docker Desktop with Linux containers on Windows/macOS, or Docker Engine
-on Linux. PostgreSQL is downloaded separately; Docker Compose v2, Python 3.12+
-and internet access are required. ARM64 image startup is checked under QEMU;
-installation acceptance on a real second computer remains pending.
+Extract the entire ZIP into a permanent folder and open one file:
+
+| OS | Launcher |
+| --- | --- |
+| Windows | `INSTALL-WINDOWS.cmd` |
+| macOS Intel / Apple Silicon | `INSTALL-MAC.command` |
+| Linux x86-64 / ARM64 | `INSTALL-LINUX.sh` (Run in Terminal) |
+
+The wizard checks files and Docker, selects the image, asks for a password and
+port, starts PostgreSQL and Spooldesk, then opens the dashboard. Repeat the same
+launcher from the same folder to start the existing installation.
+
+**Only Docker is required:** Docker Desktop with Linux containers on Windows/macOS,
+or Docker Engine with Compose v2 on Linux. No host Python or Git is needed.
+Internet is required for the first PostgreSQL download. This is a terminal wizard,
+not a signed native installer; macOS/Linux may ask you to allow execution.
 
 [Installation guide (Russian)](docs/SECOND_COMPUTER_INSTALL.md) ·
-[ZIP checksum](https://github.com/spooldesk/spool/releases/download/v0.1.0-rc.6/spooldesk-v0.1.0-rc.6-transfer.zip.sha256) ·
-[Release notes](https://github.com/spooldesk/spool/releases/tag/v0.1.0-rc.6)
+[ZIP checksum](https://github.com/spooldesk/spool/releases/download/v0.1.0-rc.7/spooldesk-v0.1.0-rc.7-transfer.zip.sha256) ·
+[Release notes](https://github.com/spooldesk/spool/releases/tag/v0.1.0-rc.7)
 
 This is an installation candidate; second-computer acceptance is pending.
 **Private preview:** sign in with a GitHub account that has repository access.
 The direct download does not grant access to an otherwise unauthorized account.
 
-**Security update (2026-10-13):** `rc.6` includes `multidict 6.9.1`, fixing
+**Security update (2026-10-13):** `rc.7` retains `multidict 6.9.1`, fixing
 [CVE-2026-104874](https://github.com/aio-libs/multidict/security/advisories/GHSA-54p9-h82j-f925),
 and the maintenance tool lock pins `uv 0.12.18`. Use this candidate for a new
-installation; the older `rc.5` assets have not been replaced.
+installation; the older release assets have not been replaced.
 
 ### Download from a terminal
 
@@ -41,12 +50,12 @@ With [GitHub CLI](https://cli.github.com/) installed, sign in once using
 `gh auth login`, then run this command in PowerShell, Bash or another terminal:
 
 ```sh
-gh release download v0.1.0-rc.6 --repo spooldesk/spool --pattern 'spooldesk-v0.1.0-rc.6-transfer.zip*' --dir spooldesk-download
+gh release download v0.1.0-rc.7 --repo spooldesk/spool --pattern 'spooldesk-v0.1.0-rc.7-transfer.zip*' --dir spooldesk-download
 ```
 
 This downloads the same ZIP and its SHA-256 file. It does not start an installer
-or modify an existing deployment. Open `INSTALL-RU.md` after extraction; verify
-the checksums and use its **prebuilt image** instructions for this release trial.
+or modify an existing deployment. After extraction, open the launcher for your OS. See `INSTALL-RU.md` for prerequisites
+and troubleshooting; the wizard checks package integrity automatically.
 
 <details>
 <summary>Build from source instead</summary>

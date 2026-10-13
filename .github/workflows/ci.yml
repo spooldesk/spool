@@ -10,6 +10,20 @@ permissions:
   contents: read
 
 jobs:
+  installer-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Test installer with isolated files and a fake Docker CLI
+        run: python -m unittest discover -s tests/installer -p "test_*.py" -v
+
   landing:
     runs-on: ubuntu-latest
     steps:
@@ -373,7 +387,7 @@ jobs:
   release-candidate:
     # Manual packaging only. No tag, registry push, public release or deploy.
     if: github.event_name == 'workflow_dispatch'
-    needs: [landing, test, postgres, image, dependencies, deployment]
+    needs: [landing, test, postgres, image, dependencies, deployment, installer-tests]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -417,6 +431,7 @@ jobs:
                   },
               },
               'ci_run_url': '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}',
+              'installer_checks': 'native Windows/macOS/Linux shell tests with fake Docker; actual Linux Docker install and repeat startup gate artifact upload',
               'automated_checks': 'passed: Windows/Linux tests, PostgreSQL tests, amd64/arm64 image startup with SQLite and PostgreSQL, patched runtime dependency, dependencies, deployment, landing',
               'second_computer_acceptance': 'pending owner confirmation',
               'release_status': 'candidate; not stable production acceptance',
@@ -426,9 +441,38 @@ jobs:
           cd candidate
           sha256sum spooldesk-image.tar.gz spooldesk-image-arm64.tar.gz spooldesk-source.tar.gz spooldesk-source.zip IMAGE_ID IMAGE_TAG IMAGE_ID_ARM64 IMAGE_TAG_ARM64 SOURCE_COMMIT INSTALL-RU.md VALIDATION.json > SHA256SUMS
           sha256sum --check SHA256SUMS
+      - name: Add launchers and build the installation ZIP
+        run: python3 scripts/package_install_bundle.py candidate --version v0.1.0-rc.7
+      - name: Exercise the actual extracted installer and repeat startup
+        env:
+          SPOOLDESK_INSTALLER_NO_BROWSER: "1"
+          SPOOLDESK_INSTALLER_NO_PAUSE: "1"
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile
+          with zipfile.ZipFile('candidate/spooldesk-v0.1.0-rc.7-transfer.zip') as archive:
+              archive.extractall('installer trial')
+          PY
+          cd 'installer trial'
+          printf '1\n8000\nci-installer-test-password\nci-installer-test-password\ny\n' | bash INSTALL-LINUX.sh
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/healthz)" = 200
+          sha256sum spooldesk/.env > before-restart.sha256
+          bash INSTALL-LINUX.sh < /dev/null
+          sha256sum --check before-restart.sha256
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/healthz)" = 200
+      - name: Remove only this CI installation
+        if: always()
+        run: |
+          if [ -f 'installer trial/spooldesk/.env' ]; then
+            cd 'installer trial/spooldesk'
+            docker compose -p spooldesk down -v || true
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: spooldesk-release-candidate-${{ github.sha }}
-          path: candidate/
+          path: |
+            candidate/spooldesk-v0.1.0-rc.7-transfer.zip
+            candidate/spooldesk-v0.1.0-rc.7-transfer.zip.sha256
           if-no-files-found: error
           retention-days: 14

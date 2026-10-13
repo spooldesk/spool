@@ -94,7 +94,7 @@ services:
       # address and it being reachable only through the TLS proxy in
       # docker-compose.prod.yml. Publishing to 0.0.0.0 would quietly undo
       # the whole production overlay.
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:${SPOOLDESK_PORT:-8000}:8000"
     volumes:
       - data:/app/data
       - logs:/app/logs
@@ -109,5 +109,11 @@ services:
 
 volumes:
   data:
+    labels:
+      io.spooldesk.installation: ${SPOOLDESK_INSTALLATION_ID:-manual}
   logs:
+    labels:
+      io.spooldesk.installation: ${SPOOLDESK_INSTALLATION_ID:-manual}
   pgdata:
+    labels:
+      io.spooldesk.installation: ${SPOOLDESK_INSTALLATION_ID:-manual}

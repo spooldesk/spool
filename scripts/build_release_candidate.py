@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DIRECTORIES = {'src', 'tests', 'scripts', 'docs', 'assets', 'agents', '.github'}
 TOP_LEVEL = {'Dockerfile', 'Makefile', 'Caddyfile', 'LICENSE', 'pytest.ini', 'tailwind.config.js',
              '.dockerignore', '.gitignore', '.gitattributes', '.env.example'}
-TEXT = {'.py', '.js', '.cjs', '.html', '.css', '.json', '.webmanifest', '.md', '.txt', '.in', '.yml', '.yaml', '.ini', '.sh', '.example', '.toml'}
+TEXT = {'.py', '.js', '.cjs', '.html', '.css', '.json', '.webmanifest', '.md', '.txt', '.in', '.yml', '.yaml', '.ini', '.sh', '.ps1', '.cmd', '.command', '.example', '.toml'}
 ASSETS = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico', '.woff', '.woff2', '.ttf'}
 SENSITIVE = re.compile(rb'(?m)^-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|'
     rb'\bsk-or-v1-[A-Za-z0-9]{32,}|\bsk-ant-api\d+-[A-Za-z0-9_-]{32,}|'
@@ -87,7 +87,7 @@ def build(output: Path, version: str, root: Path = ROOT) -> dict:
     with zipfile.ZipFile(output/f'spooldesk-{version}-source.zip','x',compression=zipfile.ZIP_DEFLATED) as archive:
         for name, raw in files.items():
             member=zipfile.ZipInfo(f'spooldesk/{name}',date_time=(2026,1,1,0,0,0))
-            member.external_attr=(0o100755 if name.endswith('.sh') else 0o100644)<<16
+            member.external_attr=(0o100755 if name.endswith(('.sh', '.command')) else 0o100644)<<16
             member.compress_type=zipfile.ZIP_DEFLATED
             archive.writestr(member,raw)
     print(json.dumps({k:v for k,v in manifest.items() if k != 'files'},indent=2))

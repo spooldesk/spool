@@ -1,27 +1,27 @@
-# Spooldesk v0.1.0-rc.6 — GitHub installation candidate
+# Spooldesk v0.1.0-rc.7 — GitHub installation candidate
 
 Prepared 2026-10-13 for a single-organization self-hosted installation trial.
 The GitHub prerelease identifies its exact commit; downloaded CI assets contain
 `SOURCE_COMMIT`, `IMAGE_ID`, `IMAGE_TAG`, `VALIDATION.json` and `SHA256SUMS`.
 The release is a candidate, not a claim of stable production acceptance.
 
-## Changes from rc.5
+## Changes from rc.6
 
-- Runtime `multidict` is patched from 6.9.0 to 6.9.1 (CVE-2026-104874).
-- The separate maintenance tool lock updates `uv` from 0.12.17 to 0.12.18
-  (CVE-2026-104843). Other package versions are unchanged.
-- The obsolete Render demo blueprint is removed, and the README language check
-  is repaired. Runtime application behavior and dashboard design are unchanged.
-- The repository home links directly to the complete transfer ZIP and checksum.
-  The Windows and macOS/Linux guides follow an ordered path through verification,
-  image loading, fresh configuration and startup.
-- The package includes Linux/amd64 and Linux/arm64 images. Both are built from
-  the same locked source and checked for startup with SQLite and PostgreSQL;
-  ARM64 runs under QEMU in CI. Native host installation acceptance is pending.
+- A terminal installation wizard for Windows, macOS and Linux replaces manual
+  command copying. Docker is the only host prerequisite; Python runs offline
+  inside the verified application image.
+- Launchers check the package, local engine/architecture and existing resources;
+  setup generates isolated credentials and asks for the dashboard port. Repeated
+  launch preserves credentials and storage and refuses conflicting installations.
+- Compose supports a configurable loopback port and labels volumes with the
+  installation identity. The dashboard design and application features are unchanged.
+- CI adds native-shell tests on all three OS families and a real Linux Docker
+  installation/restart test using the extracted release ZIP.
+- rc.6 security patches remain: multidict 6.9.1 and maintenance-tool uv 0.12.18.
+  Both amd64 and arm64 images are rebuilt; ARM64 startup is tested under QEMU.
 
-The image is rebuilt from this candidate's locked dependencies. The rc.5 image
-and assets are preserved for traceability; updating source does not update an
-existing installation. Use rc.6 for the clean installation trial.
+Older assets remain unchanged. This installer is for new installations or
+restarting its own installation, not an automatic upgrade/migration wizard.
 
 The owner reports manual functional testing completed. Installation on a second
 computer is pending; follow [SECOND_COMPUTER_INSTALL.md](SECOND_COMPUTER_INSTALL.md).
