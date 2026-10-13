@@ -84,7 +84,7 @@ be disabled for a single-team workflow. They do not provide tenant isolation.
 Use the PostgreSQL backup tool for DB plus attachments and preserve the original
 encryption key separately. Restore on new storage and review quarantined jobs.
 Back up before upgrading; an old image is not guaranteed to understand a newer
-schema. See [recovery](docs/BACKUP_RESTORE.md) and [release procedure](docs/RELEASING.md).
+schema. See [recovery](docs/BACKUP_RESTORE.md) and [deployment guide](docs/DEPLOYMENT.md).
 
 ## Does installing successfully mean the whole release is ready?
 
@@ -92,5 +92,5 @@ It establishes portability when tested from the supplied archive on a clean
 computer. Combine that result with the functional tests already completed,
 reviewed source and matching release artifacts. A customer's actual channel
 credentials, HTTPS, backups and monitoring still need deployment-specific checks.
-Paid services also need seller and contract arrangements; see
-[legal preparation](docs/LEGAL_READINESS.md).
+Paid services require separate seller, contract and licensing arrangements.
+See [LICENSE](LICENSE) for the software terms.

@@ -6,8 +6,9 @@ separate static site. A laptop is sufficient for a local installation test;
 public operation needs a machine with suitable availability, storage and HTTPS.
 The software vendor does not need to host that customer's installation.
 
-For the first Windows installation, follow
-[SECOND_COMPUTER_INSTALL.md](docs/SECOND_COMPUTER_INSTALL.md).
+For a fresh installation on Windows, macOS or Linux, use the
+[installation wizard](INSTALLATION.md) ([Russian](INSTALLATION_RU.md)).
+It requires Docker only. The commands below are for source builds and server administration.
 
 ## Install a reviewed version
 
@@ -28,7 +29,9 @@ AI is optional and has separate settings. Telegram and a standalone bot process
 are not required. The dashboard manages channel workers itself.
 
 For a prebuilt candidate: verify checksums, `docker load --input <image.tar.gz>`,
-compare its ID with `IMAGE_ID`, and set `SPOOLDESK_IMAGE` in `.env` to `IMAGE_TAG`.
+compare its ID with the config/manifest pair in `package/IMAGE_IDS`
+(or `package/IMAGE_IDS_ARM64`), check its platform, and set `SPOOLDESK_IMAGE`
+in `.env` to the matching `package/IMAGE_TAG` value. The wizard does this automatically.
 Pull `postgres:16-alpine` separately, then start with:
 
 ```sh
@@ -38,6 +41,10 @@ docker compose -p spooldesk up -d --no-build --pull never dashboard
 Do not rebuild when accepting a supplied binary image. Do not silently retag
 an unknown image as the tested release. Use the same project name for all commands;
 changing it creates a different set of volumes and can look like a lost database.
+
+After switching a wizard installation to a custom deployment or editing its
+configuration, manage it with Compose. The original launcher intentionally
+refuses modified configuration; it is not an upgrade tool.
 
 ## Daily operation and storage
 
@@ -89,7 +96,7 @@ For local-only checks, use `--local --public-url http://localhost:8000`.
 
 ## Backup, restore and upgrades
 
-Use the PostgreSQL procedure in [POSTGRESQL.md](docs/POSTGRESQL.md). Preserve the
+Use the PostgreSQL procedure in [POSTGRESQL.md](POSTGRESQL.md). Preserve the
 original `SECRETS_KEY` separately: it decrypts stored credentials, private AI
 history and uploaded document excerpts. A replacement key cannot recover them.
 Backups include sensitive conversations and files; restrict and encrypt offsite
@@ -117,14 +124,14 @@ Before upgrading, back up DB/files and keep the previous image. Install an
 explicit reviewed version, not an unqualified `git pull` or moving `latest`.
 Startup applies ordered transactional schema revisions. Rollback uses the
 pre-upgrade backup and matching application; an older image may not read the
-new schema. See [RELEASING.md](docs/RELEASING.md).
+new schema. See [RELEASING.md](internal/RELEASING.md).
 
 ## Channels
 
 Configure connections in **Integrations**, save, then check authentication and
 complete a real incoming → ticket → reply → customer receipt test. A saved
 secret or HTTP health response is not delivery evidence. Details and diagnostics:
-[CONNECTION_CENTER.md](docs/CONNECTION_CENTER.md).
+[integration guide](INTEGRATIONS.md).
 
 - **Email:** an existing mailbox, IMAP/SMTP hosts and app password. Defaults are
   IMAP 993 and SMTP 587 STARTTLS; SMTP 465 uses implicit TLS. Check incoming and
@@ -215,7 +222,7 @@ Upload company instructions and maintain knowledge articles; this provides
 context, not model fine-tuning. The assistant uses the current operator's rights,
 bounded ticket-content samples, private chat history and TXT/MD/CSV/JSON/LOG/DOCX
 attachments. Status/assignee changes require explicit confirmation. See
-[AI_ASSISTANT.md](docs/AI_ASSISTANT.md) for limits and data handling.
+[AI_ASSISTANT.md](AI_ASSISTANT.md) for limits and data handling.
 
 Published help articles may be accessible publicly and through the widget.
 Do not put internal instructions, customer details or secrets into published

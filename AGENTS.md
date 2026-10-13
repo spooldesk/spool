@@ -74,7 +74,7 @@ The user selected the existing `spooldesk-preview` PostgreSQL demo database
 On 2026-09-26 the user explicitly requested a clean test database: its content
 was reset, preserving the owner login and schema; startup creates the standard
 General team/categories. Do not restore the old demo or reseed test records.
-Use `docker-compose.preview.yml` and `LOCAL_PREVIEW.md`. Keep port 8011 attached
+Use `docker-compose.preview.yml` and `docs/internal/LOCAL_DEVELOPMENT.md`. Keep port 8011 attached
 to that database. Never replace/reseed it, switch its volume, rotate its login,
 or start another preview on that port without an explicit user request.
 Run tests against disposable databases with distinct names, never this demo DB.
@@ -108,7 +108,7 @@ This isolated suite does not import the application or run a real model.
 
 On 2026-10-01 the user chose single-organization self-hosted distribution.
 First acceptance is a clean installation on another computer they own; no
-mandatory vendor VPS or SaaS conversion. Use docs/SELF_HOSTED_RELEASE.md and
-docs/SECOND_COMPUTER_INSTALL.md. The user reports manual functional tests done;
+mandatory vendor VPS or SaaS conversion. Use docs/internal/RELEASE_POLICY.md and
+docs/INSTALLATION.md. The user reports manual functional tests done;
 do not mark the second-computer installation accepted until they report its result.
 Keep paid-service legal readiness distinct from software test results.

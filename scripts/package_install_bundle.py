@@ -14,9 +14,13 @@ else:
 ROOT = Path(__file__).resolve().parents[1]
 BASE_FILES = ('spooldesk-image.tar.gz', 'spooldesk-image-arm64.tar.gz', 'spooldesk-source.zip',
               'spooldesk-source.tar.gz', 'IMAGE_ID', 'IMAGE_TAG', 'IMAGE_ID_ARM64', 'IMAGE_TAG_ARM64',
-              'SOURCE_COMMIT', 'INSTALL-RU.md', 'VALIDATION.json')
-LAUNCHERS = ('INSTALL-WINDOWS.cmd', 'INSTALL-MAC.command', 'INSTALL-LINUX.sh')
+              'SOURCE_COMMIT', 'VALIDATION.json')
+LAUNCHERS = ('INSTALL-WINDOWS.cmd', 'INSTALL-MACOS.command', 'INSTALL-LINUX.sh')
 HELPERS = ('configure.py', 'install.ps1', 'install.sh')
+GUIDES = {'README.txt': 'scripts/installer/README.txt',
+          'INSTALLATION.md': 'docs/INSTALLATION.md',
+          'INSTALLATION_RU.md': 'docs/INSTALLATION_RU.md',
+          'TROUBLESHOOTING.md': 'docs/TROUBLESHOOTING.md'}
 
 
 def digest(path):
@@ -40,8 +44,8 @@ def package(candidate: Path, version: str, source_root: Path = ROOT) -> Path:
         checks[name] = checksum
     if set(checks) != set(BASE_FILES):
         raise ValueError('Incomplete candidate')
-    archive = candidate / f'spooldesk-{version}-transfer.zip'
-    if archive.exists() or (candidate / 'installer').exists() or (candidate / 'IMAGE_IDS').exists():
+    archive = candidate / f'spooldesk-{version}-installer.zip'
+    if archive.exists() or (candidate / 'installer').exists() or (candidate / 'package').exists():
         raise ValueError('Refuse to replace an existing installer package')
     identities = {}
     for arch, suffix, filename in [('amd64', '', 'spooldesk-image.tar.gz'),
@@ -49,11 +53,20 @@ def package(candidate: Path, version: str, source_root: Path = ROOT) -> Path:
         identities[suffix] = image_ids(candidate / filename,
             (candidate / ('IMAGE_TAG' + suffix)).read_text().strip(),
             (candidate / ('IMAGE_ID' + suffix)).read_text().strip(), arch)
+    (candidate / 'package').mkdir()
+    checks = {}
+    for name in BASE_FILES:
+        relative = 'package/' + name
+        shutil.copyfile(candidate / name, candidate / relative)
+        checks[relative] = digest(candidate / relative)
     for suffix, ids in identities.items():
-        relative = 'IMAGE_IDS' + suffix
+        relative = 'package/IMAGE_IDS' + suffix
         (candidate / relative).write_text(ids['config'] + '\n' + ids['manifest'] + '\n', encoding='ascii')
         checks[relative] = digest(candidate / relative)
     (candidate / 'installer').mkdir()
+    for relative, source in GUIDES.items():
+        shutil.copyfile(source_root / source, candidate / relative)
+        checks[relative] = digest(candidate / relative)
     for name in LAUNCHERS + HELPERS:
         source = source_root / 'scripts' / 'installer' / name
         if source.is_symlink() or not source.is_file():

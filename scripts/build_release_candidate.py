@@ -33,8 +33,8 @@ def allowed(name: str) -> bool:
         return False
     if path.name == 'secrets.key' or path.suffix.lower() in {'.db', '.sqlite', '.sqlite3', '.key', '.pem', '.log', '.dump', '.bak', '.zip'}:
         return False
-    if name.startswith('agents/tasks/'):
-        return name == 'agents/tasks/orchestration-smoke.json'
+    if name in {'AGENTS.md', 'CLAUDE.md', 'scripts/claude_worker.py'} or name.startswith(('agents/', 'tests/agents/', 'docs/internal/')):
+        return False
     if len(path.parts) == 1:
         return (name in TOP_LEVEL or name.startswith('requirements') and path.suffix in {'.in', '.txt'}
                 or name.startswith('docker-compose') and path.suffix == '.yml'

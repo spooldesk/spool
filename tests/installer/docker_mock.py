@@ -17,6 +17,9 @@ target = root / 'spooldesk'
 if args[:2] == ['context', 'inspect']:
     print('npipe://local' if os.name == 'nt' else 'unix:///local')
 elif args[0] == 'info':
+    if os.environ.get('INSTALLER_TEST_DOCKER_DOWN') == '1':
+        print('Docker engine is not running', file=sys.stderr)
+        sys.exit(1)
     print('linux amd64')
 elif args[0] == 'ps':
     if active or foreign: print('test-container')
@@ -29,11 +32,11 @@ elif args[:2] == ['image', 'inspect']:
     if 'Architecture' in args[-1]:
         print(os.environ.get('INSTALLER_TEST_IMAGE_PLATFORM', 'linux/amd64'))
     elif os.environ.get('INSTALLER_TEST_IMAGE_STORE') == 'containerd':
-        print((root / 'IMAGE_IDS').read_text().splitlines()[1])
+        print((root / 'package/IMAGE_IDS').read_text().splitlines()[1])
     elif os.environ.get('INSTALLER_TEST_IMAGE_STORE') == 'unknown':
         print('sha256:' + 'd' * 64)
     else:
-        print((root / 'IMAGE_ID').read_text().strip())
+        print((root / 'package/IMAGE_ID').read_text().strip())
 elif args[0] == 'load':
     pass
 elif args[0] == 'create':
@@ -44,6 +47,12 @@ elif args[0] == 'rm':
     assert args[1:] == ['installer-test-lock']
     (root / 'mock-lock').unlink()
 elif args[0] == 'run':
+    if os.environ.get('INSTALLER_TEST_INTERACTIVE') == '1':
+        try:
+            sys.exit(configure.main(root, 'amd64'))
+        except (EOFError, KeyboardInterrupt):
+            print('Cancelled. Existing data was not removed.')
+            sys.exit(3)
     identity = configure.image_identity(root, 'amd64')
     if target.exists():
         configure.validate_existing(target, identity)
@@ -52,14 +61,16 @@ elif args[0] == 'run':
 elif args[0] == 'pull':
     if os.environ.get('INSTALLER_TEST_FAIL_PULL') == '1': sys.exit(1)
 elif args[0] == 'compose':
-    if args[1] == 'version': print('Docker Compose version v2.39.0')
+    if args[1] == 'version':
+        if os.environ.get('INSTALLER_TEST_NO_COMPOSE') == '1': sys.exit(1)
+        print('Docker Compose version v2.39.0')
     elif 'up' in args:
         assert 'POSTGRES_PASSWORD' not in os.environ and 'SPOOLDESK_IMAGE' not in os.environ
         (root / 'mock-active').write_text('1')
     elif 'ps' in args: print('test-container')
     else: raise RuntimeError('Unexpected mock Compose operation')
 elif args[0] == 'inspect':
-    if 'Health' in args[-1]: print('healthy')
+    if 'Health' in args[-1]: print(os.environ.get('INSTALLER_TEST_HEALTH', 'healthy'))
     else:
         print(json.dumps({'com.docker.compose.project.working_dir': str(target)}) if 'json' in args[-1] else str(target))
 else:

@@ -2,10 +2,14 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2
 $exitCode = 0
 $lockContainer = $null
+[Console]::InputEncoding = New-Object System.Text.UTF8Encoding $false
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false
+$OutputEncoding = [Console]::OutputEncoding
+$env:DOCKER_CLI_HINTS = 'false'
 
 function Invoke-Docker {
     & docker @args
-    if ($LASTEXITCODE -ne 0) { throw 'Docker operation failed. Check the message above, fix the cause and run this file again.' }
+    if ($LASTEXITCODE -ne 0) { throw "Docker $($args[0]) failed. Check the message above, fix the cause and run this file again." }
 }
 
 try {
@@ -16,14 +20,17 @@ try {
     if (-not (Test-Path -LiteralPath 'SHA256SUMS' -PathType Leaf)) {
         throw 'Extract the entire installation ZIP first, then open INSTALL-WINDOWS.cmd.'
     }
-    $required = @('spooldesk-image.tar.gz','spooldesk-image-arm64.tar.gz','spooldesk-source.zip',
-        'spooldesk-source.tar.gz','IMAGE_ID','IMAGE_TAG','IMAGE_ID_ARM64','IMAGE_TAG_ARM64',
-        'IMAGE_IDS','IMAGE_IDS_ARM64','SOURCE_COMMIT','INSTALL-RU.md','VALIDATION.json','INSTALL-WINDOWS.cmd','INSTALL-MAC.command',
+    $required = @('package/spooldesk-image.tar.gz','package/spooldesk-image-arm64.tar.gz','package/spooldesk-source.zip',
+        'package/spooldesk-source.tar.gz','package/IMAGE_ID','package/IMAGE_TAG','package/IMAGE_ID_ARM64','package/IMAGE_TAG_ARM64',
+        'package/IMAGE_IDS','package/IMAGE_IDS_ARM64','package/SOURCE_COMMIT','package/VALIDATION.json',
+        'README.txt','INSTALLATION.md','INSTALLATION_RU.md','TROUBLESHOOTING.md','INSTALL-WINDOWS.cmd','INSTALL-MACOS.command',
         'INSTALL-LINUX.sh','installer/configure.py','installer/install.ps1','installer/install.sh')
     $seen = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
     Write-Host '[1/6] Checking package integrity...'
-    if ((Get-Item -LiteralPath 'installer').Attributes -band [IO.FileAttributes]::ReparsePoint) {
-        throw 'Linked installer folders are not supported.'
+    foreach ($directory in @('installer', 'package')) {
+        if ((Get-Item -LiteralPath $directory).Attributes -band [IO.FileAttributes]::ReparsePoint) {
+            throw 'Linked package folders are not supported.'
+        }
     }
     foreach ($line in Get-Content -LiteralPath 'SHA256SUMS') {
         if ($line -notmatch '^([0-9a-f]{64})  (.+)$') { throw 'Invalid checksum manifest.' }
@@ -59,20 +66,20 @@ try {
         'COMPOSE_PROJECT_NAME','COMPOSE_PROFILES','COMPOSE_ENV_FILES','DOCKER_DEFAULT_PLATFORM')) {
         Remove-Item "Env:$name" -ErrorAction SilentlyContinue
     }
-    $image = (Get-Content -LiteralPath "IMAGE_TAG$suffix" -Raw).Trim()
-    $expectedId = (Get-Content -LiteralPath "IMAGE_ID$suffix" -Raw).Trim()
+    $image = (Get-Content -LiteralPath "package/IMAGE_TAG$suffix" -Raw).Trim()
+    $expectedId = (Get-Content -LiteralPath "package/IMAGE_ID$suffix" -Raw).Trim()
     if ($image -notmatch "^spooldesk:rc-[0-9a-f]{40}-$arch`$" -or $expectedId -notmatch '^sha256:[0-9a-f]{64}$') {
         throw 'Invalid image identity.'
     }
     # The checked archive links these two digests to the same image: classic
     # Docker reports its config ID; containerd reports its OCI manifest ID.
-    $acceptedIds = @(Get-Content -LiteralPath "IMAGE_IDS$suffix")
+    $acceptedIds = @(Get-Content -LiteralPath "package/IMAGE_IDS$suffix")
     if ($acceptedIds.Count -ne 2 -or $expectedId -notin $acceptedIds) { throw 'Invalid accepted image identities.' }
     foreach ($id in $acceptedIds) {
         if ($id -notmatch '^sha256:[0-9a-f]{64}$') { throw 'Invalid accepted image identity.' }
     }
     Write-Host "[3/6] Loading the tested $arch image..."
-    Invoke-Docker load --input $imageFile
+    Invoke-Docker load --input "package/$imageFile"
     $loadedId = (Invoke-Docker image inspect $image --format '{{.Id}}').Trim()
     $loadedPlatform = (Invoke-Docker image inspect $image --format '{{.Os}}/{{.Architecture}}').Trim()
     if ($loadedId -notin $acceptedIds -or $loadedPlatform -ne "linux/$arch") {
@@ -107,13 +114,24 @@ try {
     Write-Host '[4/6] Configure your installation...'
     $terminal = @('-i')
     if (-not [Console]::IsInputRedirected -and -not [Console]::IsOutputRedirected) { $terminal = @('-it') }
-    Invoke-Docker run --rm @terminal --network none --read-only --cap-drop ALL --security-opt no-new-privileges `
+    & docker run --rm @terminal --network none --read-only --cap-drop ALL --security-opt no-new-privileges `
+        -e PYTHONUTF8=1 -e PYTHONIOENCODING=utf-8 `
         --user 0:0 --mount "type=bind,source=$bundle,target=/bundle" --entrypoint python `
         $image /bundle/installer/configure.py --arch $arch
+    if ($LASTEXITCODE -eq 3) { return }
+    if ($LASTEXITCODE -ne 0) { throw 'Configuration did not finish. Check the message above and run this file again.' }
     Set-Location -LiteralPath $projectDir
     $compose = @('compose','--project-directory',$projectDir,'--env-file',(Join-Path $projectDir '.env'),
         '-f',(Join-Path $projectDir 'docker-compose.yml'),'-p','spooldesk')
     Write-Host '[5/6] Starting PostgreSQL and Spooldesk...'
+    if ($containers.Count -eq 0) {
+        $url = (Get-Content -LiteralPath 'OPEN_URL' -Raw).Trim()
+        if ($url -notmatch '^http://localhost:([0-9]{4,5})$') { throw 'Invalid dashboard address.' }
+        $port = [int]$Matches[1]
+        $listener = New-Object Net.Sockets.TcpListener ([Net.IPAddress]::Loopback, $port)
+        try { $listener.Start() } catch { throw "Port $port is unavailable. Stop the application using it, then run this file again. Saved settings are preserved. See TROUBLESHOOTING.md." }
+        finally { $listener.Stop() }
+    }
     if ($containers.Count -eq 0 -and $volumes.Count -eq 0) { Invoke-Docker pull postgres:16-alpine }
     Invoke-Docker @compose up -d --no-build --no-recreate --pull never dashboard
     Write-Host '[6/6] Waiting for the dashboard...'
@@ -122,13 +140,16 @@ try {
     for ($attempt = 0; $attempt -lt 90; $attempt++) {
         $health = (Invoke-Docker inspect $containerId --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}').Trim()
         if ($health -eq 'healthy') { $healthy = $true; break }
+        if ($health -in 'unhealthy','none') { break }
         Start-Sleep -Seconds 2
     }
     if (-not $healthy) { throw 'Dashboard did not become healthy. Keep this folder and inspect dashboard/postgres logs in Docker Desktop. Run this file again after resolving the error.' }
     $url = (Get-Content -LiteralPath 'OPEN_URL' -Raw).Trim()
     if ($url -notmatch '^http://localhost:[0-9]{4,5}$') { throw 'Invalid dashboard address.' }
     Write-Host "`nReady: $url`nLogin: admin@local`nUse the password you saved. Run the same file next time; keep this installation folder.`n"
-    if ($env:SPOOLDESK_INSTALLER_NO_BROWSER -ne '1') { Start-Process $url }
+    if ($env:SPOOLDESK_INSTALLER_NO_BROWSER -ne '1') {
+        try { Start-Process $url } catch { Write-Host "Open $url in your browser." }
+    }
 } catch {
     Write-Host "`nInstallation stopped: $($_.Exception.Message)" -ForegroundColor Red
     Write-Host 'Existing data was not removed. Keep the folder and retry after resolving the error.'

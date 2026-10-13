@@ -11,7 +11,9 @@ def test_candidate_allowlist_keeps_source_and_rejects_private_state():
         assert allowed(name), name
     for name in ['.env','.env.production','src/.env','data/customer.png','backups/snapshot.zip',
                  '.agent-runs/dump.json','secrets.key','src/nested/secrets.key','MANUAL_STEPS.md',
-                 'agents/tasks/private-task.json','../src/example.py','src/test.db','src/__pycache__/test.py']:
+                 'agents/tasks/private-task.json', 'AGENTS.md', 'CLAUDE.md',
+                 'agents/README.md', 'tests/agents/test_runner.py', 'scripts/claude_worker.py',
+                 'docs/internal/LOCAL_DEVELOPMENT.md', '../src/example.py','src/test.db','src/__pycache__/test.py']:
         assert not allowed(name), name
 
 

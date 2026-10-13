@@ -1,4 +1,4 @@
-> Historical plan from 2026-09-22. Current product/offer and gates: [SELF_HOSTED_RELEASE.md](SELF_HOSTED_RELEASE.md). Some readiness and pricing assumptions below have since changed.
+> Historical plan from 2026-09-22. Current product/offer and gates: [SELF_HOSTED_RELEASE.md](../RELEASE_POLICY.md). Some readiness and pricing assumptions below have since changed.
 
 # Spooldesk: self-hosted, услуги и выпуск версий
 
@@ -45,7 +45,7 @@
 
 ## Что означает текущая лицензия
 
-[LICENSE](../LICENSE) содержит BSL 1.1 и Additional Use Grant для production,
+[LICENSE](../../../LICENSE) содержит BSL 1.1 и Additional Use Grant для production,
 который исключает предоставление третьим лицам hosted/managed-сервиса с
 существенным набором возможностей Spooldesk. Обычная собственная инсталляция
 в пределах этого разрешения не требует обязательной покупки лицензии.
@@ -62,7 +62,7 @@
 
 ## Пересмотр предложения и цен
 
-В [лендинге](index.html) сейчас: Self-hosted $0, Managed $249/месяц + $300 setup
+В [лендинге](../../index.html) сейчас: Self-hosted $0, Managed $249/месяц + $300 setup
 для пяти операторов ($349 для пятнадцати), Cloud Coming soon. В исходной стратегии
 есть ещё пилот $149/месяц + $199 setup и будущий Cloud $99–149. Это гипотезы,
 а не проверенная продажами ценовая сетка. Новую сетку не публикуем автоматически.
@@ -126,7 +126,7 @@ self-hosted и не путать отсутствие тарифного лим�
 
 После этого пересмотра пользователь поручил обновить лендинг. Английская и
 русская версии теперь отражают описанное предложение; порядок публикации —
-в [LANDING.md](LANDING.md). Лицензия не изменена, сайт ещё не опубликован.
+в [LANDING.md](../../LANDING.md). Лицензия не изменена, сайт ещё не опубликован.
 
 ## Ветки GitHub, тестовая среда и release
 

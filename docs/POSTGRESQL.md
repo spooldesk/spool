@@ -13,7 +13,7 @@ deployment boundary, not shared-database SaaS tenant isolation.
 3. Open `http://localhost:8000`, sign in as `admin@local` with the configured
    initial password, and create individual operator accounts or invitations.
 4. For public use add the TLS overlay and complete `scripts/preflight.py` as
-   described in [DEPLOY.md](../DEPLOY.md).
+   described in [deployment guide](DEPLOYMENT.md).
 
 `pgdata` stores PostgreSQL; `data` stores attachments and fallback key material.
 The database port is not published. Dashboard and bot connect to host `postgres`

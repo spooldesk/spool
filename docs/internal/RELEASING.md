@@ -27,11 +27,14 @@ requires the reviewed commit and CI procedure below.
    the actual production image checks, dependency audit, deployment checks and
    the bilingual landing build.
 4. Download `spooldesk-release-candidate-<commit>`. Starting with rc.7 it contains
-   the complete transfer ZIP and its checksum. Verify the outer checksum and
+   the complete installer ZIP and its checksum. Verify the outer checksum and
    extract the ZIP. Inside are the source archives (ZIP and tar.gz) made by
    `git archive` from that commit, the **same images**
    that passed Docker startup checks, `SOURCE_COMMIT`, `IMAGE_ID`, `IMAGE_TAG`,
-   `INSTALL-RU.md`, `VALIDATION.json` and `SHA256SUMS`.
+   `INSTALLATION.md` and `INSTALLATION_RU.md`, `VALIDATION.json` and `SHA256SUMS`.
+   Since rc.9, images, source and identity files live in `package/`; the guides
+   and OS launchers are at the ZIP root. Internal docs and agent tooling are
+   excluded by `.gitattributes export-ignore`.
    The earlier `candidate-image-*` artifact alone does not mean all checks passed.
 5. Verify `sha256sum --check SHA256SUMS` (`shasum -a 256 --check` on macOS).
    For amd64 load `spooldesk-image.tar.gz` and use `IMAGE_TAG` / `IMAGE_ID`.
@@ -51,7 +54,7 @@ someone accidentally committed.
 
 ## Transfer and clean installation
 
-Follow [SECOND_COMPUTER_INSTALL.md](SECOND_COMPUTER_INSTALL.md). Open the launcher
+Follow [installation guide](../INSTALLATION_RU.md). Open the launcher
 for Windows, macOS or Linux from the extracted bundle; no host Python is needed.
 The owner chose
 a second computer for the first installation test; no separate VPS purchase is
@@ -64,7 +67,7 @@ Preserve LICENSE in source and both runtime images. CI validates ARM64 startup
 under QEMU; this does not replace a native second-computer installation trial.
 
 CI uses `scripts/package_install_bundle.py` to add launchers, checksum every
-payload and create `spooldesk-<version>-transfer.zip` with executable Unix modes
+payload and create `spooldesk-<version>-installer.zip` with executable Unix modes
 and a separate `.zip.sha256`. It then tests the extracted installer with a real
 Linux Docker engine, including repeat startup and preservation of `.env`.
 Rc.8 also repeats this test with a separate containerd engine and asserts that
@@ -78,7 +81,7 @@ then publish it as a prerelease. Do not overwrite assets in an older release.
 The owner reports the manual functional tests are done. Record that provenance;
 repeat affected flows when code/configuration changes, not the whole manual
 suite by default. The second-computer installation has not yet been accepted.
-Commercial service readiness is a separate gate in [LEGAL_READINESS.md](LEGAL_READINESS.md).
+Commercial service readiness is a separate gate in [business readiness](BUSINESS_READINESS.md).
 
 ## Acceptance before publication
 
@@ -93,7 +96,7 @@ Commercial service readiness is a separate gate in [LEGAL_READINESS.md](LEGAL_RE
 - Exercise a backup and restore into **new** storage with the original separate
   encryption key, then verify authentication, attachments and restart. Review
   quarantined outbound jobs before allowing sending. Follow
-  [BACKUP_RESTORE.md](BACKUP_RESTORE.md), including Docker ownership.
+  [BACKUP_RESTORE.md](../BACKUP_RESTORE.md), including Docker ownership.
 - If upgrading an existing installation, back up both DB and attachments before
   migrations. Prove the previous version works with the restored **pre-upgrade**
   backup. Do not assume an older image can read a newer schema. Keep the old
@@ -121,6 +124,6 @@ An external availability check must run outside the app's machine. Define the
 maintenance scope and response hours before charging for it. Record a tested
 restore and a short operator walkthrough; keep credentials out of handover notes.
 
-The public website is a separate static artifact; see [LANDING.md](LANDING.md).
+The public website is a separate static artifact; see [LANDING.md](../LANDING.md).
 It can go live before the helpdesk is sold as a generally available release,
 provided its offer continues to state the readiness and agreed-scope limits.
