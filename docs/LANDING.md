@@ -13,7 +13,7 @@ python -m http.server 8765 --bind 127.0.0.1 --directory site
 ```
 
 Export requires a **new** output directory; choose a different directory for
-another build. It copies only sixteen public assets, including both languages, legal-information pages, the current license text,
+another build. It copies only eighteen public assets, including both languages, legal-information pages, the current license text, search discovery files,
 the interactive demo, shared brand tokens and fallback screenshots. Do not deploy `docs/`: it contains internal audits
 and planning documents. CI validates generation and retains the public site as
 an artifact named with the commit SHA; it does not publish it.
@@ -22,7 +22,8 @@ an artifact named with the commit SHA; it does not publish it.
 
 For Git integration, use repository root, production branch `main`, no framework,
 build command `python scripts/build_landing.py --check --export site`, and output
-directory `site`. Use Python 3.12 or later. A `staging`/pull-request preview is a
+directory `site`. Set `PYTHON_VERSION=3.12` and `SKIP_DEPENDENCY_INSTALL=1` so the
+static build does not install the helpdesk's Python dependencies. A `staging`/pull-request preview is a
 preview of this **static website**, not a running helpdesk or a test database.
 Cloudflare documents custom build commands and output directories in its
 [static HTML guide](https://developers.cloudflare.com/pages/framework-guides/deploy-anything/).
@@ -37,6 +38,23 @@ After an approved deployment, verify `/`, `/ru/`, language links, screenshots,
 mobile layout and contact links on the actual HTTPS domain. Check that
 `/RELEASE_READINESS_2026-09-22.md` is not publicly served. The canonical domain is
 `spooldesk.net` in the template; change it there before using another domain.
+
+## Search discovery
+
+Edit `assets/landing/robots.txt` and `assets/landing/sitemap.xml`; the build copies
+them to `docs/` and includes them in the public export. The sitemap lists the
+four public HTML pages using their canonical HTTPS URLs. Language alternatives
+remain in each page's HTML. Update both search files when changing the domain
+or adding public pages; do not list internal documentation or preview domains.
+
+In Google Search Console, add the Domain property `spooldesk.net`, verify it
+with the Google-provided TXT record at the DNS root, and submit
+`https://spooldesk.net/sitemap.xml`. Keep that TXT record after verification;
+add it alongside existing mail TXT records, never replace them. Use URL
+Inspection for `/` and `/ru/` to check live accessibility and request indexing.
+Verification and submission do not guarantee indexing or a search position.
+After deployment, check that `/robots.txt` is plain text and `/sitemap.xml` is
+XML, rather than the host's HTML fallback page.
 
 ## Offer and content boundaries
 

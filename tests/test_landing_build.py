@@ -2,6 +2,8 @@
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlsplit
+from urllib.robotparser import RobotFileParser
+from xml.etree import ElementTree
 
 import pytest
 
@@ -12,6 +14,7 @@ class Page(HTMLParser):
     def __init__(self, text):
         super().__init__()
         self.ids, self.targets, self.images, self.languages = [], [], [], []
+        self.canonicals = []
         self.feed(text)
 
     def handle_starttag(self, tag, attrs):
@@ -27,6 +30,8 @@ class Page(HTMLParser):
             self.images.append(attrs["src"])
         if tag == "html":
             self.languages.append(attrs.get("lang"))
+        if tag == "link" and attrs.get("rel") == "canonical":
+            self.canonicals.append(attrs["href"])
 
 
 def test_committed_landing_matches_both_locale_sources():
@@ -44,7 +49,7 @@ def test_exported_site_has_resolvable_local_links_and_no_internal_reports(tmp_pa
     destination = tmp_path / "site"
     build_landing.export_site(destination)
     actual = {p.relative_to(destination).as_posix() for p in destination.rglob("*") if p.is_file()}
-    assert len(actual) == 16
+    assert len(actual) == 18
     assert {'brand.css', 'product-demo.js', 'product-demo.css',
             'icons/favicon-96x96.png'} <= actual
     assert not any(name.endswith((".md", ".json", ".py", ".env")) for name in actual)
@@ -69,6 +74,30 @@ def test_exported_site_has_resolvable_local_links_and_no_internal_reports(tmp_pa
 
 def test_public_license_is_the_current_repository_license():
     assert Path('docs/license.txt').read_text(encoding='utf-8') == Path('LICENSE').read_text(encoding='utf-8')
+
+
+def test_search_discovery_exports_canonical_pages_and_allows_crawling(tmp_path):
+    destination = tmp_path / 'site'
+    build_landing.export_site(destination)
+    robots = RobotFileParser()
+    robots.parse((destination/'robots.txt').read_text(encoding='utf-8').splitlines())
+    assert robots.site_maps() == ['https://spooldesk.net/sitemap.xml']
+    sitemap = ElementTree.parse(destination/'sitemap.xml')
+    ns = {'s': 'http://www.sitemaps.org/schemas/sitemap/0.9'}
+    locations = [item.text for item in sitemap.findall('s:url/s:loc', ns)]
+    assert len(locations) == len(set(locations)) == 4
+    indexed_files = set()
+    for url in locations:
+        parsed = urlsplit(url)
+        assert parsed.scheme == 'https' and parsed.netloc == 'spooldesk.net'
+        assert not parsed.query and not parsed.fragment
+        assert robots.can_fetch('Googlebot', url)
+        page_path = destination / parsed.path.lstrip('/') / 'index.html'
+        assert page_path.resolve().is_relative_to(destination.resolve())
+        page = Page(page_path.read_text(encoding='utf-8'))
+        assert page.canonicals == [url]
+        indexed_files.add(page_path.relative_to(destination).as_posix())
+    assert indexed_files == {'index.html', 'ru/index.html', 'legal/index.html', 'ru/legal/index.html'}
 
 
 def test_export_never_overwrites_an_existing_directory(tmp_path):

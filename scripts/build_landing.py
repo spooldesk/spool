@@ -56,12 +56,14 @@ def build(*, check: bool = False) -> None:
         render(legal_template, legal, destination.parent/'legal/index.html', check)
         print(f"{'Checked' if check else 'Built'} {destination.relative_to(ROOT)}")
     write_checked(ROOT/'docs/license.txt', (ROOT/'LICENSE').read_text(encoding='utf-8'), check)
+    for name in ('robots.txt', 'sitemap.xml'):
+        write_checked(ROOT/'docs'/name, (source/name).read_text(encoding='utf-8'), check)
 
 
 def export_site(destination: Path) -> None:
     """Export only public assets, never the internal reports in docs/."""
     paths = ["index.html", "ru/index.html", "legal/index.html", "ru/legal/index.html", "license.txt", "style.css", "landing.js", "brand.css",
-             "product-demo.js", "product-demo.css",
+             "product-demo.js", "product-demo.css", "robots.txt", "sitemap.xml",
              "icons/favicon.ico", "icons/apple-touch-icon.png", "icons/favicon-96x96.png",
              "img/01_board.png", "img/03_ticket_detail.png", "img/16_widget_help.png"]
     destination.mkdir(parents=True, exist_ok=False)
