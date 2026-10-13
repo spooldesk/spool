@@ -27,6 +27,12 @@ This is an installation candidate; second-computer acceptance is pending.
 **Private preview:** sign in with a GitHub account that has repository access.
 The direct download does not grant access to an otherwise unauthorized account.
 
+**Security update (2026-10-13):** the `rc.5` ZIP predates the `multidict 6.9.1`
+fix for [CVE-2026-104874](https://github.com/aio-libs/multidict/security/advisories/GHSA-54p9-h82j-f925).
+The patched dependency is in the current source; the existing release image
+still contains `6.9.0`. For a new deployment, use the source-build option below
+until a replacement image has been built, tested and published.
+
 ### Download from a terminal
 
 With [GitHub CLI](https://cli.github.com/) installed, sign in once using
