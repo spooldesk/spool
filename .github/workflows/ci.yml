@@ -130,6 +130,9 @@ jobs:
       - name: Enable ARM64 image execution on the build runner
         if: matrix.arch == 'arm64'
         uses: docker/setup-qemu-action@v3
+        env:
+          # The emulator installer itself must run on the native runner first.
+          DOCKER_DEFAULT_PLATFORM: linux/amd64
         with:
           platforms: arm64
 
