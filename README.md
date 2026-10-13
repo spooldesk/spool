@@ -19,7 +19,7 @@ Extract it and follow that guide. The image runs on Linux/amd64, including
 Docker Desktop with Linux containers on Windows x64. PostgreSQL is downloaded
 separately; Docker Compose v2, Python 3.12+ and internet access are required.
 
-[Installation guide / Инструкция](docs/SECOND_COMPUTER_INSTALL.md) ·
+[Installation guide (Russian)](docs/SECOND_COMPUTER_INSTALL.md) ·
 [ZIP checksum](https://github.com/spooldesk/spool/releases/download/v0.1.0-rc.5/spooldesk-v0.1.0-rc.5-transfer.zip.sha256) ·
 [Release notes](https://github.com/spooldesk/spool/releases/tag/v0.1.0-rc.5)
 
