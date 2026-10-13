@@ -4,7 +4,8 @@ The English page is `/`; Russian is `/ru/`. Edit `assets/landing/page.html`,
 `assets/landing/en.json` and `assets/landing/ru.json`. The two generated HTML
 files must stay in sync. Styles and progressive enhancement live in
 `docs/style.css` and `docs/landing.js`. The interactive preview lives in
-`docs/product-demo.js` and `docs/product-demo.css`. No npm installation or CDN is required.
+`docs/product-demo.js` and `docs/product-demo.css`; the guided AI showcase uses
+`docs/ai-demo.js` and `docs/ai-demo.css`. No npm installation or CDN is required.
 
 ```sh
 python scripts/build_landing.py
@@ -13,7 +14,7 @@ python -m http.server 8765 --bind 127.0.0.1 --directory site
 ```
 
 Export requires a **new** output directory; choose a different directory for
-another build. It copies only eighteen public assets, including both languages, legal-information pages, the current license text, search discovery files,
+another build. It copies only twenty public assets, including both languages, legal-information pages, the current license text, search discovery files,
 the interactive demo, shared brand tokens and fallback screenshots. Do not deploy `docs/`: it contains internal audits
 and planning documents. CI validates generation and retains the public site as
 an artifact named with the commit SHA; it does not publish it.
@@ -69,6 +70,14 @@ XML, rather than the host's HTML fallback page.
   channel examples and the interactive preview are optional enhancements.
 
 ## Interactive preview
+
+The AI section offers two guided, fictional scenarios: a customer conversation
+with clarification, a knowledge-based answer and handoff; and a team assistant
+with a ticket overview and a status change confirmed by the visitor. The scenes
+are static illustrations, not live model responses. They make no API calls,
+change no real tickets and retain no data. Buttons advance/replay each scenario;
+the initial customer scene remains readable without JavaScript. Keep the demo
+notice visible and the content synchronized in both locales.
 
 The product section starts with an empty local queue. Visitors can add fictional
 examples, switch list/board, search, open a conversation, try a reply or internal

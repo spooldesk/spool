@@ -23,8 +23,10 @@
   <link rel="stylesheet" href="../brand.css">
   <link rel="stylesheet" href="../style.css">
   <link rel="stylesheet" href="../product-demo.css">
+  <link rel="stylesheet" href="../ai-demo.css">
   <script src="../landing.js" defer></script>
   <script src="../product-demo.js" defer></script>
+  <script src="../ai-demo.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Перейти к содержимому</a>
@@ -35,7 +37,7 @@
         spooldesk<span class="brand-period">.</span>
       </a>
       <nav class="main-nav" aria-label="Главная навигация">
-        <a href="#product">Продукт</a><a href="#ownership">Ваш сервер</a><a href="#pricing">Стоимость</a>
+        <a href="#product">Продукт</a><a href="#ai">ИИ-агент</a><a href="#ownership">Ваш сервер</a><a href="#pricing">Стоимость</a>
       </nav>
       <div class="header-actions">
         <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Переключить тёмную тему" title="Переключить тёмную тему" aria-pressed="false"><span class="theme-sun" aria-hidden="true">☀</span><span class="theme-moon" aria-hidden="true">☾</span></button>
@@ -48,10 +50,10 @@
   <main id="main">
     <section class="hero wrap">
       <div class="hero-copy">
-        <p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> Независимый helpdesk на вашем сервере</p>
+        <p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> Helpdesk на вашем сервере. Со встроенным ИИ.</p>
         <h1>Поддержка<br><em>в ваших руках.</em></h1>
-        <p class="hero-description">У каждого обращения — своё место, ответственный и следующий шаг. Объедините каналы и управляйте системой сами.</p>
-        <div class="hero-actions"><a class="button button-ink" href="#product">Попробовать кабинет <span aria-hidden="true">↓</span></a><a class="text-link" href="#start">Установить у себя <span aria-hidden="true">↗</span></a></div>
+        <p class="hero-description">Все обращения в одном кабинете. Встроенный ИИ помогает клиентам и вашей команде, а вы решаете, сколько ему доверить.</p>
+        <div class="hero-actions"><a class="button button-ink" href="#ai">Посмотреть ИИ в деле <span aria-hidden="true">↓</span></a><a class="text-link" href="#start">Установить у себя <span aria-hidden="true">↗</span></a></div>
         <p class="hero-note">Ваша инфраструктура. Доступный код. Помощь по запросу.</p>
       </div>
       <div class="intake-scene" aria-label="Пример обращений из разных каналов в единой очереди поддержки">
@@ -71,6 +73,115 @@
         <p class="scene-caption">Иллюстрация рабочего процесса. Выберите канал обращения.</p>
         <span hidden id="sample-email">Поможете восстановить доступ?</span><span hidden id="sample-widget">Где найти наш последний счёт?</span><span hidden id="sample-slack">Новому коллеге нужна учётная запись.</span><span hidden id="sample-telegram">Есть вопрос по нашей настройке.</span>
       </div>
+    </section>
+
+    <section class="ai-showcase wrap" id="ai" aria-labelledby="ai-heading">
+      <div class="ai-section-heading">
+        <div><p class="eyebrow">ИИ — часть вашего кабинета</p><h2 id="ai-heading">ИИ ведёт разговор.<br><em>Правила задаёте вы.</em></h2></div>
+        <p>Агент для клиентов. Ассистент для команды. Попробуйте оба сценария — шаг за шагом.</p>
+      </div>
+      <div class="ai-tour" id="ai-tour">
+        <div class="ai-tour-bar">
+          <div class="ai-tour-brand"><img src="../icons/favicon-96x96.png" width="27" height="27" alt="Spooldesk"><span>spooldesk <b>AI</b></span></div>
+          <div class="ai-mode-switch" role="group" aria-label="Выберите сценарий ИИ" hidden>
+            <button type="button" data-ai-mode="customer" aria-pressed="true" aria-controls="ai-stage">Для клиентов</button>
+            <button type="button" data-ai-mode="team" aria-pressed="false" aria-controls="ai-stage">Для команды</button>
+          </div>
+          <span class="ai-demo-label">ИНТЕРАКТИВНОЕ ДЕМО</span>
+        </div>
+        <div id="ai-stage" class="ai-stage" data-announcement="Уточнить">
+          <div class="ai-context">
+            <p class="ai-context-eyebrow">Знания компании</p>
+            <div class="ai-source-card"><span class="ai-file-icon" aria-hidden="true">≡</span><div><strong>Подключение к сети</strong><span>Опубликованная статья</span></div><span class="ai-source-check" aria-hidden="true">✓</span></div>
+            <ol class="ai-step-list"><li aria-current="step"><span>01</span>Уточнить</li><li><span>02</span>Ответить</li><li><span>03</span>Передать</li></ol>
+            <div class="ai-context-note"><span class="ai-state-dot" aria-hidden="true"></span><p>Уточнения разрешены. Агент может задать вопрос перед тем, как предлагать решение.</p></div>
+          </div>
+          <div class="ai-conversation">
+            <div class="ai-conversation-heading"><span>Диалог с клиентом</span><span class="ai-state-chip">Уточнить</span></div>
+            <div class="ai-message ai-message-user"><span>Алексей · Клиент</span><p>Здравствуйте! Приложение не подключается. Поможете?</p></div>
+            <div class="ai-message ai-message-agent"><span><b>AI</b> Spooldesk</span><p>Давайте уточним: вы в офисной Wi-Fi сети или используете мобильный интернет? Какую ошибку видите?</p></div>
+            <div class="ai-reply-hint"><span aria-hidden="true">↳</span>Продолжите пример: агент учтёт ответ клиента.</div>
+          </div>
+        </div>
+        <div class="ai-tour-footer">
+          <p>Демонстрационный сценарий с вымышленными данными. Без вызовов модели и изменений реальных тикетов.</p>
+          <div class="ai-tour-actions" hidden><span id="ai-progress" aria-hidden="true">01 / 03</span><button type="button" class="button button-small button-ink" id="ai-next" data-next="Следующий шаг" data-confirm="Подтвердить в демо" data-replay="Ещё раз">Следующий шаг <span aria-hidden="true">→</span></button></div>
+        </div>
+        <p id="ai-announcement" class="ai-sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
+        <template id="ai-customer-1" data-announcement="Ответить">
+          <div class="ai-context">
+            <p class="ai-context-eyebrow">Знания компании</p>
+            <div class="ai-source-card"><span class="ai-file-icon" aria-hidden="true">≡</span><div><strong>Подключение к сети</strong><span>Опубликованная статья</span></div><span class="ai-source-check" aria-hidden="true">✓</span></div>
+            <ol class="ai-step-list"><li class="is-complete"><span>✓</span>Уточнить</li><li aria-current="step"><span>02</span>Ответить</li><li><span>03</span>Передать</li></ol>
+            <div class="ai-context-note"><span class="ai-state-dot" aria-hidden="true"></span><p>Ответ учитывает вашу статью и предыдущие сообщения в диалоге.</p></div>
+          </div>
+          <div class="ai-conversation">
+            <div class="ai-conversation-heading"><span>Диалог с клиентом</span><span class="ai-state-chip">Ответить</span></div>
+            <div class="ai-message ai-message-user"><span>Алексей · Клиент</span><p>Офисный Wi-Fi, «Время ожидания истекло». Через мобильный интернет работает.</p></div>
+            <div class="ai-message ai-message-agent"><span><b>AI</b> Spooldesk</span><p>В вашей инструкции рекомендуется переподключиться к офисному Wi-Fi и открыть страницу входа в сеть в браузере. Пройдите авторизацию, затем повторите подключение в приложении.</p><div class="ai-citation"><span aria-hidden="true">↗</span>Подключение к сети</div></div>
+            <div class="ai-reply-hint"><span aria-hidden="true">↳</span>Тот же диалог. Ответ опирается на знания компании.</div>
+          </div>
+        </template>
+        <template id="ai-customer-2" data-announcement="Передать">
+          <div class="ai-context">
+            <p class="ai-context-eyebrow">Знания компании</p>
+            <div class="ai-source-card"><span class="ai-file-icon" aria-hidden="true">≡</span><div><strong>Подключение к сети</strong><span>Опубликованная статья</span></div><span class="ai-source-check" aria-hidden="true">✓</span></div>
+            <ol class="ai-step-list"><li class="is-complete"><span>✓</span>Уточнить</li><li class="is-complete"><span>✓</span>Ответить</li><li aria-current="step"><span>03</span>Передать</li></ol>
+            <div class="ai-context-note"><span class="ai-state-dot" aria-hidden="true"></span><p>Клиент попросил человека. Автоответы в этом тикете остановлены.</p></div>
+          </div>
+          <div class="ai-conversation">
+            <div class="ai-conversation-heading"><span>Диалог с клиентом</span><span class="ai-state-chip">Передать</span></div>
+            <div class="ai-message ai-message-user"><span>Алексей · Клиент</span><p>Всё ещё не работает. Хочу поговорить с оператором.</p></div>
+            <div class="ai-handoff"><span class="ai-person-icon" aria-hidden="true">АК</span><div><strong>Обращение ждёт оператора</strong><p>ИИ больше не отвечает. Тикет остаётся открытым, а история диалога доступна команде.</p></div></div>
+            <div class="ai-reply-hint"><span aria-hidden="true">↳</span>Сложный вопрос остаётся человеку, вместе с контекстом.</div>
+          </div>
+        </template>
+        <template id="ai-team-0" data-announcement="Разобрать">
+          <div class="ai-context">
+            <p class="ai-context-eyebrow">Контекст кабинета</p>
+            <div class="ai-source-card"><span class="ai-file-icon" aria-hidden="true">#</span><div><strong>6 обращений</strong><span>За неделю · вымышленный пример</span></div><span class="ai-source-check" aria-hidden="true">✓</span></div>
+            <ol class="ai-step-list"><li aria-current="step"><span>01</span>Разобрать</li><li><span>02</span>Предложить</li><li><span>03</span>Подтвердить</li></ol>
+            <div class="ai-context-note"><span class="ai-state-dot" aria-hidden="true"></span><p>Ассистент читает доступную переписку, а не только заголовки тикетов.</p></div>
+          </div>
+          <div class="ai-conversation">
+            <div class="ai-conversation-heading"><span>Ассистент в кабинете</span><span class="ai-state-chip">Разобрать</span></div>
+            <div class="ai-message ai-message-user"><span>Вы · Руководитель</span><p>Собери обзор обращений за неделю. Какие проблемы повторяются?</p></div>
+            <div class="ai-message ai-message-agent"><span><b>AI</b> Spooldesk</span><p>В этом примере чаще всего обращаются с проблемами доступа. Вот обзор шести диалогов:</p><div class="ai-mini-report"><div><span>Доступ к аккаунту</span><b>3</b></div><div><span>Подключение к сети</span><b>2</b></div><div><span>Приглашения в команду</span><b>1</b></div></div><div class="ai-ticket-refs">#1041 <span>·</span> #1042 <span>·</span> #1043</div></div>
+          </div>
+        </template>
+        <template id="ai-team-1" data-announcement="Предложить">
+          <div class="ai-context">
+            <p class="ai-context-eyebrow">Контекст кабинета</p>
+            <div class="ai-source-card"><span class="ai-file-icon" aria-hidden="true">#</span><div><strong>6 обращений</strong><span>За неделю · вымышленный пример</span></div><span class="ai-source-check" aria-hidden="true">✓</span></div>
+            <ol class="ai-step-list"><li class="is-complete"><span>✓</span>Разобрать</li><li aria-current="step"><span>02</span>Предложить</li><li><span>03</span>Подтвердить</li></ol>
+            <div class="ai-context-note"><span class="ai-state-dot" aria-hidden="true"></span><p>Предложить изменение — не значит выполнить. Сначала вы проверяете конкретное действие.</p></div>
+          </div>
+          <div class="ai-conversation">
+            <div class="ai-conversation-heading"><span>Ассистент в кабинете</span><span class="ai-state-chip">Предложить</span></div>
+            <div class="ai-message ai-message-user"><span>Вы · Руководитель</span><p>Переведи тикет #1042 в работу.</p></div>
+            <div class="ai-proposal"><span class="ai-proposal-label">Нужно ваше подтверждение</span><strong>#1042 · Доступ к аккаунту</strong><div><span>Новое</span><span aria-hidden="true">→</span><b>В работе</b></div><p>Пока ничего не изменено. Подтвердите предложенный статус кнопкой ниже.</p></div>
+          </div>
+        </template>
+        <template id="ai-team-2" data-announcement="Подтвердить">
+          <div class="ai-context">
+            <p class="ai-context-eyebrow">Контекст кабинета</p>
+            <div class="ai-source-card"><span class="ai-file-icon" aria-hidden="true">#</span><div><strong>6 обращений</strong><span>За неделю · вымышленный пример</span></div><span class="ai-source-check" aria-hidden="true">✓</span></div>
+            <ol class="ai-step-list"><li class="is-complete"><span>✓</span>Разобрать</li><li class="is-complete"><span>✓</span>Предложить</li><li aria-current="step"><span>03</span>Подтвердить</li></ol>
+            <div class="ai-context-note"><span class="ai-state-dot" aria-hidden="true"></span><p>Изменение выполняется после подтверждения и с проверкой ваших прав.</p></div>
+          </div>
+          <div class="ai-conversation">
+            <div class="ai-conversation-heading"><span>Ассистент в кабинете</span><span class="ai-state-chip">Подтвердить</span></div>
+            <div class="ai-message ai-message-user"><span>Вы · Руководитель</span><p>Подтверждаю изменение статуса.</p></div>
+            <div class="ai-proposal is-approved"><span class="ai-proposal-label">✓ Подтверждено в демо</span><strong>#1042 · Доступ к аккаунту</strong><div><b>В работе</b></div><p>В примере тикет теперь в работе. Реальные обращения не изменены.</p></div>
+          </div>
+        </template>
+      </div>
+      <div class="ai-principles">
+        <article><span>01 /</span><h3>Знает ваши материалы.</h3><p>Документы компании, статьи и шаблоны помогают подготовить ответ. Без обучения отдельной модели.</p></article>
+        <article><span>02 /</span><h3>Выбираете степень свободы.</h3><p>Разрешайте уточнения и продолжение диалога. Настраивайте тон, инструкции, лимиты и передачу человеку.</p></article>
+        <article><span>03 /</span><h3>Видите результат.</h3><p>Доставленные ответы и пропуски с причинами — в отчёте. Изменения тикетов в кабинете требуют подтверждения.</p></article>
+      </div>
+      <p class="ai-cost-note">ИИ подключается по желанию и требует настройки. Использование модели при необходимости оплачивается отдельно.</p>
     </section>
 
     <section class="product-section wrap" id="product" aria-labelledby="product-heading">
@@ -112,7 +223,7 @@
 
     <section class="knowledge wrap" aria-labelledby="knowledge-heading">
       <div class="knowledge-visual reveal"><div class="widget-paper"><div class="widget-heading"><span class="widget-dot" aria-hidden="true"></span>Ваша база знаний</div><img src="../img/16_widget_help.png" width="416" height="653" loading="lazy" alt="Виджет Spooldesk на сайте: поиск по базе знаний и статьи помощи"></div><span class="margin-note">Ответ там, где возник вопрос.</span></div>
-      <div class="knowledge-copy"><p class="eyebrow">Меньше повторяющихся вопросов</p><h2 id="knowledge-heading">Часть ответов уже готова.</h2><p>Разместите полезные статьи в виджете сайта. Посетитель сможет найти ответ через поиск или написать команде, если нужна помощь человека.</p><div class="ai-note"><span class="ai-note-label">AI — если он полезен</span><p>Необязательный ассистент: поиск тикетов, обзор переписки и черновики ответов. Личная история чатов, вложения в текстовых форматах и DOCX. Изменение статуса и ответственного — после вашего подтверждения. Подключите свой ключ, в том числе OpenRouter, или поддерживаемую локальную модель; расходы на провайдера — отдельно.</p></div></div>
+      <div class="knowledge-copy"><p class="eyebrow">Меньше повторяющихся вопросов</p><h2 id="knowledge-heading">Часть ответов уже готова.</h2><p>Разместите полезные статьи в виджете сайта. Посетитель сможет найти ответ через поиск или написать команде, если нужна помощь человека.</p><a class="text-link" href="#ai">Как ИИ использует эти знания <span aria-hidden="true">↗</span></a></div>
     </section>
 
     <section class="pricing wrap" id="pricing" aria-labelledby="pricing-heading">
@@ -132,6 +243,7 @@
       <details><summary>Можно работать без Telegram и AI?<span aria-hidden="true">+</span></summary><p>Да. Подключайте только нужные каналы. Почта и виджет сайта работают без Telegram. AI необязателен, услуги внешних провайдеров оплачиваются отдельно.</p></details>
       <details><summary>Можно сначала проверить на другом компьютере?<span aria-hidden="true">+</span></summary><p>Да. Установите чистый экземпляр с Docker и PostgreSQL на своём компьютере. Для такой проверки VPS и аккаунт Spooldesk не нужны. Система доступна, пока компьютер работает; для каналов с входящими запросами из интернета также нужны соответствующие публичные адреса.</p></details>
       <details><summary>Что будет, если отказаться от сопровождения?<span aria-hidden="true">+</span></summary><p>Ваша установка останется на вашей инфраструктуре и продолжит использоваться по своей лицензии. Услуга сопровождения завершится по согласованным условиям; обновления, проверку копий и устранение сбоев вы возьмёте на себя.</p></details>
+      <details><summary>Как ИИ использует знания о нашей компании?<span aria-hidden="true">+</span></summary><p>Добавьте документы компании, опубликованные статьи и шаблоны команды. Нужные материалы и доступная история переписки помогают агенту отвечать. Вы выбираете, может ли он задавать вопросы и продолжать диалог. При подключении оператора автоответы останавливаются; изменения тикетов через ассистента требуют вашего подтверждения. Это использование контекста, а не обучение отдельной модели.</p></details>
     </div></section>
 
     <section class="sales-section wrap" id="sales" aria-labelledby="sales-heading">

@@ -63,7 +63,7 @@ def build(*, check: bool = False) -> None:
 def export_site(destination: Path) -> None:
     """Export only public assets, never the internal reports in docs/."""
     paths = ["index.html", "ru/index.html", "legal/index.html", "ru/legal/index.html", "license.txt", "style.css", "landing.js", "brand.css",
-             "product-demo.js", "product-demo.css", "robots.txt", "sitemap.xml",
+             "product-demo.js", "product-demo.css", "ai-demo.js", "ai-demo.css", "robots.txt", "sitemap.xml",
              "icons/favicon.ico", "icons/apple-touch-icon.png", "icons/favicon-96x96.png",
              "img/01_board.png", "img/03_ticket_detail.png", "img/16_widget_help.png"]
     destination.mkdir(parents=True, exist_ok=False)

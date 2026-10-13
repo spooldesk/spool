@@ -49,7 +49,7 @@ def test_exported_site_has_resolvable_local_links_and_no_internal_reports(tmp_pa
     destination = tmp_path / "site"
     build_landing.export_site(destination)
     actual = {p.relative_to(destination).as_posix() for p in destination.rglob("*") if p.is_file()}
-    assert len(actual) == 18
+    assert len(actual) == 20
     assert {'brand.css', 'product-demo.js', 'product-demo.css',
             'icons/favicon-96x96.png'} <= actual
     assert not any(name.endswith((".md", ".json", ".py", ".env")) for name in actual)
