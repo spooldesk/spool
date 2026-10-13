@@ -1,2 +1,4 @@
 # Operational shell scripts must run unchanged from Windows and Linux checkouts.
 *.sh text eol=lf
+*.command text eol=lf
+*.cmd text eol=crlf

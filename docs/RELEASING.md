@@ -26,8 +26,10 @@ requires the reviewed commit and CI procedure below.
    The release-candidate job depends on Windows/Linux tests, PostgreSQL tests,
    the actual production image checks, dependency audit, deployment checks and
    the bilingual landing build.
-4. Download `spooldesk-release-candidate-<commit>`. It contains the source archive
-   (ZIP and tar.gz) made by `git archive` from that commit, the **same images**
+4. Download `spooldesk-release-candidate-<commit>`. Starting with rc.7 it contains
+   the complete transfer ZIP and its checksum. Verify the outer checksum and
+   extract the ZIP. Inside are the source archives (ZIP and tar.gz) made by
+   `git archive` from that commit, the **same images**
    that passed Docker startup checks, `SOURCE_COMMIT`, `IMAGE_ID`, `IMAGE_TAG`,
    `INSTALL-RU.md`, `VALIDATION.json` and `SHA256SUMS`.
    The earlier `candidate-image-*` artifact alone does not mean all checks passed.
@@ -46,7 +48,9 @@ someone accidentally committed.
 
 ## Transfer and clean installation
 
-Follow [SECOND_COMPUTER_INSTALL.md](SECOND_COMPUTER_INSTALL.md). The owner chose
+Follow [SECOND_COMPUTER_INSTALL.md](SECOND_COMPUTER_INSTALL.md). Open the launcher
+for Windows, macOS or Linux from the extracted bundle; no host Python is needed.
+The owner chose
 a second computer for the first installation test; no separate VPS purchase is
 required. Keep the project name stable and use empty, separate storage.
 After loading the accepted image, persist its tag as `SPOOLDESK_IMAGE` in `.env`
@@ -56,10 +60,14 @@ Both local and CI candidates include `IMAGE_TAG`; CI uses
 Preserve LICENSE in source and both runtime images. CI validates ARM64 startup
 under QEMU; this does not replace a native second-computer installation trial.
 
-For the repository home download, ZIP the verified candidate files as
-`spooldesk-<version>-transfer.zip` and generate a separate `.zip.sha256` file.
-Keep the original CI files unchanged inside this wrapper. Upload the individual
-files and wrapper to the same draft release, verify their hashes and identities,
+CI uses `scripts/package_install_bundle.py` to add launchers, checksum every
+payload and create `spooldesk-<version>-transfer.zip` with executable Unix modes
+and a separate `.zip.sha256`. It then tests the extracted installer with a real
+Linux Docker engine, including repeat startup and preservation of `.env`.
+Windows/macOS/Linux native-shell tests use an isolated fake Docker CLI. Native
+Desktop installation acceptance remains pending. Do not rebuild the wrapper
+after this check. Upload the tested wrapper and individual verified files to the
+same draft release, verify their hashes and identities,
 then publish it as a prerelease. Do not overwrite assets in an older release.
 
 The owner reports the manual functional tests are done. Record that provenance;
