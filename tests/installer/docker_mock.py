@@ -26,7 +26,14 @@ elif args[:2] == ['volume', 'inspect']:
     owner = (target / 'INSTALLATION_ID').read_text().strip() if active else 'foreign'
     print(json.dumps({'io.spooldesk.installation': owner}) if 'json' in args[-1] else owner)
 elif args[:2] == ['image', 'inspect']:
-    print((root / 'IMAGE_ID').read_text().strip())
+    if 'Architecture' in args[-1]:
+        print(os.environ.get('INSTALLER_TEST_IMAGE_PLATFORM', 'linux/amd64'))
+    elif os.environ.get('INSTALLER_TEST_IMAGE_STORE') == 'containerd':
+        print((root / 'IMAGE_IDS').read_text().splitlines()[1])
+    elif os.environ.get('INSTALLER_TEST_IMAGE_STORE') == 'unknown':
+        print('sha256:' + 'd' * 64)
+    else:
+        print((root / 'IMAGE_ID').read_text().strip())
 elif args[0] == 'load':
     pass
 elif args[0] == 'create':

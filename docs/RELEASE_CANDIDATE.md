@@ -1,11 +1,20 @@
-# Spooldesk v0.1.0-rc.7 — GitHub installation candidate
+# Spooldesk v0.1.0-rc.8 — GitHub installation candidate
 
 Prepared 2026-10-13 for a single-organization self-hosted installation trial.
 The GitHub prerelease identifies its exact commit; downloaded CI assets contain
 `SOURCE_COMMIT`, `IMAGE_ID`, `IMAGE_TAG`, `VALIDATION.json` and `SHA256SUMS`.
 The release is a candidate, not a claim of stable production acceptance.
 
-## Changes from rc.6
+## Changes from rc.7
+
+- Fix the installer's `Loaded image differs from the tested image` error on
+  Docker Desktop's containerd image store. The package derives both config and
+  OCI manifest digests from the same archive; launchers verify membership and
+  platform before any container is created or run. Checksums remain mandatory.
+- Add real installation/restart testing on a separate containerd engine, as well
+  as rejection tests for unrelated IDs, wrong platforms and tampered metadata.
+
+## Installation introduced in rc.7
 
 - A terminal installation wizard for Windows, macOS and Linux replaces manual
   command copying. Docker is the only host prerequisite; Python runs offline
@@ -23,8 +32,9 @@ The release is a candidate, not a claim of stable production acceptance.
 Older assets remain unchanged. This installer is for new installations or
 restarting its own installation, not an automatic upgrade/migration wizard.
 
-The owner reports manual functional testing completed. Installation on a second
-computer is pending; follow [SECOND_COMPUTER_INSTALL.md](SECOND_COMPUTER_INSTALL.md).
+The owner reports manual functional testing completed. The first second-computer
+installation stopped at the image identity check in rc.7 on 2026-10-13. Acceptance
+is pending a retry; follow [SECOND_COMPUTER_INSTALL.md](SECOND_COMPUTER_INSTALL.md).
 Publication is authorized as a prerelease for that trial. Website deployment
 and paid services are separate. Follow the CI link in `VALIDATION.json` for
 checks on the released commit; do not substitute old local evidence for them.
@@ -46,9 +56,11 @@ checks on the released commit; do not substitute old local evidence for them.
 
 ## Candidate artifacts and checks
 
-Download the assets listed in `SHA256SUMS` from the selected GitHub prerelease
-and verify them before installation. The image must match `IMAGE_ID`; its tag
-is in `IMAGE_TAG`. CI packages only after all dependent checks succeed.
+Download and extract the transfer ZIP from the selected GitHub prerelease and
+verify its `SHA256SUMS`. The loaded ID must match a digest in `IMAGE_IDS` (or
+`IMAGE_IDS_ARM64`); its tag is in `IMAGE_TAG`. The two accepted digests identify
+the linked config and OCI manifest of the same archive. `IMAGE_ID` records the
+builder's ID. CI packages only after all dependent checks succeed.
 Local working-tree packages created with `scripts/build_release_candidate.py`
 remain a separate workflow and must not be confused with Git commit archives.
 A runtime change needs a new candidate and matching checks, not silently

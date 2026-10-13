@@ -12,7 +12,7 @@ open-source licence. Paid installation and maintenance are separate services.
 
 ### Download and install
 
-**[↓ Download Spooldesk v0.1.0-rc.7 — complete installation package](https://github.com/spooldesk/spool/releases/download/v0.1.0-rc.7/spooldesk-v0.1.0-rc.7-transfer.zip)**
+**[↓ Download Spooldesk v0.1.0-rc.8 — complete installation package](https://github.com/spooldesk/spool/releases/download/v0.1.0-rc.8/spooldesk-v0.1.0-rc.8-transfer.zip)**
 
 Extract the entire ZIP into a permanent folder and open one file:
 
@@ -32,14 +32,16 @@ Internet is required for the first PostgreSQL download. This is a terminal wizar
 not a signed native installer; macOS/Linux may ask you to allow execution.
 
 [Installation guide (Russian)](docs/SECOND_COMPUTER_INSTALL.md) ·
-[ZIP checksum](https://github.com/spooldesk/spool/releases/download/v0.1.0-rc.7/spooldesk-v0.1.0-rc.7-transfer.zip.sha256) ·
-[Release notes](https://github.com/spooldesk/spool/releases/tag/v0.1.0-rc.7)
+[ZIP checksum](https://github.com/spooldesk/spool/releases/download/v0.1.0-rc.8/spooldesk-v0.1.0-rc.8-transfer.zip.sha256) ·
+[Release notes](https://github.com/spooldesk/spool/releases/tag/v0.1.0-rc.8)
 
 This is an installation candidate; second-computer acceptance is pending.
+Rc.8 fixes the rc.7 image identity rejection on Docker Desktop/containerd while
+retaining archive checksums and strict image/platform verification.
 **Private preview:** sign in with a GitHub account that has repository access.
 The direct download does not grant access to an otherwise unauthorized account.
 
-**Security update (2026-10-13):** `rc.7` retains `multidict 6.9.1`, fixing
+**Security update (2026-10-13):** `rc.8` retains `multidict 6.9.1`, fixing
 [CVE-2026-104874](https://github.com/aio-libs/multidict/security/advisories/GHSA-54p9-h82j-f925),
 and the maintenance tool lock pins `uv 0.12.18`. Use this candidate for a new
 installation; the older release assets have not been replaced.
@@ -50,7 +52,7 @@ With [GitHub CLI](https://cli.github.com/) installed, sign in once using
 `gh auth login`, then run this command in PowerShell, Bash or another terminal:
 
 ```sh
-gh release download v0.1.0-rc.7 --repo spooldesk/spool --pattern 'spooldesk-v0.1.0-rc.7-transfer.zip*' --dir spooldesk-download
+gh release download v0.1.0-rc.8 --repo spooldesk/spool --pattern 'spooldesk-v0.1.0-rc.8-transfer.zip*' --dir spooldesk-download
 ```
 
 This downloads the same ZIP and its SHA-256 file. It does not start an installer

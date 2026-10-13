@@ -37,8 +37,11 @@ requires the reviewed commit and CI procedure below.
    For amd64 load `spooldesk-image.tar.gz` and use `IMAGE_TAG` / `IMAGE_ID`.
    For arm64 load `spooldesk-image-arm64.tar.gz` and use `IMAGE_TAG_ARM64` /
    `IMAGE_ID_ARM64`. Tags are `spooldesk:rc-<commit>-<arch>`.
-   Check `docker image inspect` against the corresponding image ID.
-   `IMAGE_ID` identifies a local image; it is not a registry manifest digest.
+   Starting with rc.8, check `docker image inspect` against `IMAGE_IDS` (or
+   `IMAGE_IDS_ARM64`): config digest on classic Docker, OCI manifest digest on
+   containerd. Both are derived from the same verified archive and included in
+   `SHA256SUMS`; the original builder ID in `IMAGE_ID` must be one of them.
+   Do not skip identity checks or trust the tag alone when an ID differs.
 
 The workflow only creates temporary GitHub Actions artifacts. It does **not**
 create a Git tag, publish a release, push an image or deploy a website/app.
@@ -64,6 +67,8 @@ CI uses `scripts/package_install_bundle.py` to add launchers, checksum every
 payload and create `spooldesk-<version>-transfer.zip` with executable Unix modes
 and a separate `.zip.sha256`. It then tests the extracted installer with a real
 Linux Docker engine, including repeat startup and preservation of `.env`.
+Rc.8 also repeats this test with a separate containerd engine and asserts that
+the reported manifest ID actually differs from the config ID (the rc.7 regression).
 Windows/macOS/Linux native-shell tests use an isolated fake Docker CLI. Native
 Desktop installation acceptance remains pending. Do not rebuild the wrapper
 after this check. Upload the tested wrapper and individual verified files to the

@@ -1,12 +1,14 @@
 """Stdlib-only installer tests. No app imports, live Docker, databases or model calls."""
 from pathlib import Path
 import hashlib
+import io
 import json
 import os
 import shutil
 import stat
 import subprocess
 import sys
+import tarfile
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -14,22 +16,50 @@ import zipfile
 
 from scripts.installer import configure
 from scripts.package_install_bundle import BASE_FILES, package
+from scripts.image_archive_identity import image_ids
 
 REPO = Path(__file__).resolve().parents[2]
 COMMIT = 'b' * 40
-IMAGE_ID = 'sha256:' + 'a' * 64
 PASSWORD = 'installer-test-password'
+
+
+def image_fixture(path, tag, arch):
+    config = json.dumps({'os': 'linux', 'architecture': arch, 'rootfs': {'type': 'layers', 'diff_ids': []}}).encode()
+    config_id = 'sha256:' + hashlib.sha256(config).hexdigest()
+    config_path = 'blobs/sha256/' + config_id.split(':')[1]
+    manifest = json.dumps({'schemaVersion': 2, 'mediaType': 'application/vnd.oci.image.manifest.v1+json',
+                           'config': {'mediaType': 'application/vnd.oci.image.config.v1+json',
+                                      'digest': config_id, 'size': len(config)}, 'layers': []}).encode()
+    manifest_id = 'sha256:' + hashlib.sha256(manifest).hexdigest()
+    metadata = {
+        'index.json': json.dumps({'schemaVersion': 2, 'manifests': [{
+            'mediaType': 'application/vnd.oci.image.manifest.v1+json', 'digest': manifest_id, 'size': len(manifest)}]}).encode(),
+        'manifest.json': json.dumps([{'Config': config_path, 'RepoTags': [tag], 'Layers': []}]).encode(),
+        config_path: config, 'blobs/sha256/' + manifest_id.split(':')[1]: manifest}
+    write_image(path, metadata)
+    return config_id, manifest_id
+
+
+def write_image(path, metadata):
+    with tarfile.open(path, 'w:gz') as archive:
+        for name, data in metadata.items():
+            member = tarfile.TarInfo(name)
+            member.size = len(data)
+            archive.addfile(member, io.BytesIO(data))
 
 
 def fixture(root):
     root.mkdir(parents=True)
+    images = {}
     for arch, suffix in [('amd64', ''), ('arm64', '_ARM64')]:
-        (root / ('IMAGE_TAG' + suffix)).write_text(f'spooldesk:rc-{COMMIT}-{arch}\n')
-        (root / ('IMAGE_ID' + suffix)).write_text(IMAGE_ID + '\n')
+        tag = f'spooldesk:rc-{COMMIT}-{arch}'
+        filename = 'spooldesk-image.tar.gz' if arch == 'amd64' else 'spooldesk-image-arm64.tar.gz'
+        config_id, _ = image_fixture(root / filename, tag, arch)
+        (root / ('IMAGE_TAG' + suffix)).write_text(tag + '\n')
+        (root / ('IMAGE_ID' + suffix)).write_text(config_id + '\n')
+        images['linux/' + arch] = {'image_tag': tag, 'image_id': config_id}
     (root / 'SOURCE_COMMIT').write_text(COMMIT + '\n')
-    (root / 'VALIDATION.json').write_text(json.dumps({'source_commit': COMMIT, 'images': {
-        'linux/' + arch: {'image_tag': f'spooldesk:rc-{COMMIT}-{arch}', 'image_id': IMAGE_ID}
-        for arch in ('amd64', 'arm64')}}))
+    (root / 'VALIDATION.json').write_text(json.dumps({'source_commit': COMMIT, 'images': images}))
     with zipfile.ZipFile(root / 'spooldesk-source.zip', 'w') as archive:
         archive.writestr('spooldesk/docker-compose.yml', 'services: {}\n')
         archive.writestr('spooldesk/docs/readme.md', 'Test source\n')
@@ -116,13 +146,42 @@ class ConfigurationTests(unittest.TestCase):
     def test_bundle_contains_launchers_with_executable_permissions(self):
         archive = package(self.root, 'v0.1.0-rc.7')
         with zipfile.ZipFile(archive) as contents:
-            self.assertEqual(len(contents.namelist()), 18)
+            self.assertEqual(len(contents.namelist()), 20)
             for name in ('INSTALL-LINUX.sh', 'INSTALL-MAC.command', 'installer/install.sh'):
                 self.assertEqual(stat.S_IMODE(contents.getinfo(name).external_attr >> 16), 0o755)
             self.assertEqual(contents.read('spooldesk-source.zip'), (self.root / 'spooldesk-source.zip').read_bytes())
-        self.assertEqual(len((self.root / 'SHA256SUMS').read_text().splitlines()), 17)
+        self.assertEqual(len((self.root / 'SHA256SUMS').read_text().splitlines()), 19)
         with self.assertRaises(ValueError):
             package(self.root, 'v0.1.0-rc.7')
+
+    def test_archive_links_classic_and_containerd_ids(self):
+        path = self.root / 'spooldesk-image.tar.gz'
+        ids = image_ids(path, self.identity['image_tag'], self.identity['image_id'], 'amd64')
+        self.assertEqual(ids['config'], self.identity['image_id'])
+        self.assertNotEqual(ids['config'], ids['manifest'])
+        self.assertEqual(image_ids(path, self.identity['image_tag'], ids['manifest'], 'amd64'), ids)
+        for tag, identity, arch in [(self.identity['image_tag'], 'sha256:' + 'd' * 64, 'amd64'),
+                                    (self.identity['image_tag'], ids['config'], 'arm64'),
+                                    ('other:tag', ids['config'], 'amd64')]:
+            with self.assertRaises(ValueError):
+                image_ids(path, tag, identity, arch)
+
+    def test_archive_unlinked_or_modified_metadata_rejected(self):
+        path = self.root / 'spooldesk-image.tar.gz'
+        with tarfile.open(path, 'r:gz') as archive:
+            original = {p.name: archive.extractfile(p).read() for p in archive.getmembers()}
+        config_path = json.loads(original['manifest.json'])[0]['Config']
+        bad_index = json.loads(original['index.json'])
+        bad_index['manifests'].append(bad_index['manifests'][0])
+        bad_legacy = json.loads(original['manifest.json'])
+        bad_legacy[0]['Config'] = 'blobs/sha256/' + 'e' * 64
+        cases = [{**original, config_path: original[config_path] + b' '},
+                 {**original, 'index.json': json.dumps(bad_index).encode()},
+                 {**original, 'manifest.json': json.dumps(bad_legacy).encode()}]
+        for metadata in cases:
+            write_image(path, metadata)
+            with self.assertRaises(ValueError):
+                image_ids(path, self.identity['image_tag'], self.identity['image_id'], 'amd64')
 
 
 class LauncherTests(unittest.TestCase):
@@ -177,6 +236,30 @@ class LauncherTests(unittest.TestCase):
         self.assertFalse((self.root / 'spooldesk').exists())
         calls = [json.loads(line) for line in (self.root / 'mock-calls.jsonl').read_text().splitlines()]
         self.assertFalse(any(args[0] in ('rm', 'run', 'pull') for args in calls))
+
+    def test_containerd_manifest_id_is_accepted(self):
+        result = self.run_launcher(INSTALLER_TEST_IMAGE_STORE='containerd')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        original = (self.root / 'spooldesk/.env').read_bytes()
+        result = self.run_launcher(INSTALLER_TEST_IMAGE_STORE='containerd')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual((self.root / 'spooldesk/.env').read_bytes(), original)
+
+    def test_unknown_image_and_wrong_platform_fail_before_execution(self):
+        for extra in ({'INSTALLER_TEST_IMAGE_STORE': 'unknown'}, {'INSTALLER_TEST_IMAGE_PLATFORM': 'linux/arm64'}):
+            result = self.run_launcher(**extra)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('Loaded image differs', result.stdout + result.stderr)
+            self.assertFalse((self.root / 'spooldesk').exists())
+        calls = [json.loads(line) for line in (self.root / 'mock-calls.jsonl').read_text().splitlines()]
+        self.assertFalse(any(args[0] in ('create', 'run', 'pull', 'rm') for args in calls))
+
+    def test_tampered_accepted_ids_fail_checksum_before_load(self):
+        (self.root / 'IMAGE_IDS').write_text('sha256:' + 'd' * 64 + '\n')
+        result = self.run_launcher()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('checksum', result.stdout + result.stderr)
+        self.assertFalse((self.root / 'mock-calls.jsonl').exists())
 
     def test_tamper_and_existing_foreign_storage_stop_before_start(self):
         result = self.run_launcher(INSTALLER_TEST_FOREIGN='1')

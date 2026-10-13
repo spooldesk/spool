@@ -22,7 +22,7 @@ case "$bundle" in *,*|*$'\n'*) fail 'Extract the ZIP to a folder without commas 
 [ -f SHA256SUMS ] || fail 'Extract the whole installation ZIP first, then open the launcher.'
 printf '[1/6] Checking package integrity...\n'
 [ ! -L installer ] || fail 'Linked installer folders are not supported.'
-expected_names='spooldesk-image.tar.gz spooldesk-image-arm64.tar.gz spooldesk-source.zip spooldesk-source.tar.gz IMAGE_ID IMAGE_TAG IMAGE_ID_ARM64 IMAGE_TAG_ARM64 SOURCE_COMMIT INSTALL-RU.md VALIDATION.json INSTALL-WINDOWS.cmd INSTALL-MAC.command INSTALL-LINUX.sh installer/configure.py installer/install.ps1 installer/install.sh'
+expected_names='spooldesk-image.tar.gz spooldesk-image-arm64.tar.gz spooldesk-source.zip spooldesk-source.tar.gz IMAGE_ID IMAGE_TAG IMAGE_ID_ARM64 IMAGE_TAG_ARM64 IMAGE_IDS IMAGE_IDS_ARM64 SOURCE_COMMIT INSTALL-RU.md VALIDATION.json INSTALL-WINDOWS.cmd INSTALL-MAC.command INSTALL-LINUX.sh installer/configure.py installer/install.ps1 installer/install.sh'
 seen=' '
 count=0
 while IFS= read -r line || [ -n "$line" ]; do
@@ -41,7 +41,7 @@ while IFS= read -r line || [ -n "$line" ]; do
   seen="$seen$name "
   count=$((count + 1))
 done < SHA256SUMS
-[ "$count" -eq 17 ] || fail 'Incomplete checksum manifest.'
+[ "$count" -eq 19 ] || fail 'Incomplete checksum manifest.'
 printf '[2/6] Checking Docker...\n'
 command -v docker >/dev/null 2>&1 || fail 'Install Docker Desktop (macOS) or Docker Engine with Compose v2 (Linux), then run this file again. See INSTALL-RU.md. Python and Git are not required.'
 endpoint=${DOCKER_HOST:-$(docker context inspect --format '{{.Endpoints.docker.Host}}')}
@@ -58,10 +58,23 @@ image=$(cat "IMAGE_TAG$suffix")
 expected_id=$(cat "IMAGE_ID$suffix")
 [[ "$image" =~ ^spooldesk:rc-[0-9a-f]{40}-(amd64|arm64)$ ]] || fail 'Invalid image tag.'
 [[ "$expected_id" =~ ^sha256:[0-9a-f]{64}$ ]] || fail 'Invalid image identity.'
+# Both digests are derived from the same checked archive during packaging.
+# Classic Docker reports config ID; containerd reports the OCI manifest ID.
+accepted_ids=' '
+id_count=0
+while IFS= read -r accepted_id || [ -n "$accepted_id" ]; do
+  [[ "$accepted_id" =~ ^sha256:[0-9a-f]{64}$ ]] || fail 'Invalid accepted image identity.'
+  accepted_ids="$accepted_ids$accepted_id "
+  id_count=$((id_count + 1))
+done < "IMAGE_IDS$suffix"
+[ "$id_count" -eq 2 ] || fail 'Invalid accepted image identities.'
+case "$accepted_ids" in *" $expected_id "*) ;; *) fail 'Tested image ID is missing from accepted identities.' ;; esac
 printf '[3/6] Loading the tested %s image...\n' "$arch"
 docker load --input "$image_file"
 loaded_id=$(docker image inspect "$image" --format '{{.Id}}')
-[ "$loaded_id" = "$expected_id" ] || fail 'Loaded image differs from the tested image.'
+loaded_platform=$(docker image inspect "$image" --format '{{.Os}}/{{.Architecture}}')
+case "$accepted_ids" in *" $loaded_id "*) ;; *) fail "Loaded image differs from the tested image. Actual: $loaded_id; expected one of:$accepted_ids" ;; esac
+[ "$loaded_platform" = "linux/$arch" ] || fail "Loaded image differs from the tested image platform: $loaded_platform. Expected linux/$arch."
 # Atomic engine-wide lock; cleanup removes only the ID acquired by this process.
 lock_container=$(docker create --name spooldesk-installer-lock --network none --label io.spooldesk.installer=1 --entrypoint python "$image" -c pass) || fail 'Another installer may be running. If it was interrupted, remove only spooldesk-installer-lock in Docker Desktop, then retry.'
 project_dir="$bundle/spooldesk"

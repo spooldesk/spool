@@ -431,7 +431,7 @@ jobs:
                   },
               },
               'ci_run_url': '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}',
-              'installer_checks': 'native Windows/macOS/Linux shell tests with fake Docker; actual Linux Docker install and repeat startup gate artifact upload',
+              'installer_checks': 'native Windows/macOS/Linux shell tests; actual Linux installs and restart on classic and containerd image stores gate artifact upload',
               'automated_checks': 'passed: Windows/Linux tests, PostgreSQL tests, amd64/arm64 image startup with SQLite and PostgreSQL, patched runtime dependency, dependencies, deployment, landing',
               'second_computer_acceptance': 'pending owner confirmation',
               'release_status': 'candidate; not stable production acceptance',
@@ -442,7 +442,7 @@ jobs:
           sha256sum spooldesk-image.tar.gz spooldesk-image-arm64.tar.gz spooldesk-source.tar.gz spooldesk-source.zip IMAGE_ID IMAGE_TAG IMAGE_ID_ARM64 IMAGE_TAG_ARM64 SOURCE_COMMIT INSTALL-RU.md VALIDATION.json > SHA256SUMS
           sha256sum --check SHA256SUMS
       - name: Add launchers and build the installation ZIP
-        run: python3 scripts/package_install_bundle.py candidate --version v0.1.0-rc.7
+        run: python3 scripts/package_install_bundle.py candidate --version v0.1.0-rc.8
       - name: Exercise the actual extracted installer and repeat startup
         env:
           SPOOLDESK_INSTALLER_NO_BROWSER: "1"
@@ -451,7 +451,7 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import zipfile
-          with zipfile.ZipFile('candidate/spooldesk-v0.1.0-rc.7-transfer.zip') as archive:
+          with zipfile.ZipFile('candidate/spooldesk-v0.1.0-rc.8-transfer.zip') as archive:
               archive.extractall('installer trial')
           PY
           cd 'installer trial'
@@ -468,11 +468,47 @@ jobs:
             cd 'installer trial/spooldesk'
             docker compose -p spooldesk down -v || true
           fi
+      - name: Use an isolated containerd image store like Docker Desktop
+        uses: docker/setup-docker-action@v5
+        with:
+          context: spooldesk-installer-ci
+          daemon-config: |
+            {"features": {"containerd-snapshotter": true}}
+      - name: Exercise the same ZIP with containerd image identities
+        env:
+          SPOOLDESK_INSTALLER_NO_BROWSER: "1"
+          SPOOLDESK_INSTALLER_NO_PAUSE: "1"
+        run: |
+          docker info --format '{{.ServerVersion}} {{json .DriverStatus}}'
+          docker info --format '{{json .DriverStatus}}' | grep -q 'io.containerd.snapshotter.v1'
+          python3 - <<'PY'
+          import zipfile
+          with zipfile.ZipFile('candidate/spooldesk-v0.1.0-rc.8-transfer.zip') as archive:
+              archive.extractall('containerd installer trial')
+          PY
+          cd 'containerd installer trial'
+          printf '1\n8000\nci-installer-test-password\nci-installer-test-password\ny\n' | bash INSTALL-LINUX.sh
+          # Prove this exercised the previously rejected ID, not the classic path.
+          actual=$(docker image inspect "$(cat IMAGE_TAG)" --format '{{.Id}}')
+          test "$actual" = "$(sed -n '2p' IMAGE_IDS)"
+          test "$actual" != "$(sed -n '1p' IMAGE_IDS)"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/healthz)" = 200
+          sha256sum spooldesk/.env > before-restart.sha256
+          bash INSTALL-LINUX.sh < /dev/null
+          sha256sum --check before-restart.sha256
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/healthz)" = 200
+      - name: Remove only the containerd CI installation
+        if: always()
+        run: |
+          if [ -f 'containerd installer trial/spooldesk/.env' ]; then
+            cd 'containerd installer trial/spooldesk'
+            docker --context spooldesk-installer-ci compose -p spooldesk down -v || true
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: spooldesk-release-candidate-${{ github.sha }}
           path: |
-            candidate/spooldesk-v0.1.0-rc.7-transfer.zip
-            candidate/spooldesk-v0.1.0-rc.7-transfer.zip.sha256
+            candidate/spooldesk-v0.1.0-rc.8-transfer.zip
+            candidate/spooldesk-v0.1.0-rc.8-transfer.zip.sha256
           if-no-files-found: error
           retention-days: 14

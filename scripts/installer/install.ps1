@@ -18,7 +18,7 @@ try {
     }
     $required = @('spooldesk-image.tar.gz','spooldesk-image-arm64.tar.gz','spooldesk-source.zip',
         'spooldesk-source.tar.gz','IMAGE_ID','IMAGE_TAG','IMAGE_ID_ARM64','IMAGE_TAG_ARM64',
-        'SOURCE_COMMIT','INSTALL-RU.md','VALIDATION.json','INSTALL-WINDOWS.cmd','INSTALL-MAC.command',
+        'IMAGE_IDS','IMAGE_IDS_ARM64','SOURCE_COMMIT','INSTALL-RU.md','VALIDATION.json','INSTALL-WINDOWS.cmd','INSTALL-MAC.command',
         'INSTALL-LINUX.sh','installer/configure.py','installer/install.ps1','installer/install.sh')
     $seen = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
     Write-Host '[1/6] Checking package integrity...'
@@ -64,10 +64,20 @@ try {
     if ($image -notmatch "^spooldesk:rc-[0-9a-f]{40}-$arch`$" -or $expectedId -notmatch '^sha256:[0-9a-f]{64}$') {
         throw 'Invalid image identity.'
     }
+    # The checked archive links these two digests to the same image: classic
+    # Docker reports its config ID; containerd reports its OCI manifest ID.
+    $acceptedIds = @(Get-Content -LiteralPath "IMAGE_IDS$suffix")
+    if ($acceptedIds.Count -ne 2 -or $expectedId -notin $acceptedIds) { throw 'Invalid accepted image identities.' }
+    foreach ($id in $acceptedIds) {
+        if ($id -notmatch '^sha256:[0-9a-f]{64}$') { throw 'Invalid accepted image identity.' }
+    }
     Write-Host "[3/6] Loading the tested $arch image..."
     Invoke-Docker load --input $imageFile
     $loadedId = (Invoke-Docker image inspect $image --format '{{.Id}}').Trim()
-    if ($loadedId -ne $expectedId) { throw 'Loaded image differs from the tested image.' }
+    $loadedPlatform = (Invoke-Docker image inspect $image --format '{{.Os}}/{{.Architecture}}').Trim()
+    if ($loadedId -notin $acceptedIds -or $loadedPlatform -ne "linux/$arch") {
+        throw "Loaded image differs from the tested image. Actual: $loadedId ($loadedPlatform); expected one of: $($acceptedIds -join ', ')."
+    }
     # Atomic engine-wide lock: two double-clicks cannot create separate configs
     # for the same Compose project. Only the container ID created here is removed.
     $lockContainer = (Invoke-Docker create --name spooldesk-installer-lock --network none `
