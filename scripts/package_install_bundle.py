@@ -6,6 +6,11 @@ import re
 import shutil
 import zipfile
 
+if __package__:
+    from .image_archive_identity import image_ids
+else:
+    from image_archive_identity import image_ids
+
 ROOT = Path(__file__).resolve().parents[1]
 BASE_FILES = ('spooldesk-image.tar.gz', 'spooldesk-image-arm64.tar.gz', 'spooldesk-source.zip',
               'spooldesk-source.tar.gz', 'IMAGE_ID', 'IMAGE_TAG', 'IMAGE_ID_ARM64', 'IMAGE_TAG_ARM64',
@@ -36,8 +41,18 @@ def package(candidate: Path, version: str, source_root: Path = ROOT) -> Path:
     if set(checks) != set(BASE_FILES):
         raise ValueError('Incomplete candidate')
     archive = candidate / f'spooldesk-{version}-transfer.zip'
-    if archive.exists() or (candidate / 'installer').exists():
+    if archive.exists() or (candidate / 'installer').exists() or (candidate / 'IMAGE_IDS').exists():
         raise ValueError('Refuse to replace an existing installer package')
+    identities = {}
+    for arch, suffix, filename in [('amd64', '', 'spooldesk-image.tar.gz'),
+                                   ('arm64', '_ARM64', 'spooldesk-image-arm64.tar.gz')]:
+        identities[suffix] = image_ids(candidate / filename,
+            (candidate / ('IMAGE_TAG' + suffix)).read_text().strip(),
+            (candidate / ('IMAGE_ID' + suffix)).read_text().strip(), arch)
+    for suffix, ids in identities.items():
+        relative = 'IMAGE_IDS' + suffix
+        (candidate / relative).write_text(ids['config'] + '\n' + ids['manifest'] + '\n', encoding='ascii')
+        checks[relative] = digest(candidate / relative)
     (candidate / 'installer').mkdir()
     for name in LAUNCHERS + HELPERS:
         source = source_root / 'scripts' / 'installer' / name
