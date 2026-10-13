@@ -78,6 +78,8 @@ are static illustrations, not live model responses. They make no API calls,
 change no real tickets and retain no data. Buttons advance/replay each scenario;
 the initial customer scene remains readable without JavaScript. Keep the demo
 notice visible and the content synchronized in both locales.
+The build versions the AI script and stylesheet URLs by their content hashes
+so browsers fetch changed resources after a deployment.
 
 The product section starts with an empty local queue. Visitors can add fictional
 examples, switch list/board, search, open a conversation, try a reply or internal

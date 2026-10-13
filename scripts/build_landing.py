@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import html
 import json
 from pathlib import Path
@@ -44,6 +45,8 @@ def build(*, check: bool = False) -> None:
     ):
         messages = json.loads((source / f"{language}.json").read_text(encoding="utf-8"))
         messages.update(lang=language, prefix=prefix,
+                        ai_script_version=hashlib.sha256((ROOT / 'docs/ai-demo.js').read_text(encoding='utf-8').encode()).hexdigest()[:12],
+                        ai_style_version=hashlib.sha256((ROOT / 'docs/ai-demo.css').read_text(encoding='utf-8').encode()).hexdigest()[:12],
                         page_path="" if language == "en" else "ru/",
                         other_language_url="ru/" if language == "en" else "../",
                         other_language="Русский" if language == "en" else "English", legal_url='legal/')
