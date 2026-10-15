@@ -14,7 +14,7 @@ python -m http.server 8765 --bind 127.0.0.1 --directory site
 ```
 
 Export requires a **new** output directory; choose a different directory for
-another build. It copies only twenty public assets, including both languages, legal-information pages, the current license text, search discovery files,
+another build. It copies only twenty-four public assets, including both languages, legal-information pages, the current license text, search discovery files,
 the interactive demo, shared brand tokens and fallback screenshots. Do not deploy `docs/`: it contains internal audits
 and planning documents. CI validates generation and retains the public site as
 an artifact named with the commit SHA; it does not publish it.
@@ -30,7 +30,7 @@ Cloudflare documents custom build commands and output directories in its
 [static HTML guide](https://developers.cloudflare.com/pages/framework-guides/deploy-anything/).
 
 For an existing Direct Upload project, upload the **contents** of the exported
-directory or a ZIP whose root contains `index.html`; do not include the parent
+directory or a ZIP whose root contains `index.html` for static pages only. Dashboard drag-and-drop does not deploy Pages Functions; use the Git integration for `/events`. Do not include the parent
 directory. Direct Upload and Git integration have different project setup
 paths; inspect the existing project before choosing a method. See Cloudflare's
 [Direct Upload guide](https://developers.cloudflare.com/pages/get-started/direct-upload/).
@@ -74,8 +74,7 @@ XML, rather than the host's HTML fallback page.
 The AI section offers two guided, fictional scenarios: a customer conversation
 with clarification, a knowledge-based answer and handoff; and a team assistant
 with a ticket overview and a status change confirmed by the visitor. The scenes
-are static illustrations, not live model responses. They make no API calls,
-change no real tickets and retain no data. Buttons advance/replay each scenario;
+are static illustrations, not live model responses. They make no AI/application API calls, change no real tickets and retain no conversation data. The optional first-party counter records the first demo interaction without its text. Buttons advance/replay each scenario;
 the initial customer scene remains readable without JavaScript. Keep the demo
 notice visible and the content synchronized in both locales.
 The build versions the AI script and stylesheet URLs by their content hashes
@@ -108,3 +107,9 @@ they do not substitute for completed seller details, commercial terms and a
 privacy policy. See [business readiness](https://github.com/spooldesk/spool/blob/main/docs/internal/BUSINESS_READINESS.md) before paid launch.
 The builder copies `LICENSE` to public `license.txt`; never hand-edit that copy.
 Check four-card layout, EN/RU, both themes, mobile, sales anchors and legal links.
+
+## Analytics and real 404 responses
+
+See [website analytics](WEBSITE_ANALYTICS.md) for configuration, event definitions, SQL and verification. `assets/landing/404.html` generates root and Russian 404 documents; the root file disables Pages SPA fallback. Missing URLs must return HTTP 404, not the home page with HTTP 200. No error page is in the sitemap.
+
+`functions/events.js` is deployed from repository root by Pages Git integration. The public `_routes.json` invokes it only for `/events`. The dashboard and self-hosted installation have no dependency on this endpoint. The AI showcase explicitly separates capabilities available in rc.9 from next-release customer dialogue and diagnostics.

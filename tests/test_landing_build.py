@@ -5,6 +5,7 @@ from urllib.parse import urlsplit
 from urllib.robotparser import RobotFileParser
 from xml.etree import ElementTree
 
+import json
 import pytest
 
 from scripts import build_landing
@@ -44,15 +45,16 @@ def test_brand_tokens_are_identical_in_landing_and_dashboard():
 
 
 @pytest.mark.parametrize("language,relative", [("en", "index.html"), ("ru", "ru/index.html"),
-    ("en", "legal/index.html"), ("ru", "ru/legal/index.html")])
+    ("en", "legal/index.html"), ("ru", "ru/legal/index.html"),
+    ("en", "404.html"), ("ru", "ru/404.html")])
 def test_exported_site_has_resolvable_local_links_and_no_internal_reports(tmp_path, language, relative):
     destination = tmp_path / "site"
     build_landing.export_site(destination)
     actual = {p.relative_to(destination).as_posix() for p in destination.rglob("*") if p.is_file()}
-    assert len(actual) == 20
+    assert len(actual) == 24
     assert {'brand.css', 'product-demo.js', 'product-demo.css',
             'icons/favicon-96x96.png'} <= actual
-    assert not any(name.endswith((".md", ".json", ".py", ".env")) for name in actual)
+    assert not any(name.endswith((".md", ".json", ".py", ".env")) for name in actual - {"_routes.json"})
     path = destination / relative
     page = Page(path.read_text(encoding="utf-8"))
     assert page.languages == [language]
@@ -64,7 +66,7 @@ def test_exported_site_has_resolvable_local_links_and_no_internal_reports(tmp_pa
             assert target == "#" or target[1:] in page.ids
         else:
             link = urlsplit(target)
-            resolved = (path.parent / link.path).resolve()
+            resolved = ((destination / link.path.lstrip('/')) if link.path.startswith('/') else (path.parent / link.path)).resolve()
             assert resolved.is_relative_to(destination)
             assert resolved.is_file() or (resolved / "index.html").is_file(), target
             if link.fragment:
@@ -108,3 +110,13 @@ def test_export_never_overwrites_an_existing_directory(tmp_path):
     with pytest.raises(FileExistsError):
         build_landing.export_site(destination)
     assert sentinel.read_text() == "keep"
+
+
+def test_only_event_endpoint_invokes_a_function_and_error_pages_are_not_indexed():
+    assert json.loads(Path('docs/_routes.json').read_text()) == {
+        'version': 1, 'include': ['/events'], 'exclude': []}
+    for name in ('docs/404.html', 'docs/ru/404.html'):
+        text = Path(name).read_text(encoding='utf-8')
+        assert 'content="noindex, follow"' in text
+        assert 'analytics.js' not in text
+        assert '>404<' in text
