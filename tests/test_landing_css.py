@@ -6,7 +6,9 @@ class still silently loses its layout. Keep the original regression guard.
 """
 
 import re
+from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -20,6 +22,31 @@ NOT_UTILITIES = {
     # Tabler's icon font, which arrives from its own stylesheet.
     "ti",
 }
+
+
+def _shipped_css(landing):
+    """Check the styles the page actually ships, including versioned AI CSS."""
+    class Styles(HTMLParser):
+        paths = None
+
+        def __init__(self):
+            super().__init__()
+            self.paths = []
+
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            if tag == 'link' and attrs.get('rel') == 'stylesheet':
+                url = urlsplit(attrs['href'])
+                assert not url.scheme and not url.netloc, 'Keep styles local and testable'
+                path = (landing.parent / url.path).resolve()
+                assert path.is_relative_to(Path('docs').resolve())
+                assert path.is_file(), f'Missing linked stylesheet: {path}'
+                self.paths.append(path)
+
+    styles = Styles()
+    styles.feed(landing.read_text(encoding='utf-8'))
+    assert styles.paths, 'No stylesheets found'
+    return '\n'.join(path.read_text(encoding='utf-8') for path in styles.paths)
 
 
 def _escape(cls: str) -> str:
@@ -49,7 +76,7 @@ def _classes_used(landing=LANDING) -> set[str]:
 def test_the_landing_uses_only_classes_its_stylesheet_has(landing):
     assert landing.exists() and STYLESHEET.exists()
 
-    css = STYLESHEET.read_text(encoding="utf-8")
+    css = _shipped_css(landing)
     used = _classes_used(landing)
     assert len(used) > 40, "the class scraper stopped matching anything"
 
@@ -57,7 +84,7 @@ def test_the_landing_uses_only_classes_its_stylesheet_has(landing):
         cls for cls in used
         # A selector is followed by `{`, or by `,`/`:`/space when it is part of
         # a longer rule — `.group[open] .group-open\:rotate-180{…}`.
-        if not re.search(r"\." + re.escape(_escape(cls)) + r"[{,:\s\[>]", css)
+        if not re.search(r"\." + re.escape(_escape(cls)) + r"[{,:\s\[>.#)]", css)
     )
 
     assert not missing, (

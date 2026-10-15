@@ -25,6 +25,7 @@
   <link rel="stylesheet" href="${prefix}product-demo.css">
   <link rel="stylesheet" href="${prefix}ai-demo.css?v=$ai_style_version">
   <script src="${prefix}landing.js" defer></script>
+  <script src="${prefix}analytics.js" defer></script>
   <script src="${prefix}product-demo.js" defer></script>
   <script src="${prefix}ai-demo.js?v=$ai_script_version" defer></script>
 </head>
@@ -172,7 +173,7 @@
           <div class="ai-conversation">
             <div class="ai-conversation-heading"><span>$ai_t_title</span><span class="ai-state-chip">$ai_t_step3</span></div>
             <div class="ai-message ai-message-user"><span>$ai_employee_name</span><p>$ai_t_approved</p></div>
-            <div class="ai-proposal is-approved"><span class="ai-proposal-label">✓ $ai_t_complete</span><strong>#1042 · $ai_t_issue1</strong><div><b>$ai_t_after</b></div><p>$ai_t_receipt</p></div>
+            <div class="ai-proposal"><span class="ai-proposal-label">✓ $ai_t_complete</span><strong>#1042 · $ai_t_issue1</strong><div><b>$ai_t_after</b></div><p>$ai_t_receipt</p></div>
           </div>
         </template>
       </div>
@@ -229,9 +230,9 @@
     <section class="pricing wrap" id="pricing" aria-labelledby="pricing-heading">
       <div class="section-heading pricing-heading"><div><p class="eyebrow">$pricing_eyebrow</p><h2 id="pricing-heading">$pricing_title</h2></div><p>$pricing_description</p></div>
       <div class="pricing-grid">
-        <article class="price-card reveal"><p class="plan-label">$self_label</p><h3>$self_title</h3><div class="price">$$0 <span>$self_unit</span></div><p class="price-description">$self_description</p><ul class="plan-list"><li>$self_feature1</li><li>$self_feature2</li><li>$self_feature3</li></ul><a class="button button-outline" href="https://github.com/spooldesk/spool" target="_blank" rel="noopener">$self_cta <span aria-hidden="true">↗</span></a><p class="plan-footnote">$self_footnote</p></article>
-        <article class="price-card price-card-featured reveal"><p class="plan-label">$setup_label</p><h3>$setup_title</h3><div class="price">$$300 <span>$setup_unit</span></div><p class="price-description">$setup_description</p><ul class="plan-list"><li>$setup_feature1</li><li>$setup_feature2</li><li>$setup_feature3</li></ul><a class="button button-ink" href="mailto:hello@spooldesk.net?subject=Spooldesk%20setup">$setup_cta <span aria-hidden="true">↗</span></a><p class="plan-footnote">$setup_footnote</p></article>
-        <article class="price-card reveal"><p class="plan-label">$care_label</p><h3>$care_title</h3><div class="price">$$149 <span>$care_unit</span></div><p class="price-description">$care_description</p><ul class="plan-list"><li>$care_feature1</li><li>$care_feature2</li><li>$care_feature3</li></ul><a class="button button-outline" href="mailto:hello@spooldesk.net?subject=Spooldesk%20maintenance">$care_cta <span aria-hidden="true">↗</span></a><p class="plan-footnote">$care_footnote</p></article>
+        <article class="price-card reveal"><p class="plan-label">$self_label</p><h3>$self_title</h3><div class="price">$$0 <span>$self_unit</span></div><p class="price-description">$self_description</p><ul class="plan-list"><li>$self_feature1</li><li>$self_feature2</li><li>$self_feature3</li></ul><a class="button button-outline" data-analytics="download_click" href="https://github.com/spooldesk/spool/releases/download/v0.1.0-rc.9/spooldesk-v0.1.0-rc.9-installer.zip" target="_blank" rel="noopener">$self_cta <span aria-hidden="true">↗</span></a><p class="plan-footnote">$self_footnote</p></article>
+        <article class="price-card price-card-featured reveal"><p class="plan-label">$setup_label</p><h3>$setup_title</h3><div class="price">$$300 <span>$setup_unit</span></div><p class="price-description">$setup_description</p><ul class="plan-list"><li>$setup_feature1</li><li>$setup_feature2</li><li>$setup_feature3</li></ul><a class="button button-ink" data-analytics="sales_contact" href="mailto:hello@spooldesk.net?subject=Spooldesk%20setup">$setup_cta <span aria-hidden="true">↗</span></a><p class="plan-footnote">$setup_footnote</p></article>
+        <article class="price-card reveal"><p class="plan-label">$care_label</p><h3>$care_title</h3><div class="price">$$149 <span>$care_unit</span></div><p class="price-description">$care_description</p><ul class="plan-list"><li>$care_feature1</li><li>$care_feature2</li><li>$care_feature3</li></ul><a class="button button-outline" data-analytics="sales_contact" href="mailto:hello@spooldesk.net?subject=Spooldesk%20maintenance">$care_cta <span aria-hidden="true">↗</span></a><p class="plan-footnote">$care_footnote</p></article>
         <article class="price-card price-card-sales reveal"><p class="plan-label">$sales_label</p><h3>$sales_title</h3><div class="price price-custom">$sales_price <span>$sales_unit</span></div><p class="price-description">$sales_description</p><ul class="plan-list"><li>$sales_feature1</li><li>$sales_feature2</li><li>$sales_feature3</li></ul><a class="button button-outline" href="#sales">$sales_cta <span aria-hidden="true">↗</span></a><p class="plan-footnote">$sales_footnote</p></article>
       </div>
       <p class="pricing-note">$pricing_note</p>
@@ -248,11 +249,11 @@
 
     <section class="sales-section wrap" id="sales" aria-labelledby="sales-heading">
       <div><p class="eyebrow">$sales_label</p><h2 id="sales-heading">$sales_heading</h2><p class="sales-description">$sales_body</p></div>
-      <div class="sales-contact"><a class="sales-email" href="mailto:hello@spooldesk.net?subject=Spooldesk%20self-hosted%20enquiry">hello@spooldesk.net <span aria-hidden="true">↗</span></a><p>$sales_prompt</p><p class="sales-privacy">$sales_privacy <a href="${legal_url}#data">$privacy_link</a></p></div>
+      <div class="sales-contact"><a class="sales-email" data-analytics="sales_contact" href="mailto:hello@spooldesk.net?subject=Spooldesk%20self-hosted%20enquiry">hello@spooldesk.net <span aria-hidden="true">↗</span></a><p>$sales_prompt</p><p class="sales-privacy">$sales_privacy <a href="${legal_url}#data">$privacy_link</a></p></div>
     </section>
 
-    <section class="start-section wrap" id="start" aria-labelledby="start-heading"><div><p class="eyebrow">$start_eyebrow</p><h2 id="start-heading">$start_title<br><em>$start_emphasis</em></h2><p>$start_body</p></div><div class="start-actions"><a class="button button-ink" href="https://github.com/spooldesk/spool/blob/main/docs/DEPLOYMENT.md" target="_blank" rel="noopener">$start_docs <span aria-hidden="true">↗</span></a><a class="text-link" href="mailto:hello@spooldesk.net?subject=Spooldesk%20introduction">$start_contact <span aria-hidden="true">↗</span></a><span class="start-note">$start_note</span></div></section>
+    <section class="start-section wrap" id="start" aria-labelledby="start-heading"><div><p class="eyebrow">$start_eyebrow</p><h2 id="start-heading">$start_title<br><em>$start_emphasis</em></h2><p>$start_body</p></div><div class="start-actions"><a class="button button-ink" href="https://github.com/spooldesk/spool/blob/main/docs/INSTALLATION.md" target="_blank" rel="noopener">$start_docs <span aria-hidden="true">↗</span></a><a class="text-link" data-analytics="sales_contact" href="mailto:hello@spooldesk.net?subject=Spooldesk%20introduction">$start_contact <span aria-hidden="true">↗</span></a><span class="start-note">$start_note</span></div></section>
   </main>
-  <footer class="site-footer"><div class="wrap footer-inner"><a class="wordmark" href="#">spooldesk<span class="brand-period">.</span></a><p>$footer_note</p><nav aria-label="$footer_nav"><a href="https://github.com/spooldesk/spool" target="_blank" rel="noopener">GitHub ↗</a><a href="mailto:hello@spooldesk.net">$footer_contact</a><a href="$legal_url">$legal_link</a><a href="$other_language_url" lang="$other_language_code">$other_language</a></nav><span class="copyright">© 2026 Spooldesk</span></div></footer>
+  <footer class="site-footer"><div class="wrap footer-inner"><a class="wordmark" href="#">spooldesk<span class="brand-period">.</span></a><p>$footer_note</p><nav aria-label="$footer_nav"><a href="https://github.com/spooldesk/spool" target="_blank" rel="noopener">GitHub ↗</a><a data-analytics="sales_contact" href="mailto:hello@spooldesk.net">$footer_contact</a><a href="$legal_url">$legal_link</a><a href="$other_language_url" lang="$other_language_code">$other_language</a></nav><span class="copyright">© 2026 Spooldesk</span></div></footer>
 </body>
 </html>

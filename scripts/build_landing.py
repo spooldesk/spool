@@ -39,6 +39,7 @@ def build(*, check: bool = False) -> None:
     source = ROOT / "assets" / "landing"
     template = Template((source / "page.html").read_text(encoding="utf-8"))
     legal_template = Template((source / 'legal.html').read_text(encoding='utf-8'))
+    error_template = Template((source / '404.html').read_text(encoding='utf-8'))
     for language, prefix, destination in (
         ("en", "", ROOT / "docs" / "index.html"),
         ("ru", "../", ROOT / "docs" / "ru" / "index.html"),
@@ -57,9 +58,12 @@ def build(*, check: bool = False) -> None:
             page_path='legal/' if language == 'en' else 'ru/legal/',
             other_language_url='../ru/legal/' if language == 'en' else '../../legal/')
         render(legal_template, legal, destination.parent/'legal/index.html', check)
+        error = ({'title': 'Page not found', 'description': 'This address does not exist. Return to Spooldesk to explore the product.', 'back': 'Back to Spooldesk', 'home': '/'}
+                 if language == 'en' else {'title': 'Страница не найдена', 'description': 'Такого адреса нет. Вернитесь на Spooldesk, чтобы узнать о продукте.', 'back': 'На главную', 'home': '/ru/'})
+        render(error_template, dict(error, lang=language), destination.parent/'404.html', check)
         print(f"{'Checked' if check else 'Built'} {destination.relative_to(ROOT)}")
     write_checked(ROOT/'docs/license.txt', (ROOT/'LICENSE').read_text(encoding='utf-8'), check)
-    for name in ('robots.txt', 'sitemap.xml'):
+    for name in ('robots.txt', 'sitemap.xml', '_routes.json'):
         write_checked(ROOT/'docs'/name, (source/name).read_text(encoding='utf-8'), check)
 
 
@@ -67,6 +71,7 @@ def export_site(destination: Path) -> None:
     """Export only public assets, never the internal reports in docs/."""
     paths = ["index.html", "ru/index.html", "legal/index.html", "ru/legal/index.html", "license.txt", "style.css", "landing.js", "brand.css",
              "product-demo.js", "product-demo.css", "ai-demo.js", "ai-demo.css", "robots.txt", "sitemap.xml",
+             "404.html", "ru/404.html", "analytics.js", "_routes.json",
              "icons/favicon.ico", "icons/apple-touch-icon.png", "icons/favicon-96x96.png",
              "img/01_board.png", "img/03_ticket_detail.png", "img/16_widget_help.png"]
     destination.mkdir(parents=True, exist_ok=False)
