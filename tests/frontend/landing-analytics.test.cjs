@@ -79,7 +79,7 @@ test('campaigns are allowlisted; raw URLs and text are never sent',()=>{
 });
 
 test('outreach links record a tagged landing load and retain attribution on actions',async()=>{
-  for(const code of ['01','50']) for(const medium of ['email','referral']) {
+  for(const code of ['01','50','51','99','100']) for(const medium of ['email','referral']) {
     const campaign='outreach-2026-10-16-c'+code;
     const b=browser({location:{search:'?utm_source=outreach&utm_medium='+medium+'&utm_campaign='+campaign+'&email=private@example.com'}});
     assert.equal(b.calls.length,1);
@@ -101,7 +101,7 @@ test('outreach attribution is bounded and landing counts respect privacy and hos
     {location:{hostname:'localhost'}},{location:{hostname:'spooldesk.pages.dev'}},
     {location:{pathname:'/404.html'}}
   ]) assert.equal(browser({...options,location:{search:valid,...options.location}}).calls.length,0);
-  for(const campaign of ['outreach-2026-10-16-c00','outreach-2026-10-16-c51','outreach-2026-10-16-c01-private@example.com']) {
+  for(const campaign of ['outreach-2026-10-16-c00','outreach-2026-10-16-c101','outreach-2026-10-16-c01-private@example.com']) {
     const b=browser({location:{search:'?utm_source=outreach&utm_medium=email&utm_campaign='+campaign}});
     assert.equal(b.calls.length,0);b.act('download_click');
     assert.equal(JSON.parse(b.calls[0].body).campaign,'none');

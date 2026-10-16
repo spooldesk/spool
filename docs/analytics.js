@@ -20,7 +20,7 @@
   if (sources.includes(query.get('utm_source'))) source = query.get('utm_source');
   if (mediums.includes(query.get('utm_medium'))) medium = query.get('utm_medium');
   // Fixed company codes for this campaign; never accept arbitrary recipient data.
-  const campaigns = ['first-pilots-2026-10', ...Array.from({length:50}, (_, i) =>
+  const campaigns = ['first-pilots-2026-10', ...Array.from({length:100}, (_, i) =>
     'outreach-2026-10-16-c' + String(i + 1).padStart(2, '0'))];
   const campaign = campaigns.includes(query.get('utm_campaign')) ? query.get('utm_campaign') : 'none';
   const seen = new Set();
