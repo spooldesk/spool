@@ -40,7 +40,7 @@ export async function onRequest({request, env}) {
   if (!data || Array.isArray(data) || Object.keys(data).length !== Object.keys(allowed).length) return response(400);
   if (!Object.entries(allowed).every(([key, values]) => values.includes(data[key]))) return response(400);
   if ((data.event === 'demo_open') !== (data.demo !== 'none')) return response(400);
-  if (data.event === 'landing_visit' && (data.source !== 'outreach' || data.medium !== 'email' ||
+  if (data.event === 'landing_visit' && (data.source !== 'outreach' || !['email', 'referral'].includes(data.medium) ||
       !data.campaign.startsWith('outreach-2026-10-16-c'))) return response(400);
   if (!env.LANDING_EVENTS) return response(503);
   try {

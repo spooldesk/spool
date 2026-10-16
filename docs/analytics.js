@@ -35,7 +35,7 @@
     } catch (_) {} // Metrics never prevent navigation or using the demo.
   }
   // A tagged landing load is a visit signal, not proof that a person read the email.
-  if (source === 'outreach' && medium === 'email' && campaign.startsWith('outreach-2026-10-16-c')) {
+  if (source === 'outreach' && ['email', 'referral'].includes(medium) && campaign.startsWith('outreach-2026-10-16-c')) {
     record('landing_visit');
   }
   document.addEventListener('click', event => {

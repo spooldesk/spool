@@ -79,15 +79,15 @@ test('campaigns are allowlisted; raw URLs and text are never sent',()=>{
 });
 
 test('outreach links record a tagged landing load and retain attribution on actions',async()=>{
-  for(const code of ['01','50']) {
+  for(const code of ['01','50']) for(const medium of ['email','referral']) {
     const campaign='outreach-2026-10-16-c'+code;
-    const b=browser({location:{search:'?utm_source=outreach&utm_medium=email&utm_campaign='+campaign+'&email=private@example.com'}});
+    const b=browser({location:{search:'?utm_source=outreach&utm_medium='+medium+'&utm_campaign='+campaign+'&email=private@example.com'}});
     assert.equal(b.calls.length,1);
     b.act('sales_contact');b.act('sales_contact');b.act(null,'product');
     assert.deepEqual(b.calls.map(c=>JSON.parse(c.body).event),['landing_visit','sales_contact','demo_open']);
     for(const call of b.calls) {
       const point=JSON.parse(call.body);
-      assert.equal(point.campaign,campaign);assert.equal(point.source,'outreach');assert.equal(point.medium,'email');
+      assert.equal(point.campaign,campaign);assert.equal(point.source,'outreach');assert.equal(point.medium,medium);
       assert.ok(!call.body.includes('private'));
       assert.equal((await send(point)).status,204);
     }
@@ -107,7 +107,7 @@ test('outreach attribution is bounded and landing counts respect privacy and hos
     assert.equal(JSON.parse(b.calls[0].body).campaign,'none');
     assert.equal((await send({...payload,campaign})).status,400);
   }
-  for(const changes of [{source:'direct'},{medium:'none'},{campaign:'none'},{demo:'ai'}]) {
+  for(const changes of [{source:'direct'},{medium:'none'},{medium:'social'},{campaign:'none'},{demo:'ai'}]) {
     assert.equal((await send({...payload,event:'landing_visit',source:'outreach',medium:'email',campaign:'outreach-2026-10-16-c01',...changes})).status,400);
   }
 });
