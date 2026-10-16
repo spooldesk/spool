@@ -1,11 +1,12 @@
 // Website conversion counts only. No ticket data, visitor IDs, cookies or raw URLs.
 const origins = new Set(['https://spooldesk.net', 'https://www.spooldesk.net']);
 const allowed = {
-  event: ['download_click', 'demo_open', 'sales_contact'],
+  event: ['download_click', 'demo_open', 'sales_contact', 'landing_visit'],
   page: ['/', '/ru/'],
-  source: ['direct', 'github', 'linkedin', 'hackernews', 'selfhosted', 'indiehackers', 'partner', 'google', 'bing', 'other'],
+  source: ['direct', 'github', 'linkedin', 'hackernews', 'selfhosted', 'indiehackers', 'partner', 'outreach', 'google', 'bing', 'other'],
   medium: ['none', 'social', 'community', 'referral', 'email', 'organic'],
-  campaign: ['none', 'first-pilots-2026-10'],
+  campaign: ['none', 'first-pilots-2026-10', ...Array.from({length:50}, (_, i) =>
+    'outreach-2026-10-16-c' + String(i + 1).padStart(2, '0'))],
   demo: ['none', 'product', 'ai'],
 };
 function response(status) {
@@ -39,6 +40,8 @@ export async function onRequest({request, env}) {
   if (!data || Array.isArray(data) || Object.keys(data).length !== Object.keys(allowed).length) return response(400);
   if (!Object.entries(allowed).every(([key, values]) => values.includes(data[key]))) return response(400);
   if ((data.event === 'demo_open') !== (data.demo !== 'none')) return response(400);
+  if (data.event === 'landing_visit' && (data.source !== 'outreach' || !['email', 'referral'].includes(data.medium) ||
+      !data.campaign.startsWith('outreach-2026-10-16-c'))) return response(400);
   if (!env.LANDING_EVENTS) return response(503);
   try {
     env.LANDING_EVENTS.writeDataPoint({
