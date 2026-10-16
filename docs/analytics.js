@@ -4,7 +4,7 @@
   if (!['spooldesk.net', 'www.spooldesk.net'].includes(location.hostname)) return;
   if (!['/', '/ru/'].includes(location.pathname)) return;
   if (navigator.doNotTrack === '1' || navigator.globalPrivacyControl === true) return;
-  const sources = ['github', 'linkedin', 'hackernews', 'selfhosted', 'indiehackers', 'partner'];
+  const sources = ['github', 'linkedin', 'hackernews', 'selfhosted', 'indiehackers', 'partner', 'outreach'];
   const mediums = ['social', 'community', 'referral', 'email'];
   const query = new URLSearchParams(location.search);
   let source = 'direct', medium = 'none';
@@ -19,7 +19,10 @@
   } catch (_) {}
   if (sources.includes(query.get('utm_source'))) source = query.get('utm_source');
   if (mediums.includes(query.get('utm_medium'))) medium = query.get('utm_medium');
-  const campaign = query.get('utm_campaign') === 'first-pilots-2026-10' ? 'first-pilots-2026-10' : 'none';
+  // Fixed company codes for this campaign; never accept arbitrary recipient data.
+  const campaigns = ['first-pilots-2026-10', ...Array.from({length:50}, (_, i) =>
+    'outreach-2026-10-16-c' + String(i + 1).padStart(2, '0'))];
+  const campaign = campaigns.includes(query.get('utm_campaign')) ? query.get('utm_campaign') : 'none';
   const seen = new Set();
   function record(event, demo = 'none') {
     const key = event + ':' + demo;
@@ -30,6 +33,10 @@
       fetch('/events', {method:'POST', headers:{'Content-Type':'application/json'},
         body, keepalive:true, credentials:'omit', referrerPolicy:'origin'}).catch(() => {});
     } catch (_) {} // Metrics never prevent navigation or using the demo.
+  }
+  // A tagged landing load is a visit signal, not proof that a person read the email.
+  if (source === 'outreach' && medium === 'email' && campaign.startsWith('outreach-2026-10-16-c')) {
+    record('landing_visit');
   }
   document.addEventListener('click', event => {
     if (!event.isTrusted) return;

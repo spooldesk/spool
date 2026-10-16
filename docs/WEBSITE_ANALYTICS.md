@@ -23,6 +23,7 @@ Redeploy after changing bindings. Git integration builds Functions from the repo
 | demo_open / product | First interaction with the product demo | A real workspace created |
 | demo_open / ai | First interaction with the guided AI demo | An actual model call |
 | sales_contact | First mailto contact click per page load | An email sent or a sale |
+| landing_visit | Page load from a recognized outreach email link | A unique person, email open or qualified lead |
 
 No cookies, persistent visitor IDs, IP fields, arbitrary query values or demo text are written to the dataset. Only allowlisted event, language path, coarse source, medium, campaign and demo type are accepted. DNT/GPC opt-outs, preview hosts and scripted clicks are ignored. Reloading can create another count. Ad blockers, failed requests, bots and sampling make these directional metrics, not audited unique-user counts. The public endpoint's origin checks limit browser misuse but do not authenticate humans or prevent a non-browser client from forging events.
 
@@ -47,7 +48,9 @@ WHERE timestamp >= NOW() - INTERVAL '14' DAY
 GROUP BY source, medium, campaign, event ORDER BY actions DESC
 ```
 
-Recognized campaign: `first-pilots-2026-10`; recognized UTM sources: `github`, `linkedin`, `hackernews`, `selfhosted`, `indiehackers`, `partner`; mediums: `social`, `community`, `referral`, `email`. Unknown text is never stored. Referrers can additionally be classified as direct, google, bing or other. For a new campaign extend both allowlists and tests deliberately.
+Recognized campaigns: `first-pilots-2026-10` and the fixed range `outreach-2026-10-16-c01` through `outreach-2026-10-16-c50`; recognized UTM sources: `github`, `linkedin`, `hackernews`, `selfhosted`, `indiehackers`, `partner`, `outreach`; mediums: `social`, `community`, `referral`, `email`. Unknown text is never stored. Referrers can additionally be classified as direct, google, bing or other. For a new campaign extend both allowlists and tests deliberately.
+
+Outreach example: `https://spooldesk.net/?utm_source=outreach&utm_medium=email&utm_campaign=outreach-2026-10-16-c01#product`. Each code maps to one company in a private campaign ledger outside public Git. Never put email addresses, names or secrets in UTM values. Only this exact source/medium/campaign combination creates `landing_visit` on page load. Actions on that page carry the same attribution in `blob5`; the existing six-column event schema remains compatible. No email-open pixels are used. Link forwarding, security scanners and repeat page loads can affect counts; the code identifies the distributed link, not the identity of the person using it. Attribution is not persisted across navigation to an untagged URL.
 
 Example: `https://spooldesk.net/?utm_source=linkedin&utm_medium=social&utm_campaign=first-pilots-2026-10#product`
 

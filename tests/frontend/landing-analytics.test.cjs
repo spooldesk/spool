@@ -77,3 +77,37 @@ test('campaigns are allowlisted; raw URLs and text are never sent',()=>{
   const invalid=browser({location:{search:'?utm_source=private@example.com&utm_campaign=secret'},referrer:'https://www.google.com/search?q=private'});
   invalid.act('download_click');const p=JSON.parse(invalid.calls[0].body);assert.equal(p.source,'google');assert.equal(p.medium,'organic');assert.equal(p.campaign,'none');assert.ok(!invalid.calls[0].body.includes('private'));
 });
+
+test('outreach links record a tagged landing load and retain attribution on actions',async()=>{
+  for(const code of ['01','50']) {
+    const campaign='outreach-2026-10-16-c'+code;
+    const b=browser({location:{search:'?utm_source=outreach&utm_medium=email&utm_campaign='+campaign+'&email=private@example.com'}});
+    assert.equal(b.calls.length,1);
+    b.act('sales_contact');b.act('sales_contact');b.act(null,'product');
+    assert.deepEqual(b.calls.map(c=>JSON.parse(c.body).event),['landing_visit','sales_contact','demo_open']);
+    for(const call of b.calls) {
+      const point=JSON.parse(call.body);
+      assert.equal(point.campaign,campaign);assert.equal(point.source,'outreach');assert.equal(point.medium,'email');
+      assert.ok(!call.body.includes('private'));
+      assert.equal((await send(point)).status,204);
+    }
+  }
+});
+
+test('outreach attribution is bounded and landing counts respect privacy and host restrictions',async()=>{
+  const valid='?utm_source=outreach&utm_medium=email&utm_campaign=outreach-2026-10-16-c01';
+  for(const options of [
+    {navigator:{doNotTrack:'1'}},{navigator:{globalPrivacyControl:true}},
+    {location:{hostname:'localhost'}},{location:{hostname:'spooldesk.pages.dev'}},
+    {location:{pathname:'/404.html'}}
+  ]) assert.equal(browser({...options,location:{search:valid,...options.location}}).calls.length,0);
+  for(const campaign of ['outreach-2026-10-16-c00','outreach-2026-10-16-c51','outreach-2026-10-16-c01-private@example.com']) {
+    const b=browser({location:{search:'?utm_source=outreach&utm_medium=email&utm_campaign='+campaign}});
+    assert.equal(b.calls.length,0);b.act('download_click');
+    assert.equal(JSON.parse(b.calls[0].body).campaign,'none');
+    assert.equal((await send({...payload,campaign})).status,400);
+  }
+  for(const changes of [{source:'direct'},{medium:'none'},{campaign:'none'},{demo:'ai'}]) {
+    assert.equal((await send({...payload,event:'landing_visit',source:'outreach',medium:'email',campaign:'outreach-2026-10-16-c01',...changes})).status,400);
+  }
+});
