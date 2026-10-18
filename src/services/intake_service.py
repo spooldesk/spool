@@ -224,6 +224,8 @@ async def receive(session: AsyncSession, inbound: Inbound) -> IntakeResult:
     )
     session.add(record)
     await session.flush()
+    from src.ai.customer_agent import enqueue as enqueue_ai
+    await enqueue_ai(session, record)
 
     logger.info(
         f"Intake[{channel}] {'opened' if opened else 'appended to'} "

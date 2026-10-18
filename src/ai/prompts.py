@@ -175,6 +175,7 @@ def build_deflect_user_prompt(
     templates: list,  # list of dicts: {"title": str, "body": str}
     examples: list,   # same shape as build_suggest_from_history_user_prompt
     articles: list | None = None,  # list of dicts: {"n": int, "title", "body"}
+    conversation_mode: bool = False,
 ) -> str:
     lines = []
     lines.append(f"USER'S PROBLEM (category: {category or 'unknown'}):")
@@ -200,7 +201,12 @@ def build_deflect_user_prompt(
             for reply in ex["admin_replies"]:
                 lines.append(f"Operator replied: {reply}")
             lines.append("")
-    lines.append("If the knowledge base clearly resolves the user's problem, output "
-                 "the SOURCE line and then the self-service answer (2-5 "
-                 "sentences). Otherwise output exactly: skip")
+    if conversation_mode:
+        lines.append("Continue the customer conversation using the configured system policy. "
+                     "Return ACTION and SOURCE lines followed by the answer or clarification; "
+                     "hand off when a human is needed.")
+        return "\n".join(lines)
+    lines.append("Follow the configured system policy for evidence and general guidance. "
+                 "Return ACTION and SOURCE lines followed by a concise self-service answer, "
+                 "or ACTION: handoff if a human is needed.")
     return "\n".join(lines)

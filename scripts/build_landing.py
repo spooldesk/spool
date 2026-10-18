@@ -79,7 +79,19 @@ def export_site(destination: Path) -> None:
         target = destination / name
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ROOT / "docs" / name, target)
-    print(f"Exported {len(paths)} public files to {destination}")
+    # Generated only from disposable fixtures and the real dashboard templates.
+    # Explicit extensions: no database, logs, credentials or source reports.
+    demo_root = ROOT / 'docs/demo'
+    if not (demo_root/'manifest.json').is_file():
+        raise ValueError('Build the dashboard demo before exporting the landing')
+    for source_file in demo_root.rglob('*'):
+        if source_file.is_symlink():
+            raise ValueError('Linked files are not allowed in the public demo')
+        if source_file.is_file() and source_file.suffix in {'.html','.js','.css','.json','.png','.jpg','.ico','.webmanifest','.woff2','.txt'}:
+            target = destination/'demo'/source_file.relative_to(demo_root)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source_file, target)
+    print(f"Exported {sum(p.is_file() for p in destination.rglob('*'))} public files to {destination}")
 
 
 if __name__ == "__main__":

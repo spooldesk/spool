@@ -37,6 +37,8 @@ async def ai_page(request: Request):
     # the customer did — which is a different and more honest question.
     quality = await queries.ai_vs_human_csat()
     by_category = await queries.ai_csat_by_category()
+    from src.dashboard.ai_diagnostics import overview
+    diagnostics = await overview()
 
     return templates.TemplateResponse(
         request,
@@ -44,6 +46,7 @@ async def ai_page(request: Request):
         {
             "active_page": "ai",
             "stats": stats,
+            "diagnostics": diagnostics,
             "per_day_labels_json": [d for d, _ in per_day],
             "per_day_values_json": [n for _, n in per_day],
             "rejected": rejected,

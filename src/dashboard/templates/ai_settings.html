@@ -25,6 +25,34 @@
       {% if assistant_on and enabled %}<a href="/assistant">{{ T.assistant_title }} →</a>{% endif %}
     </form>
   </section>
+  <section id="customer-agent" class="workspace-card">
+    <h2>{{ T.ca_title }}</h2>
+    <p class="workspace-intro">{{ T.ca_intro }}</p>
+    <form method="post" action="/manage/ai/customer-policy" class="workspace-form">
+      <label>{{ T.ca_mode }}<select name="mode">
+        <option value="single" {% if customer_policy.mode == 'single' %}selected{% endif %}>{{ T.ca_single }}</option>
+        <option value="conversation" {% if customer_policy.mode == 'conversation' %}selected{% endif %}>{{ T.ca_conversation }}</option>
+      </select></label>
+      <label class="workspace-check"><input type="checkbox" name="allow_clarification" value="1" {% if customer_policy.allow_clarification %}checked{% endif %}>{{ T.ca_clarify }}</label>
+      <label class="workspace-check"><input type="checkbox" name="allow_general_guidance" value="1" {% if customer_policy.allow_general_guidance %}checked{% endif %}>{{ T.ca_general }}</label>
+      <p class="workspace-muted">{{ T.ca_general_hint }}</p>
+      <label>{{ T.ca_tone }}<select name="tone">
+        {% for tone in ('professional', 'friendly', 'concise') %}<option value="{{ tone }}" {% if customer_policy.tone == tone %}selected{% endif %}>{{ T['ca_' ~ tone] }}</option>{% endfor %}
+      </select></label>
+      <label>{{ T.ca_instructions }}<textarea name="instructions" maxlength="4000" rows="4">{{ customer_policy.instructions }}</textarea></label>
+      <p class="workspace-muted">{{ T.ca_instructions_hint }}</p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <label>{{ T.ca_turns }}<input name="max_turns" type="number" min="1" max="20" required value="{{ customer_policy.max_turns }}"></label>
+        <label>{{ T.ca_history }}<input name="history_messages" type="number" min="4" max="40" required value="{{ customer_policy.history_messages }}"></label>
+        <label>{{ T.ca_tokens }}<input name="max_output_tokens" type="number" min="256" max="8192" required value="{{ customer_policy.max_output_tokens }}"></label>
+        <label>{{ T.ca_timeout }}<input name="timeout_seconds" type="number" min="10" max="120" required value="{{ customer_policy.timeout_seconds }}"></label>
+      </div>
+      <p class="workspace-muted">{{ T.ca_budget_hint }}</p>
+      <p class="workspace-muted">{{ T.ca_takeover }}</p>
+      <button class="workspace-primary">{{ T.save }}</button>
+      <a href="/ai#automatic-replies">{{ T.ca_diagnostics }} →</a>
+    </form>
+  </section>
   <section id="company" class="workspace-card">
     <h2>{{ T.company_title }}</h2>
     <p class="workspace-intro">{{ T.company_intro }}</p>

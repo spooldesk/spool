@@ -159,6 +159,7 @@ features; self-hosting alone does not establish privacy-law compliance.
 | [FAQ](FAQ.md) | Requirements, licensing and current limits |
 | [Connections](docs/INTEGRATIONS.md) | What integration diagnostics do and do not prove |
 | [AI assistant](docs/AI_ASSISTANT.md) | Permissions, context, files and chat history |
+| [Customer AI agent](docs/AI_CUSTOMER_AGENT.md) | Automatic conversations, limits, handoff and delivery diagnostics |
 | [PostgreSQL](docs/POSTGRESQL.md) | Database setup and migration policy |
 | [Backup and restore](docs/BACKUP_RESTORE.md) | Recovery and outbound quarantine |
 | [Landing](docs/LANDING.md) | Bilingual site sources and public-only export |

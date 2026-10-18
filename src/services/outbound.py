@@ -141,6 +141,12 @@ async def deliver(job_id: int) -> Delivery:
             return Delivery.failed("e_delivery_" + job.status)
         ticket = await session.get(Ticket, row.ticket_id)
         user = await session.get(User, ticket.user_id)
+        if (job.purpose or "").startswith("ai_turn:"):
+            from src.ai.customer_agent import delivery_guard
+            if not await delivery_guard(session, job):
+                job.status = row.delivery_status = "cancelled"
+                row.delivery_error = job.last_error = "e_delivery_cancelled"
+                return Delivery.failed("e_delivery_cancelled")
         if not user.is_active:
             job.status = row.delivery_status = "cancelled"
             row.delivery_error = job.last_error = "e_delivery_cancelled"
