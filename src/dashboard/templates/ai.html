@@ -29,6 +29,36 @@
   </div>
 </div>
 
+<section id="automatic-replies" class="bg-zinc-950 border border-zinc-900 rounded-xl p-5 mb-4">
+  <h2 class="font-medium">{{ T.ca_diagnostics }}</h2>
+  <p class="text-xs text-zinc-500 mt-1 mb-4">{{ T.ca_diagnostics_hint }}</p>
+  <div class="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
+    {% for metric in ('total', 'delivered', 'withheld', 'failed', 'pending', 'shadow') %}
+      <div><div class="text-xs text-zinc-400">{{ T['ca_' ~ metric] }}</div><div class="text-xl font-semibold tabular-nums">{{ diagnostics[metric] }}</div></div>
+    {% endfor %}
+  </div>
+  <h3 class="text-sm mb-2">{{ T.ca_recent }}</h3>
+  {% if diagnostics.rows %}
+    <div class="overflow-x-auto"><table class="w-full text-sm">
+      <thead><tr class="text-left text-xs text-zinc-500 border-b border-zinc-800">
+        <th class="py-2">ID</th><th class="py-2">{{ T.ca_status }}</th><th class="py-2">{{ T.ca_reason }}</th><th class="py-2">{{ T.ca_model }}</th>
+      </tr></thead>
+      <tbody class="divide-y divide-zinc-900">{% for row in diagnostics.rows %}<tr>
+        <td class="py-3 pr-3"><a class="text-brand-400" href="/tickets/{{ row.ticket_id }}">#{{ row.ticket_id }}</a><div class="text-xs text-zinc-500">{{ row.channel }} · {{ row.created_at.strftime('%m-%d %H:%M') }}</div></td>
+        <td class="py-3 pr-3">{{ T.get('ca_status_' ~ row.status, row.status) }}</td>
+        <td class="py-3 pr-3">{{ T.get('ca_reason_' ~ row.reason, T.ca_unknown) if row.reason else '—' }}</td>
+        <td class="py-3 text-xs text-zinc-400">{{ row.model or '—' }}{% if row.model %}<div>{{ fmt_tokens(row.tokens_in) }} / {{ fmt_tokens(row.tokens_out) }} · {{ fmt_ms(row.latency_ms) }}</div>{% endif %}</td>
+      </tr>{% endfor %}</tbody>
+    </table></div>
+  {% else %}<p class="text-sm text-zinc-500">{{ T.ca_empty }}</p>{% endif %}
+  {% if diagnostics.errors %}<details class="mt-4"><summary class="text-sm cursor-pointer">{{ T.ca_errors }}</summary>
+    <ul class="text-sm mt-3 space-y-2">{% for row in diagnostics.errors %}<li>
+      {% if row.ticket_id %}<a class="text-brand-400" href="/tickets/{{ row.ticket_id }}">#{{ row.ticket_id }}</a> · {% endif %}
+      {{ T.get('ca_reason_' ~ row.reason, T.ca_unknown) }} <span class="text-zinc-500">· {{ row.created_at.strftime('%m-%d %H:%M') }}</span>
+    </li>{% endfor %}</ul>
+  </details>{% endif %}
+</section>
+
 <!-- Answer quality: is the AI actually as good as us? -->
 <div class="bg-zinc-950 border border-zinc-900 rounded-xl p-5 mb-4">
   <h2 class="font-medium">{{ T.ai_quality_title }}</h2>

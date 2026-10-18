@@ -1,0 +1,1917 @@
+<!doctype html>
+
+<html lang="ru" class="h-full dark">
+<head><meta name="robots" content="noindex"><meta http-equiv="Content-Security-Policy" content="connect-src 'none'; form-action 'none'; object-src 'none'"><script>if(!window.SPOOLDEMO)location.replace("/demo/?lang=ru#/tickets/71");</script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Тикет #71 · Spooldesk</title>
+
+  <!--
+    Theme init — runs synchronously before any paint to prevent flash.
+
+    The operator's saved preference wins, then whatever they last toggled in
+    this browser, then dark. "system" is a real answer rather than a synonym
+    for dark: someone who set their laptop to light mode at 9am has already
+    told us something.
+  -->
+  <script>
+    (function(){
+      var pref = "dark";
+      var cached = null; try { cached = localStorage.getItem('spooldesk-demo-theme'); } catch (_) {}
+      var t = pref === 'system' ? cached : pref;
+      if (!t && pref === 'system' && window.matchMedia) {
+        t = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      }
+      if (t === 'light') document.documentElement.classList.remove('dark');
+      else               document.documentElement.classList.add('dark');
+      if (prefs_density()) document.documentElement.dataset.density = prefs_density();
+      function prefs_density(){ return "comfortable"; }
+    })();
+  </script>
+
+  <!--
+    Icons. One partial, included by every page this product serves a browser,
+    so the tab is never the blank sheet it was: the dashboard had no favicon
+    at all, and an operator with six tickets open had six identical blanks.
+    Rebuild with scripts/build_icons.py after changing assets/brand/.
+  -->
+  <link rel="icon" href="/demo/static/icons/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/demo/static/icons/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/demo/static/icons/favicon-16x16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/demo/static/icons/apple-touch-icon.png">
+  
+  <link rel="manifest" href="/demo/static/icons/site.webmanifest">
+  <meta name="theme-color" content="#7C3AED">
+
+  <!-- Compiled Tailwind (see tailwind.config.js) — no CDN, no runtime JIT -->
+  <link rel="stylesheet" href="/demo/static/tw.css">
+
+  <!-- Tabler Icons webfont (outline only) — no build step required -->
+  <link rel="stylesheet"
+        href="/demo/vendor/tabler-icons.min.css">
+  <link rel="stylesheet" href="/demo/static/app.css">
+  <link rel="stylesheet" href="/demo/static/brand.css">
+  <link rel="stylesheet" href="/demo/static/workspace.css">
+  
+  <script src="/demo/static/dashboard-fetch.js"></script>
+  <link rel="stylesheet" href="/demo/static/message-menu.css">
+  <script src="/demo/static/auto-grow.js" defer></script>
+  <script src="/demo/static/help-tips.js" defer></script>
+  <script src="/demo/static/section-access.js" defer></script>
+  
+</head>
+<body class="workspace-shell h-full antialiased text-gray-900 dark:text-zinc-100" data-help-label="Помощь" data-session-expired="Сессия истекла. Войдите в новой вкладке и повторите действие здесь. Черновик остался на этой странице." data-sign-in="Войти" data-readonly="false">
+<div class="flex h-full">
+
+  <!-- ============================================================
+       SIDEBAR
+       Light: white bg, gray borders, violet-50 active highlight
+       Dark : zinc-950 bg, zinc-900 borders, brand purple active
+  ============================================================ -->
+  <aside id="sidebar"
+         class="fixed inset-y-0 left-0 z-40 w-64 -translate-x-full
+                transition-transform duration-200 ease-out
+                md:static md:z-auto md:w-56 md:translate-x-0
+                shrink-0 bg-white dark:bg-zinc-950
+                border-r border-gray-100 dark:border-zinc-900
+                flex flex-col select-none">
+
+    <!-- Logo -->
+    <div class="h-12 shrink-0 flex items-center gap-2.5 px-4
+                border-b border-gray-100 dark:border-zinc-900">
+      
+        <a href="/" class="sd-wordmark workspace-wordmark" aria-label="Spooldesk">
+          <img class="sd-brand-icon" src="/demo/static/icons/favicon-96x96.png" width="30" height="30" alt="">
+          <span>spooldesk<span class="sd-brand-dot">.</span></span>
+        </a>
+      
+    </div>
+
+    <!-- Navigation -->
+    <nav class="flex-1 overflow-y-auto px-2 py-3 space-y-5">
+
+      
+      
+
+      
+      
+
+      
+      <div>
+        
+        
+        
+        
+        <a href="/assistant"
+           class="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm transition-colors
+                  
+                    text-gray-500 dark:text-zinc-400
+                    hover:bg-gray-50 dark:hover:bg-zinc-900
+                    hover:text-gray-800 dark:hover:text-zinc-100
+                  ">
+          <i class="ti ti-message-chatbot shrink-0" style="font-size:16px;width:16px" aria-hidden="true"></i>
+          <span>AI-ассистент</span>
+          
+        </a>
+        
+      </div>
+      
+
+      <div>
+        <p class="px-3 mb-1 text-[10px] font-semibold uppercase tracking-wider
+                  text-gray-300 dark:text-zinc-600">Работа</p>
+        
+        
+        
+        
+        
+        <a href="/tickets"
+           class="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm transition-colors
+                  
+                    bg-violet-50 text-violet-700 font-medium
+                    dark:bg-brand-600/20 dark:text-white
+                  ">
+          <i class="ti ti-ticket shrink-0" style="font-size:16px;width:16px" aria-hidden="true"></i>
+          <span>Тикеты</span>
+          
+            
+            <span id="nav-queue-badge"
+                  class="hidden ml-auto px-1.5 py-0.5 rounded-full text-[10px] font-semibold tabular-nums
+                         bg-amber-500/15 text-amber-500 dark:text-amber-400 border border-amber-500/30"
+                  title="Тикеты, в которых клиент ждёт ответа"></span>
+          
+        </a>
+        
+      
+        
+        
+        
+        
+        
+        <a href="/board"
+           class="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm transition-colors
+                  
+                    text-gray-500 dark:text-zinc-400
+                    hover:bg-gray-50 dark:hover:bg-zinc-900
+                    hover:text-gray-800 dark:hover:text-zinc-100
+                  ">
+          <i class="ti ti-layout-kanban shrink-0" style="font-size:16px;width:16px" aria-hidden="true"></i>
+          <span>Доска</span>
+          
+        </a>
+        
+      
+        
+        
+        
+        
+        
+        <a href="/users"
+           class="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm transition-colors
+                  
+                    text-gray-500 dark:text-zinc-400
+                    hover:bg-gray-50 dark:hover:bg-zinc-900
+                    hover:text-gray-800 dark:hover:text-zinc-100
+                  ">
+          <i class="ti ti-users shrink-0" style="font-size:16px;width:16px" aria-hidden="true"></i>
+          <span>Пользователи</span>
+          
+        </a>
+        
+      
+        
+      </div>
+
+      
+      <div>
+        <p class="px-3 mb-1 text-[10px] font-semibold uppercase tracking-wider
+                  text-gray-300 dark:text-zinc-600">Настройка</p>
+        
+        
+        
+        
+        
+        <a href="/manage/templates"
+           class="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm transition-colors
+                  
+                    text-gray-500 dark:text-zinc-400
+                    hover:bg-gray-50 dark:hover:bg-zinc-900
+                    hover:text-gray-800 dark:hover:text-zinc-100
+                  ">
+          <i class="ti ti-message-circle shrink-0" style="font-size:16px;width:16px" aria-hidden="true"></i>
+          <span>Шаблоны</span>
+          
+        </a>
+        
+      
+        
+        
+        
+        
+        
+        <a href="/manage/articles"
+           class="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm transition-colors
+                  
+                    text-gray-500 dark:text-zinc-400
+                    hover:bg-gray-50 dark:hover:bg-zinc-900
+                    hover:text-gray-800 dark:hover:text-zinc-100
+                  ">
+          <i class="ti ti-book-2 shrink-0" style="font-size:16px;width:16px" aria-hidden="true"></i>
+          <span>База знаний</span>
+          
+        </a>
+        
+      
+        
+        
+        
+        
+        
+        <a href="/manage/categories"
+           class="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm transition-colors
+                  
+                    text-gray-500 dark:text-zinc-400
+                    hover:bg-gray-50 dark:hover:bg-zinc-900
+                    hover:text-gray-800 dark:hover:text-zinc-100
+                  ">
+          <i class="ti ti-category-2 shrink-0" style="font-size:16px;width:16px" aria-hidden="true"></i>
+          <span>Категории</span>
+          
+        </a>
+        
+      
+        
+        
+        
+        
+        
+        <a href="/manage/close-reasons"
+           class="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm transition-colors
+                  
+                    text-gray-500 dark:text-zinc-400
+                    hover:bg-gray-50 dark:hover:bg-zinc-900
+                    hover:text-gray-800 dark:hover:text-zinc-100
+                  ">
+          <i class="ti ti-circle-check shrink-0" style="font-size:16px;width:16px" aria-hidden="true"></i>
+          <span>Причины закрытия</span>
+          
+        </a>
+        
+      
+        
+        
+        
+        
+        
+        <a href="/manage/teams"
+           class="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm transition-colors
+                  
+                    text-gray-500 dark:text-zinc-400
+                    hover:bg-gray-50 dark:hover:bg-zinc-900
+                    hover:text-gray-800 dark:hover:text-zinc-100
+                  ">
+          <i class="ti ti-building shrink-0" style="font-size:16px;width:16px" aria-hidden="true"></i>
+          <span>Команды</span>
+          
+        </a>
+        
+      
+        
+        
+        
+        
+        
+        <a href="/manage/settings"
+           class="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm transition-colors
+                  
+                    text-gray-500 dark:text-zinc-400
+                    hover:bg-gray-50 dark:hover:bg-zinc-900
+                    hover:text-gray-800 dark:hover:text-zinc-100
+                  ">
+          <i class="ti ti-settings-2 shrink-0" style="font-size:16px;width:16px" aria-hidden="true"></i>
+          <span>Настройки</span>
+          
+        </a>
+        
+      
+        
+          
+        
+        
+        
+        
+        <a href="/manage/integrations"
+           class="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm transition-colors
+                  
+                    text-gray-500 dark:text-zinc-400
+                    hover:bg-gray-50 dark:hover:bg-zinc-900
+                    hover:text-gray-800 dark:hover:text-zinc-100
+                  ">
+          <i class="ti ti-plug shrink-0" style="font-size:16px;width:16px" aria-hidden="true"></i>
+          <span>Интеграции</span>
+          
+        </a>
+        
+      
+          
+        
+        
+        
+        
+        <a href="/manage/admins"
+           class="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm transition-colors
+                  
+                    text-gray-500 dark:text-zinc-400
+                    hover:bg-gray-50 dark:hover:bg-zinc-900
+                    hover:text-gray-800 dark:hover:text-zinc-100
+                  ">
+          <i class="ti ti-shield-lock shrink-0" style="font-size:16px;width:16px" aria-hidden="true"></i>
+          <span>Операторы</span>
+          
+        </a>
+        
+      
+          
+        
+        
+        
+        
+        <a href="/manage/roles"
+           class="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm transition-colors
+                  
+                    text-gray-500 dark:text-zinc-400
+                    hover:bg-gray-50 dark:hover:bg-zinc-900
+                    hover:text-gray-800 dark:hover:text-zinc-100
+                  ">
+          <i class="ti ti-lock-access shrink-0" style="font-size:16px;width:16px" aria-hidden="true"></i>
+          <span>Роли</span>
+          
+        </a>
+        
+      
+        
+      </div>
+
+      
+
+      
+      <div>
+        <p class="px-3 mb-1 text-[10px] font-semibold uppercase tracking-wider
+                  text-gray-300 dark:text-zinc-600">ИИ</p>
+        
+        
+        
+        
+        
+        <a href="/manage/ai"
+           class="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm transition-colors
+                  
+                    text-gray-500 dark:text-zinc-400
+                    hover:bg-gray-50 dark:hover:bg-zinc-900
+                    hover:text-gray-800 dark:hover:text-zinc-100
+                  ">
+          <i class="ti ti-cpu shrink-0" style="font-size:16px;width:16px" aria-hidden="true"></i>
+          <span>Настройки ИИ</span>
+          
+        </a>
+        
+      
+      </div>
+      
+
+      <div>
+        <p class="px-3 mb-1 text-[10px] font-semibold uppercase tracking-wider
+                  text-gray-300 dark:text-zinc-600">Аналитика</p>
+        
+        
+        
+        
+        
+        <a href="/overview"
+           class="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm transition-colors
+                  
+                    text-gray-500 dark:text-zinc-400
+                    hover:bg-gray-50 dark:hover:bg-zinc-900
+                    hover:text-gray-800 dark:hover:text-zinc-100
+                  ">
+          <i class="ti ti-chart-bar shrink-0" style="font-size:16px;width:16px" aria-hidden="true"></i>
+          <span>Дашборд</span>
+          
+        </a>
+        
+      
+        
+        
+          
+        
+        
+        
+        
+        <a href="/reports"
+           class="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm transition-colors
+                  
+                    text-gray-500 dark:text-zinc-400
+                    hover:bg-gray-50 dark:hover:bg-zinc-900
+                    hover:text-gray-800 dark:hover:text-zinc-100
+                  ">
+          <i class="ti ti-report-analytics shrink-0" style="font-size:16px;width:16px" aria-hidden="true"></i>
+          <span>Отчёты</span>
+          
+        </a>
+        
+      
+        
+      </div>
+
+    </nav>
+
+    <!-- User footer — shows the logged-in operator -->
+    
+    
+    <div class="shrink-0 border-t border-gray-100 dark:border-zinc-900 px-2 py-2">
+      <div class="flex items-center gap-2.5 px-2.5 py-1.5 rounded-md
+                  hover:bg-gray-50 dark:hover:bg-zinc-900 transition-colors cursor-default">
+        <div class="w-6 h-6 rounded-full bg-violet-100 dark:bg-violet-900/40
+                    flex items-center justify-center shrink-0">
+          <span class="text-[9px] font-bold text-violet-700 dark:text-violet-400 uppercase">A</span>
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-xs font-medium text-gray-800 dark:text-zinc-200 truncate">Alex Morgan</p>
+          <p class="text-[10px] text-gray-400 dark:text-zinc-600 truncate">alex@example.test</p>
+        </div>
+        <a href="/me"
+           class="text-gray-300 dark:text-zinc-600
+                  hover:text-gray-600 dark:hover:text-zinc-300 transition-colors"
+           title="Личные настройки">
+          <i class="ti ti-adjustments-horizontal" style="font-size:14px" aria-hidden="true"></i>
+        </a>
+        <form method="post" action="/logout">
+          
+          <button type="submit"
+           class="text-gray-300 dark:text-zinc-600
+                  hover:text-gray-600 dark:hover:text-zinc-300 transition-colors"
+           title="Log out">
+          <i class="ti ti-logout" style="font-size:14px" aria-hidden="true"></i>
+          </button>
+        </form>
+      </div>
+    </div>
+
+  </aside>
+  <!-- end sidebar -->
+
+  <!-- Mobile drawer backdrop (click to close) -->
+  <div id="sidebar-backdrop"
+       class="hidden fixed inset-0 z-30 bg-black/50 md:hidden"
+       aria-hidden="true"></div>
+
+  <!-- ============================================================
+       RIGHT PANEL: topbar + optional sub-tabs + main content
+  ============================================================ -->
+  <div class="flex-1 min-w-0 flex flex-col overflow-hidden">
+
+    <!-- Topbar -->
+    <header class="h-11 shrink-0 bg-white dark:bg-zinc-950
+                   border-b border-gray-100 dark:border-zinc-900
+                   flex items-center px-3 sm:px-5 gap-2">
+
+      <!-- Burger (mobile only) -->
+      <button id="sidebar-toggle"
+              aria-label="Открыть меню"
+              class="md:hidden w-8 h-8 shrink-0 rounded-md flex items-center justify-center
+                     text-gray-500 dark:text-zinc-400
+                     hover:bg-gray-50 dark:hover:bg-zinc-900 transition-colors">
+        <i class="ti ti-menu-2" style="font-size:18px" aria-hidden="true"></i>
+      </button>
+
+      <!-- Breadcrumb — page label auto-derived from active_page -->
+      
+      <nav class="flex items-center gap-1 text-sm flex-1 min-w-0" aria-label="Breadcrumb">
+        <span class="text-gray-300 dark:text-zinc-600 text-xs truncate shrink-0">
+          Spooldesk
+        </span>
+        <i class="ti ti-chevron-right shrink-0 text-gray-200 dark:text-zinc-700"
+           style="font-size:11px" aria-hidden="true"></i>
+        <span class="text-gray-700 dark:text-zinc-200 font-medium truncate">
+          Тикеты
+        </span>
+        
+          <span class="ml-2 shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full
+                       text-[10px] font-semibold uppercase tracking-wider
+                       bg-amber-100 text-amber-700 border border-amber-200
+                       dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/30"
+                title="Демонстрационная среда с тестовыми данными. Не для реальных данных клиентов.">
+            <i class="ti ti-flask" style="font-size:11px" aria-hidden="true"></i> Demo
+          </span>
+        
+      </nav>
+
+      <!-- Right-side controls -->
+      <div class="flex items-center gap-0.5 shrink-0">
+        
+        <a href="/assistant?context=/tickets/71" class="ws-button inline-flex items-center gap-1 px-2 text-xs text-violet-600 dark:text-violet-400" title="Анализ с AI" aria-label="Анализ с AI">
+          <i class="ti ti-message-chatbot" aria-hidden="true"></i><span>AI</span>
+        </a>
+        
+
+        <!-- Light/Dark toggle -->
+        <button id="theme-toggle"
+                aria-label="Toggle colour theme"
+                title="Toggle light/dark"
+                class="w-8 h-8 rounded-md flex items-center justify-center
+                       text-gray-400 dark:text-zinc-500
+                       hover:bg-gray-50 dark:hover:bg-zinc-900
+                       hover:text-gray-600 dark:hover:text-zinc-200 transition-colors">
+          <!-- Sun shown in dark mode (click to go light) -->
+          <i class="ti ti-sun hidden dark:block" style="font-size:16px" aria-hidden="true"></i>
+          <!-- Moon shown in light mode (click to go dark) -->
+          <i class="ti ti-moon dark:hidden" style="font-size:16px" aria-hidden="true"></i>
+        </button>
+
+        <!-- New-ticket notifications toggle -->
+        <button id="notify-toggle"
+                aria-label="Уведомления о новых тикетах"
+                title="Уведомления о новых тикетах"
+                class="w-8 h-8 rounded-md flex items-center justify-center
+                       text-gray-400 dark:text-zinc-500
+                       hover:bg-gray-50 dark:hover:bg-zinc-900
+                       hover:text-gray-600 dark:hover:text-zinc-200 transition-colors">
+          <i id="notify-icon-on" class="ti ti-bell-ringing hidden text-brand-400" style="font-size:16px" aria-hidden="true"></i>
+          <i id="notify-icon-off" class="ti ti-bell" style="font-size:16px" aria-hidden="true"></i>
+        </button>
+
+        <!-- Help -->
+        <a href="/help"
+           title="Помощь" aria-label="Помощь"
+           class="w-8 h-8 rounded-md flex items-center justify-center
+                  text-gray-400 dark:text-zinc-500
+                  hover:bg-gray-50 dark:hover:bg-zinc-900
+                  hover:text-gray-600 dark:hover:text-zinc-200 transition-colors">
+          <i class="ti ti-question-mark" style="font-size:16px" aria-hidden="true"></i>
+        </a>
+
+      </div>
+    </header>
+    <!-- end topbar -->
+
+    <!-- Optional sub-tabs row (used by analytics base.html) -->
+    
+
+    
+    
+    <main class="flex-1 min-w-0 overflow-hidden  bg-gray-50 dark:bg-black">
+      
+<div class="flex flex-col md:flex-row h-full" data-ticket-id="71">
+
+  <!-- ===== Conversation column ===== -->
+  <div id="convo" class="flex-1 min-w-0 min-h-0 flex flex-col relative">
+
+    <!-- Drag overlay -->
+    <div id="drop-overlay"
+         class="absolute inset-0 z-20 hidden items-center justify-center
+                bg-black/80 border-2 border-dashed border-brand-500 rounded-lg m-2 pointer-events-none">
+      <div class="text-center">
+        <i class="ti ti-paperclip text-brand-400 mb-2" style="font-size:40px" aria-hidden="true"></i>
+        <div class="text-brand-400 font-medium">Отпусти файл, чтобы прикрепить</div>
+      </div>
+    </div>
+
+    <!-- Header -->
+    <div class="border-b border-zinc-900 px-6 py-4 flex items-center justify-between gap-4">
+      <div class="min-w-0">
+        <div class="flex items-center gap-3">
+          
+          <a href="/tickets?status=closed" id="back-link"
+             class="text-zinc-500 hover:text-zinc-200 text-sm">←</a>
+          
+          <h1 class="text-lg font-semibold tracking-tight truncate">Тикет #71</h1>
+          <span id="status-badge">
+            
+              <span class="px-2 py-0.5 rounded-full text-xs bg-zinc-700/40 text-zinc-400 border border-zinc-700">closed</span>
+            
+          </span>
+          
+          
+        </div>
+        <div class="text-xs text-zinc-500 mt-1">
+          Создан 2026-10-01 07:20
+          · Access
+          · <span id="live-dot" class="text-emerald-500">● live</span>
+        </div>
+        <!-- Shared presence is also shown next to the reply composer. -->
+        <div id="presence" class="hidden mt-1.5 text-xs text-amber-400 items-center gap-1.5">
+          <i class="ti ti-eye" style="font-size:12px" aria-hidden="true"></i>
+          <span id="presence-text"></span>
+        </div>
+      </div>
+    </div>
+
+    
+    
+
+    <!-- Timeline -->
+    <div id="timeline" class="conversation-timeline flex-1 overflow-y-auto px-6 py-5 space-y-4 scroll-pretty" data-user-label="@Daniel Web">
+      
+        <div class="msg group flex "
+             data-message-id="251" data-chat="{&#34;can_delete&#34;: false, &#34;can_edit&#34;: false, &#34;can_reply&#34;: true, &#34;deleted_at&#34;: false, &#34;edited_at&#34;: null, &#34;file_name&#34;: null, &#34;id&#34;: 251, &#34;is_internal&#34;: false, &#34;mutation_status&#34;: null, &#34;operator_id&#34;: null, &#34;reply&#34;: null, &#34;revision&#34;: 0, &#34;sender_type&#34;: &#34;user&#34;, &#34;text&#34;: &#34;Locked out of the password manager, it wants a recovery key I don\u0027t have&#34;}">
+          <div class="max-w-[80%] rounded-2xl px-4 py-3
+                        bg-zinc-900 border border-zinc-800
+                      ">
+            <div class="text-[10px] uppercase tracking-wide text-zinc-500 flex items-center gap-2 mb-1">
+              <span class="inline-flex items-center gap-1">
+                
+                  
+                  <i class="ti ti-user" style="font-size:11px" aria-hidden="true"></i>
+                  @Daniel Web
+                
+              </span>
+              
+              
+              <span class="text-zinc-600">10-01 07:20</span>
+              
+            </div>
+            
+              <div class="message-text text-sm whitespace-pre-wrap break-words text-zinc-100">Locked out of the password manager, it wants a recovery key I don&#39;t have</div>
+            
+            
+            <div class="delivery-state mt-2 text-xs" data-delivery-message="251">
+              
+              
+            </div>
+          </div>
+        </div>
+      
+        <div class="msg group flex justify-end"
+             data-message-id="252" data-chat="{&#34;can_delete&#34;: false, &#34;can_edit&#34;: false, &#34;can_reply&#34;: true, &#34;deleted_at&#34;: false, &#34;edited_at&#34;: null, &#34;file_name&#34;: null, &#34;id&#34;: 252, &#34;is_internal&#34;: false, &#34;mutation_status&#34;: null, &#34;operator_id&#34;: null, &#34;reply&#34;: null, &#34;revision&#34;: 0, &#34;sender_type&#34;: &#34;admin&#34;, &#34;text&#34;: &#34;Sent you the Emergency Kit in a DM. Open the vault website, enter your email and the Secret Key from the document, then set a new master password.&#34;}">
+          <div class="max-w-[80%] rounded-2xl px-4 py-3
+                        bg-brand-600/20 border border-brand-500/25
+                      ">
+            <div class="text-[10px] uppercase tracking-wide text-zinc-500 flex items-center gap-2 mb-1">
+              <span class="inline-flex items-center gap-1">
+                
+                  <i class="ti ti-tool" style="font-size:11px" aria-hidden="true"></i> Support
+                
+              </span>
+              
+              <span class="px-1.5 py-0.5 rounded bg-brand-500/20 text-brand-400 text-[9px]">шаблон</span>
+              <span class="text-zinc-600">10-01 07:40</span>
+              
+            </div>
+            
+              <div class="message-text text-sm whitespace-pre-wrap break-words text-zinc-100">Sent you the Emergency Kit in a DM. Open the vault website, enter your email and the Secret Key from the document, then set a new master password.</div>
+            
+            
+            <div class="delivery-state mt-2 text-xs" data-delivery-message="252">
+              
+              
+            </div>
+          </div>
+        </div>
+      
+        <div class="msg group flex "
+             data-message-id="253" data-chat="{&#34;can_delete&#34;: false, &#34;can_edit&#34;: false, &#34;can_reply&#34;: true, &#34;deleted_at&#34;: false, &#34;edited_at&#34;: null, &#34;file_name&#34;: null, &#34;id&#34;: 253, &#34;is_internal&#34;: false, &#34;mutation_status&#34;: null, &#34;operator_id&#34;: null, &#34;reply&#34;: null, &#34;revision&#34;: 0, &#34;sender_type&#34;: &#34;user&#34;, &#34;text&#34;: &#34;Tried that, no change so far...&#34;}">
+          <div class="max-w-[80%] rounded-2xl px-4 py-3
+                        bg-zinc-900 border border-zinc-800
+                      ">
+            <div class="text-[10px] uppercase tracking-wide text-zinc-500 flex items-center gap-2 mb-1">
+              <span class="inline-flex items-center gap-1">
+                
+                  
+                  <i class="ti ti-user" style="font-size:11px" aria-hidden="true"></i>
+                  @Daniel Web
+                
+              </span>
+              
+              
+              <span class="text-zinc-600">10-01 07:51</span>
+              
+            </div>
+            
+              <div class="message-text text-sm whitespace-pre-wrap break-words text-zinc-100">Tried that, no change so far...</div>
+            
+            
+            <div class="delivery-state mt-2 text-xs" data-delivery-message="253">
+              
+              
+            </div>
+          </div>
+        </div>
+      
+        <div class="msg group flex justify-end"
+             data-message-id="254" data-chat="{&#34;can_delete&#34;: false, &#34;can_edit&#34;: false, &#34;can_reply&#34;: true, &#34;deleted_at&#34;: false, &#34;edited_at&#34;: null, &#34;file_name&#34;: null, &#34;id&#34;: 254, &#34;is_internal&#34;: false, &#34;mutation_status&#34;: null, &#34;operator_id&#34;: null, &#34;reply&#34;: null, &#34;revision&#34;: 0, &#34;sender_type&#34;: &#34;admin&#34;, &#34;text&#34;: &#34;Check the Spam folder \u2014 codes often land there. If not, I\u0027ll send a new invite.&#34;}">
+          <div class="max-w-[80%] rounded-2xl px-4 py-3
+                        bg-brand-600/20 border border-brand-500/25
+                      ">
+            <div class="text-[10px] uppercase tracking-wide text-zinc-500 flex items-center gap-2 mb-1">
+              <span class="inline-flex items-center gap-1">
+                
+                  <i class="ti ti-tool" style="font-size:11px" aria-hidden="true"></i> Support
+                
+              </span>
+              
+              
+              <span class="text-zinc-600">10-01 08:05</span>
+              
+            </div>
+            
+              <div class="message-text text-sm whitespace-pre-wrap break-words text-zinc-100">Check the Spam folder — codes often land there. If not, I&#39;ll send a new invite.</div>
+            
+            
+            <div class="delivery-state mt-2 text-xs" data-delivery-message="254">
+              
+              
+            </div>
+          </div>
+        </div>
+      
+        <div class="msg group flex "
+             data-message-id="255" data-chat="{&#34;can_delete&#34;: false, &#34;can_edit&#34;: false, &#34;can_reply&#34;: true, &#34;deleted_at&#34;: false, &#34;edited_at&#34;: null, &#34;file_name&#34;: null, &#34;id&#34;: 255, &#34;is_internal&#34;: false, &#34;mutation_status&#34;: null, &#34;operator_id&#34;: null, &#34;reply&#34;: null, &#34;revision&#34;: 0, &#34;sender_type&#34;: &#34;user&#34;, &#34;text&#34;: &#34;Got access back, thanks&#34;}">
+          <div class="max-w-[80%] rounded-2xl px-4 py-3
+                        bg-zinc-900 border border-zinc-800
+                      ">
+            <div class="text-[10px] uppercase tracking-wide text-zinc-500 flex items-center gap-2 mb-1">
+              <span class="inline-flex items-center gap-1">
+                
+                  
+                  <i class="ti ti-user" style="font-size:11px" aria-hidden="true"></i>
+                  @Daniel Web
+                
+              </span>
+              
+              
+              <span class="text-zinc-600">10-01 09:00</span>
+              
+            </div>
+            
+              <div class="message-text text-sm whitespace-pre-wrap break-words text-zinc-100">Got access back, thanks</div>
+            
+            
+            <div class="delivery-state mt-2 text-xs" data-delivery-message="255">
+              
+              
+            </div>
+          </div>
+        </div>
+      
+    </div>
+
+    <!-- Reply composer -->
+    <div id="composer" class="conversation-composer border-t border-zinc-900 px-6 py-4 hidden">
+      
+      <p class="channel-explainer">Telegram <span data-help>Telegram · Ответы ссылаются на сообщение. Текст и подписи можно редактировать; удаление ограничено правилами Telegram. Telegram не передаёт набор текста клиентом.</span></p>
+      <!-- Reply vs Note: two modes on one composer. Note mode never calls the
+           Bot API — the text stays in the dashboard. -->
+      <div class="flex items-center gap-1 mb-2 text-xs">
+        <button type="button" id="mode-reply"
+                class="px-2.5 py-1 rounded-lg border border-brand-500/40 bg-brand-600/20 text-brand-300">
+          <i class="ti ti-send" style="font-size:12px" aria-hidden="true"></i> Ответ
+        </button>
+        <button type="button" id="mode-note"
+                class="px-2.5 py-1 rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-zinc-200">
+          <i class="ti ti-notes" style="font-size:12px" aria-hidden="true"></i> Заметка
+        </button>
+      </div>
+      <form id="reply-form" method="post" action="/tickets/71/reply" enctype="multipart/form-data" class="space-y-2"
+            data-reply-action="/tickets/71/reply" data-note-action="/tickets/71/note">
+        <p id="composer-presence" class="composer-presence" role="status" aria-live="polite" hidden></p>
+        <input type="hidden" id="reply-parent" name="reply_to_id" value="">
+        <div id="reply-context" class="reply-context" hidden></div>
+        <div id="knowledge-sources" class="sources-list" aria-live="polite"></div>
+        <div class="flex items-end gap-2">
+          <textarea id="reply-text" name="text" rows="2" placeholder="Ответить пользователю…  (или перетащи файл сюда)"
+                    data-reply-placeholder="Ответить пользователю…  (или перетащи файл сюда)" data-note-placeholder="Заметка для команды. Пользователь её не увидит."
+                    class="flex-1 px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800
+                           focus:border-brand-500 focus:outline-none text-sm resize-y
+                           text-zinc-100 placeholder:text-zinc-600"></textarea>
+          
+          
+          <button type="submit" id="composer-submit"
+                  data-reply-label="Отправить"
+                  data-note-label="Добавить заметку"
+                  class="px-4 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium shrink-0">
+            Отправить
+          </button>
+        </div>
+        <p id="composer-error" role="alert" class="text-sm text-red-500"></p>
+        <div id="reply-tools" class="flex items-center gap-3 text-xs relative">
+          <button type="button" id="tpl-btn"
+                  class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800">
+            <i class="ti ti-message-dots" style="font-size:13px" aria-hidden="true"></i> Шаблоны
+          </button>
+
+          
+          <input type="file" name="attachments" multiple class="hidden" id="file-input"
+                 
+                 data-max-files="10" data-max-bytes="20971520">
+          
+            <label for="file-input"
+                   class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 cursor-pointer">
+              <i class="ti ti-paperclip" style="font-size:13px" aria-hidden="true"></i> Файл
+            </label>
+          
+          <span id="ai-status" class="text-zinc-500"></span>
+          <span data-help class="ml-auto text-zinc-600 hidden sm:inline">Ctrl+Enter — отправить · скриншот можно вставить прямо сюда</span>
+
+          <!-- Templates popup -->
+          <div id="tpl-popup"
+               class="hidden absolute bottom-9 left-0 z-30 w-96 max-h-80 overflow-y-auto
+                      bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl scroll-pretty">
+            <div class="px-3 py-2 text-[10px] uppercase tracking-wide text-zinc-500 border-b border-zinc-900 sticky top-0 bg-zinc-950">
+              Шаблоны команды
+            </div>
+            <div id="tpl-list" class="py-1"></div>
+          </div>
+        </div>
+        
+        <div id="file-chips" class="hidden flex-wrap gap-1.5 text-xs"></div>
+        <div id="note-hint" class="hidden text-xs text-amber-400/80 flex items-center gap-1.5">
+          <i class="ti ti-eye-off" style="font-size:12px" aria-hidden="true"></i> Внутренняя — пользователю не уходит
+        </div>
+      </form>
+    </div>
+    <div id="closed-note" class="border-t border-zinc-900 px-6 py-4 text-center text-sm text-zinc-600 ">
+      Тикет закрыт — переписка завершена.
+    </div>
+  </div>
+
+  <!-- ===== Properties sidebar ===== -->
+  <aside class="w-full md:w-72 shrink-0 max-h-[40%] md:max-h-none
+                border-t md:border-t-0 md:border-l border-zinc-900
+                bg-zinc-950 overflow-y-auto p-5 space-y-6">
+    <div>
+      <div class="text-xs uppercase tracking-wide text-zinc-500 mb-2">Пользователь</div>
+      <div class="text-sm space-y-1">
+        <div class="flex items-center gap-1.5">
+          <i class="ti ti-user text-zinc-500 shrink-0" style="font-size:13px" aria-hidden="true"></i>
+          <a href="/users/3" class="text-zinc-100 hover:text-brand-400">@Daniel Web</a>
+          
+        </div>
+        <div class="text-zinc-500 text-xs">Team Delta:1</div>
+        
+        <div class="text-zinc-500 text-xs flex items-center gap-1.5">
+          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded
+                       bg-zinc-800 text-zinc-400">
+            <i class="ti ti-brand-telegram"
+               style="font-size:11px" aria-hidden="true"></i>
+            Telegram
+          </span>
+          <span class="tabular-nums">100003</span>
+        </div>
+        
+        
+          <div class="flex items-center gap-1.5 text-xs">
+            <i class="ti ti-mail text-zinc-500 shrink-0" style="font-size:13px" aria-hidden="true"></i>
+            <a href="mailto:customer-3@example.test" class="text-zinc-300 hover:text-brand-400 truncate">customer-3@example.test</a>
+            <span class="text-[10px] text-amber-400">Представился так</span>
+          </div>
+        
+        
+        
+          
+            
+            <div class="inline-flex items-start gap-1 text-xs text-amber-400/90"
+                 title="Введено в чате или передано сайтом без подписи. Это мог написать любой посетитель страницы. Проверьте другим способом, прежде чем действовать: сбрасывать доступ, обсуждать аккаунт, называть баланс.">
+              <i class="ti ti-alert-triangle shrink-0 mt-0.5" style="font-size:11px" aria-hidden="true"></i>
+              Представился так
+            </div>
+          
+        
+
+      </div>
+    </div>
+
+    <div>
+      <div class="text-xs uppercase tracking-wide text-zinc-500 mb-2">Свойства</div>
+      <div class="text-sm space-y-1.5">
+        <div class="flex justify-between"><span class="text-zinc-500">Команда</span><span>Team Delta</span></div>
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-zinc-500 shrink-0">Оператор</span>
+          <form method="post" action="/tickets/71/assign" class="flex items-center gap-1 min-w-0"
+                onchange="this.requestSubmit()">
+            <select name="admin_id"
+                    class="min-w-0 max-w-[170px] px-2 py-1 rounded-lg bg-black border border-zinc-800 text-sm
+                           text-zinc-100 focus:border-brand-500 focus:outline-none">
+              <option value="" >— Не назначен —</option>
+              
+                <option value="1" >Alex Morgan</option>
+              
+                <option value="2" >Emma Clark</option>
+              
+                <option value="3" selected>Liam Novak</option>
+              
+                <option value="4" >Noah Weber</option>
+              
+            </select>
+          </form>
+        </div>
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-zinc-500 shrink-0">Категория</span>
+          <form method="post" action="/tickets/71/category" class="flex items-center gap-1 min-w-0"
+                onchange="this.requestSubmit()">
+            
+            <select name="category"
+                    class="min-w-0 max-w-[170px] px-2 py-1 rounded-lg bg-black border border-zinc-800 text-sm
+                           text-zinc-100 focus:border-brand-500 focus:outline-none">
+              <option value="" >— без категории —</option>
+              
+                <option value="Access" selected>🔑 Access</option>
+              
+                <option value="Software" >💻 Software</option>
+              
+                <option value="Hardware" >🖥 Hardware</option>
+              
+                <option value="Network" >🌐 Network</option>
+              
+                <option value="Other" >✏️ Other</option>
+              
+              
+            </select>
+          </form>
+        </div>
+        
+        <div class="flex justify-between"><span class="text-zinc-500">Время в работе</span><span>1.9ч</span></div>
+        
+          <div class="flex justify-between items-center">
+            <span class="text-zinc-500">Оценка (CSAT)</span>
+            
+              <span class="text-zinc-600 text-xs">не оценён</span>
+            
+          </div>
+        
+      </div>
+    </div>
+
+    
+      <div>
+        <div class="text-xs uppercase tracking-wide text-zinc-500 mb-2">Причины закрытия</div>
+        
+          <div class="flex flex-wrap gap-1.5 mb-2">
+            <span class="px-2 py-0.5 rounded text-xs bg-zinc-900 border border-zinc-800 text-zinc-200">Access granted</span>
+          </div>
+        
+        
+      </div>
+    
+
+    
+  </aside>
+</div>
+
+    </main>
+
+  </div>
+  <!-- end right panel -->
+
+</div>
+
+<!-- ============================================================
+     TOAST NOTIFICATION SYSTEM
+     Trigger via URL param: ?toast=Message&toast_type=success|error|info
+     Or programmatically: window.showToast('Message', 'success')
+============================================================ -->
+<div id="toast-container"
+     class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"
+     role="status" aria-live="polite"></div>
+
+
+<script src="/demo/static/message-menu.js"></script>
+<script src="/demo/static/conversation.js"></script>
+<script src="/demo/static/composer-submit.js"></script>
+<script src="/demo/static/ticket-presence.js"></script>
+<script>
+SpConversation.boot({ticket:71, csrf:"demo",
+ operator:1, role:"owner",
+ canWrite:true,
+ labels:{"actions": "\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u044f \u0441 \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435\u043c", "cancel": "\u041e\u0442\u043c\u0435\u043d\u0438\u0442\u044c", "confirmRemove": "\u0423\u0431\u0440\u0430\u0442\u044c \u044d\u0442\u043e \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435 \u0438\u0437 \u0447\u0430\u0442\u0430 \u043a\u043b\u0438\u0435\u043d\u0442\u0430?", "copy": "\u041a\u043e\u043f\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u0442\u0435\u043a\u0441\u0442", "edit": "\u0420\u0435\u0434\u0430\u043a\u0442\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435", "edited": "\u0418\u0437\u043c\u0435\u043d\u0435\u043d\u043e", "failed": "\u043e\u0448\u0438\u0431\u043a\u0430", "pending": "\u0412 \u043e\u0447\u0435\u0440\u0435\u0434\u0438 \u043d\u0430 \u043e\u0442\u043f\u0440\u0430\u0432\u043a\u0443", "reconcile": "\u0421\u0432\u0435\u0440\u0438\u0442\u044c \u0441 \u043a\u0430\u043d\u0430\u043b\u043e\u043c", "reconcileApplied": "\u0418\u0437\u043c\u0435\u043d\u0435\u043d\u0438\u0435 \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043e", "reconcileHint": "\u0421\u043d\u0430\u0447\u0430\u043b\u0430 \u043f\u0440\u043e\u0432\u0435\u0440\u044c\u0442\u0435 \u0438\u0441\u0445\u043e\u0434\u043d\u044b\u0439 \u0434\u0438\u0430\u043b\u043e\u0433. \u041f\u043e\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u0435, \u0432\u044b\u043f\u043e\u043b\u043d\u0438\u043b\u0438\u0441\u044c \u043b\u0438 \u043f\u0440\u0430\u0432\u043a\u0430 \u0438\u043b\u0438 \u043e\u0442\u0437\u044b\u0432. \u042d\u0442\u043e \u0438\u0441\u043f\u0440\u0430\u0432\u0438\u0442 \u0442\u043e\u043b\u044c\u043a\u043e \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u0443\u044e \u0437\u0430\u043f\u0438\u0441\u044c \u0438 \u043d\u0438\u0447\u0435\u0433\u043e \u043d\u0435 \u043e\u0442\u043f\u0440\u0430\u0432\u0438\u0442 \u043f\u043e\u0432\u0442\u043e\u0440\u043d\u043e.", "reconcileUnchanged": "\u0421\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435 \u043d\u0435 \u0438\u0437\u043c\u0435\u043d\u0438\u043b\u043e\u0441\u044c", "remove": "\u0423\u0434\u0430\u043b\u0438\u0442\u044c \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435", "removeUnavailable": "\u041a\u0430\u043d\u0430\u043b \u043d\u0435 \u043f\u043e\u0437\u0432\u043e\u043b\u044f\u0435\u0442 \u0443\u0434\u0430\u043b\u0438\u0442\u044c \u044d\u0442\u043e \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435 \u0438\u043b\u0438 \u0441\u0440\u043e\u043a \u0443\u0434\u0430\u043b\u0435\u043d\u0438\u044f \u0438\u0441\u0442\u0451\u043a.", "reply": "\u041e\u0442\u0432\u0435\u0442\u0438\u0442\u044c", "save": "\u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c", "sources": "\u0418\u0441\u0442\u043e\u0447\u043d\u0438\u043a\u0438 \u0431\u0430\u0437\u044b \u0437\u043d\u0430\u043d\u0438\u0439 \u2014 \u043f\u0440\u043e\u0432\u0435\u0440\u044c\u0442\u0435 \u043f\u0435\u0440\u0435\u0434 \u043e\u0442\u043f\u0440\u0430\u0432\u043a\u043e\u0439:", "uncertain": "\u041a\u0430\u043d\u0430\u043b \u043d\u0435 \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u043b \u0438\u0437\u043c\u0435\u043d\u0435\u043d\u0438\u0435. \u041f\u0440\u043e\u0432\u0435\u0440\u044c\u0442\u0435 \u0438\u0441\u0445\u043e\u0434\u043d\u044b\u0439 \u0434\u0438\u0430\u043b\u043e\u0433 \u043f\u0435\u0440\u0435\u0434 \u0441\u043b\u0435\u0434\u0443\u044e\u0449\u0438\u043c \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435\u043c.", "withdrawn": "\u0421\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435 \u0443\u0434\u0430\u043b\u0435\u043d\u043e"} });
+
+(function () {
+  const root = document.querySelector('[data-ticket-id]');
+  const ticketId = root.dataset.ticketId;
+  const timeline = document.getElementById('timeline');
+  const userLabel = timeline.dataset.userLabel;
+  const CSRF_TOKEN = "demo";
+
+  // Count only DIRECT message children — not nested .flex blocks.
+  // Cursor, not a count: the server sends only what comes after it, so a quiet
+  // ticket costs a few bytes instead of the whole conversation every few
+  // seconds. Seeded from what the server already rendered into the page.
+  const rendered = timeline.querySelectorAll(':scope > .msg[data-message-id]');
+  let lastSeenId = rendered.length
+    ? parseInt(rendered[rendered.length - 1].dataset.messageId, 10) || 0
+    : 0;
+
+  // ---- Templates popup ----
+  const tplBtn = document.getElementById('tpl-btn');
+  const tplPopup = document.getElementById('tpl-popup');
+  const tplList = document.getElementById('tpl-list');
+  let tplLoaded = false;
+
+  async function loadTemplates() {
+    tplList.innerHTML = '<div class="px-3 py-2 text-zinc-500 text-sm">Загрузка…</div>';
+    try {
+      const r = await fetch(`/tickets/${ticketId}/templates.json`);
+      const data = await r.json();
+      if (!data.ok || !data.templates.length) {
+        tplList.innerHTML = '<div class="px-3 py-3 text-zinc-500 text-sm">Шаблонов для этой команды нет.</div>';
+        return;
+      }
+      tplList.innerHTML = '';
+      data.templates.forEach(t => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'w-full text-left px-3 py-2 hover:bg-zinc-900 border-b border-zinc-900/60';
+        const cat = t.category ? `<span class="text-[9px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 ml-1">${escapeHtml(t.category)}</span>` : '';
+        item.innerHTML =
+          `<div class="text-sm text-zinc-100">${escapeHtml(t.title)}${cat}</div>
+           <div class="text-xs text-zinc-500 truncate mt-0.5">${escapeHtml(t.body.slice(0,90))}</div>`;
+        item.addEventListener('click', () => {
+          document.getElementById('reply-text').value = t.body;
+          SpAutoGrow.resize(document.getElementById('reply-text'));
+          tplPopup.classList.add('hidden');
+          document.getElementById('reply-text').focus();
+        });
+        tplList.appendChild(item);
+      });
+    } catch (e) {
+      tplList.innerHTML = '<div class="px-3 py-2 text-red-400 text-sm">Ошибка загрузки</div>';
+    }
+  }
+
+  if (tplBtn) {
+    tplBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const isHidden = tplPopup.classList.contains('hidden');
+      if (isHidden) {
+        tplPopup.classList.remove('hidden');
+        if (!tplLoaded) { await loadTemplates(); tplLoaded = true; }
+      } else {
+        tplPopup.classList.add('hidden');
+      }
+    });
+    // close on outside click
+    document.addEventListener('click', (e) => {
+      if (!tplPopup.contains(e.target) && e.target !== tplBtn) tplPopup.classList.add('hidden');
+    });
+  }
+
+  // ---- Attachments ----
+  // The <input> is the source of truth so the form still submits normally, but
+  // it is only ever written through here: picking, dropping and pasting all
+  // add to the selection instead of replacing it.
+  const fileInput = document.getElementById('file-input');
+  const fileChips = document.getElementById('file-chips');
+  const MAX_FILES = parseInt(fileInput.dataset.maxFiles, 10);
+  const MAX_BYTES = parseInt(fileInput.dataset.maxBytes, 10);
+
+  // `picked` is the model, not the input: the native dialog replaces its
+  // selection, so a second trip to it would silently drop the first files.
+  let picked = [];
+
+  function syncInput() {
+    const dt = new DataTransfer();
+    picked.forEach(f => dt.items.add(f));
+    fileInput.files = dt.files;
+    showFiles();
+  }
+
+  function addFiles(incoming) {
+    for (const f of incoming) {
+      if (f.size > MAX_BYTES) { flashComposer('Файл слишком большой (макс. 20 МБ)'); continue; }
+      // Same name and size twice is a double-drop, not two files.
+      if (picked.some(c => c.name === f.name && c.size === f.size)) continue;
+      if (picked.length >= MAX_FILES) {
+        flashComposer('Слишком много файлов за раз (макс. {limit})'.replace('{limit}', MAX_FILES));
+        break;
+      }
+      picked.push(f);
+    }
+    syncInput();
+  }
+
+  function removeFile(index) {
+    picked.splice(index, 1);
+    syncInput();
+  }
+
+  function clearFiles() {
+    picked = [];
+    syncInput();
+  }
+
+  function humanSize(n) {
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return Math.round(n / 1024) + ' KB';
+    return (n / 1024 / 1024).toFixed(1) + ' MB';
+  }
+
+  function showFiles() {
+    fileChips.querySelectorAll('[data-preview-url]').forEach(n => URL.revokeObjectURL(n.dataset.previewUrl));
+    fileChips.innerHTML = '';
+    fileChips.classList.toggle('hidden', picked.length === 0);
+    fileChips.classList.toggle('flex', picked.length > 0);
+    picked.forEach((f, i) => {
+      const chip = document.createElement('span');
+      chip.className = 'file-preview-card';
+      const url = URL.createObjectURL(f); chip.dataset.previewUrl = url;
+      if (/^image\/(png|jpeg|gif|webp)$/.test(f.type)) {
+        const preview = document.createElement('img'); preview.src = url; preview.alt = f.name; chip.append(preview);
+      }
+      const label = document.createElement('a'); label.href = url; label.target = '_blank'; label.rel = 'noopener'; label.textContent = f.name;
+      if (!/^(image\/(png|jpeg|gif|webp)|application\/pdf)$/.test(f.type)) label.download = f.name;
+      const size = document.createElement('span');
+      size.className = 'text-zinc-600 shrink-0';
+      size.textContent = humanSize(f.size);
+      const kill = document.createElement('button');
+      kill.type = 'button';
+      kill.className = 'shrink-0 px-1 rounded text-zinc-500 hover:text-red-400 hover:bg-zinc-800';
+      kill.title = 'Удалить';
+      kill.setAttribute('aria-label', 'Удалить ' + f.name);
+      kill.innerHTML = '<i class="ti ti-x" style="font-size:12px" aria-hidden="true"></i>';
+      kill.addEventListener('click', () => removeFile(i));
+      chip.append(label, size, kill);
+      fileChips.appendChild(chip);
+    });
+  }
+
+  function flashComposer(msg) {
+    const el = document.getElementById('ai-status');
+    if (!el) return;
+    el.textContent = msg;
+    el.className = 'text-amber-400';
+    setTimeout(() => { el.textContent = ''; el.className = 'text-zinc-500'; }, 4000);
+  }
+
+  // The dialog hands us its own selection; fold it into what is already there.
+  fileInput.addEventListener('change', () => addFiles([...fileInput.files]));
+
+  // ---- Drag & drop ----
+  const convo = document.getElementById('convo');
+  const overlay = document.getElementById('drop-overlay');
+  if (convo && fileInput && !fileInput.disabled) {
+    let dragDepth = 0;
+    const show = () => { overlay.classList.remove('hidden'); overlay.classList.add('flex'); };
+    const hide = () => { overlay.classList.add('hidden'); overlay.classList.remove('flex'); };
+    convo.addEventListener('dragenter', e => { e.preventDefault(); dragDepth++; show(); });
+    convo.addEventListener('dragover', e => { e.preventDefault(); });
+    convo.addEventListener('dragleave', e => { e.preventDefault(); if (--dragDepth <= 0) hide(); });
+    convo.addEventListener('drop', e => {
+      e.preventDefault(); dragDepth = 0; hide();
+      if (e.dataTransfer.files && e.dataTransfer.files.length) {
+        addFiles(e.dataTransfer.files);
+        document.getElementById('reply-text').focus();
+      }
+    });
+  }
+
+  SpTicketPresence.boot({ticket:ticketId, csrf:CSRF_TOKEN, canWrite:true,
+    labels:{"customer": "\u041a\u043b\u0438\u0435\u043d\u0442 \u043f\u0435\u0447\u0430\u0442\u0430\u0435\u0442: {who}\u2026", "here": "{who} \u0442\u043e\u0436\u0435 \u0441\u043c\u043e\u0442\u0440\u0438\u0442 \u044d\u0442\u043e\u0442 \u0442\u0438\u043a\u0435\u0442", "hereMany": "{who} \u0442\u043e\u0436\u0435 \u0441\u043c\u043e\u0442\u0440\u044f\u0442 \u044d\u0442\u043e\u0442 \u0442\u0438\u043a\u0435\u0442", "note": "\u0412\u043d\u0443\u0442\u0440\u0435\u043d\u043d\u044e\u044e \u0437\u0430\u043c\u0435\u0442\u043a\u0443 \u043f\u0438\u0448\u0435\u0442: {who}.", "replying": "\u041e\u0442\u0432\u0435\u0442 \u043a\u043b\u0438\u0435\u043d\u0442\u0443 \u043f\u0438\u0448\u0435\u0442: {who}. \u0421\u043e\u0433\u043b\u0430\u0441\u0443\u0439\u0442\u0435 \u043e\u0442\u0432\u0435\u0442, \u0447\u0442\u043e\u0431\u044b \u043d\u0435 \u043e\u0442\u043f\u0440\u0430\u0432\u0438\u0442\u044c \u0434\u0432\u0430\u0436\u0434\u044b."} });
+
+  // ---- Ctrl+Enter sends ----
+  // Enter alone stays a newline: support replies are often several lines, and
+  // sending half a sentence to a customer is not recoverable.
+  const replyBox = document.getElementById('reply-text');
+  if (replyBox) {
+    replyBox.addEventListener('keydown', function (e) {
+      if (true && !e.isComposing && !e.repeat && e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        const form = document.getElementById('reply-form');
+        if (form && replyBox.value.trim()) form.requestSubmit();
+      }
+    });
+  }
+
+  // ---- Paste a screenshot straight into the composer ----
+  // The most common attachment in support is a screenshot that lives in the
+  // clipboard and nowhere else; without this the operator has to save it to
+  // disk first just to pick it back up.
+  if (replyBox) {
+    replyBox.addEventListener('paste', function (e) {
+      const items = (e.clipboardData || {}).items || [];
+      const shots = [];
+      for (const item of items) {
+        if (item.kind !== 'file' || !item.type.startsWith('image/')) continue;
+        const blob = item.getAsFile();
+        if (!blob) continue;
+        // Clipboard images arrive nameless; give them something recognisable
+        // in the ticket rather than "blob". Two pastes in the same second
+        // would collide on the timestamp alone, hence the index.
+        const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+        const ext = (item.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+        const suffix = shots.length ? `-${shots.length + 1}` : '';
+        shots.push(new File([blob], `screenshot-${stamp}${suffix}.${ext}`, { type: item.type }));
+      }
+      if (shots.length) {
+        e.preventDefault();
+        addFiles(shots);
+      }
+    });
+  }
+
+  // ---- Composer mode: reply (goes to the user) vs note (stays here) ----
+  const form = document.getElementById('reply-form');
+  const modeReply = document.getElementById('mode-reply');
+  const modeNote = document.getElementById('mode-note');
+  const submitBtn = document.getElementById('composer-submit');
+  SpComposerSubmit(form, submitBtn, document.getElementById('composer-error'),
+    {"failed": "\u043e\u0448\u0438\u0431\u043a\u0430", "sessionExpired": "\u0421\u0435\u0441\u0441\u0438\u044f \u0438\u0441\u0442\u0435\u043a\u043b\u0430. \u0412\u043e\u0439\u0434\u0438\u0442\u0435 \u0432 \u043d\u043e\u0432\u043e\u0439 \u0432\u043a\u043b\u0430\u0434\u043a\u0435 \u0438 \u043f\u043e\u0432\u0442\u043e\u0440\u0438\u0442\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435 \u0437\u0434\u0435\u0441\u044c. \u0427\u0435\u0440\u043d\u043e\u0432\u0438\u043a \u043e\u0441\u0442\u0430\u043b\u0441\u044f \u043d\u0430 \u044d\u0442\u043e\u0439 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0435.", "uncertain": "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044c \u043e\u0442\u043f\u0440\u0430\u0432\u043a\u0443. \u041f\u0440\u043e\u0432\u0435\u0440\u044c\u0442\u0435 \u043f\u0435\u0440\u0435\u043f\u0438\u0441\u043a\u0443 \u043f\u0435\u0440\u0435\u0434 \u043f\u043e\u0432\u0442\u043e\u0440\u043e\u043c: \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435 \u0443\u0436\u0435 \u043c\u043e\u0433\u043b\u043e \u0431\u044b\u0442\u044c \u043e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u043e."});
+  const replyTools = document.getElementById('reply-tools');
+  const noteHint = document.getElementById('note-hint');
+  const textArea = document.getElementById('reply-text');
+  const ON = 'px-2.5 py-1 rounded-lg border border-brand-500/40 bg-brand-600/20 text-brand-300';
+  const ON_NOTE = 'px-2.5 py-1 rounded-lg border border-amber-500/40 bg-amber-500/15 text-amber-300';
+  const OFF = 'px-2.5 py-1 rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-zinc-200';
+
+  function setMode(note) {
+    if (!form) return;
+    form.action = note ? form.dataset.noteAction : form.dataset.replyAction;
+    modeReply.className = note ? OFF : ON;
+    modeNote.className = note ? ON_NOTE : OFF;
+    submitBtn.textContent = note ? submitBtn.dataset.noteLabel : submitBtn.dataset.replyLabel;
+    submitBtn.classList.toggle('bg-amber-600', note);
+    submitBtn.classList.toggle('hover:bg-amber-500', note);
+    submitBtn.classList.toggle('bg-brand-600', !note);
+    submitBtn.classList.toggle('hover:bg-brand-500', !note);
+    textArea.placeholder = note ? textArea.dataset.notePlaceholder : textArea.dataset.replyPlaceholder;
+    // Attachments/templates/AI are reply-only; a note has no channel to send on.
+    replyTools.classList.toggle('hidden', note);
+    noteHint.classList.toggle('hidden', !note);
+    if (note && fileInput) clearFiles();
+  }
+  if (modeReply && modeNote) {
+    modeReply.addEventListener('click', () => setMode(false));
+    modeNote.addEventListener('click', () => setMode(true));
+  }
+
+  // ---- Live polling ----
+  function escapeHtml(s){ return (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+  function renderMessage(m) {
+    const wrap = document.createElement('div');
+    wrap.className = 'msg group flex' +
+      (m.is_internal ? ' justify-center' : (m.sender_type === 'admin' ? ' justify-end' : ''));
+    wrap.dataset.messageId = m.id;
+    const bubble = document.createElement('div');
+    bubble.className = m.is_internal
+      ? 'w-full max-w-[92%] rounded-xl px-4 py-3 bg-amber-500/[0.07] border border-dashed border-amber-500/40'
+      : 'max-w-[80%] rounded-2xl px-4 py-3 ' +
+        (m.sender_type === 'admin' ? 'bg-brand-600/20 border border-brand-500/25' : 'bg-zinc-900 border border-zinc-800');
+    const whoIcon = m.is_internal
+      ? '<i class="ti ti-notes text-amber-400" style="font-size:11px" aria-hidden="true"></i> <span class="text-amber-400">Внутренняя заметка</span>'
+      : (m.sender_type === 'admin'
+          ? '<i class="ti ti-tool" style="font-size:11px" aria-hidden="true"></i> admin'
+          : '<i class="ti ti-user" style="font-size:11px" aria-hidden="true"></i> ' +
+            escapeHtml(m.sender_label || userLabel));
+    const who = `<span class="inline-flex items-center gap-1">${whoIcon}</span>`;
+    const noteBadge = m.is_internal
+      ? ' <span class="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400/90 text-[9px] normal-case tracking-normal">Внутренняя — пользователю не уходит</span>'
+      : '';
+    const tpl = m.is_template ? ' <span class="px-1.5 py-0.5 rounded bg-brand-500/20 text-brand-400 text-[9px]">шаблон</span>' : '';
+    let att = '';
+    if (m.has_attachment && m.is_image && m.attachment_url) {
+      att = `<a href="${m.attachment_url}" target="_blank" class="block mt-2">
+               <img src="${m.attachment_url}" class="rounded-lg max-h-64 border border-zinc-800 hover:opacity-90"></a>`;
+    } else if (m.has_attachment && m.attachment_url) {
+      att = `<a href="${m.attachment_url}" target="_blank" class="mt-2 inline-flex items-center gap-1.5 text-xs text-brand-400 hover:text-brand-300"><i class="ti ti-paperclip" style="font-size:12px" aria-hidden="true"></i> ${escapeHtml(m.file_name || 'файл')} · скачать</a>`;
+    } else if (m.has_attachment) {
+      att = `<div class="mt-2 inline-flex items-center gap-1 text-xs text-zinc-500"><i class="ti ti-paperclip" style="font-size:12px" aria-hidden="true"></i> ${escapeHtml(m.file_name || 'файл')}</div>`;
+    }
+    bubble.innerHTML =
+      `<div class="text-[10px] uppercase tracking-wide text-zinc-500 flex items-center gap-2 mb-1">
+         <span>${who}</span>${noteBadge}${tpl}<span class="text-zinc-600">${m.created_at}</span></div>
+       <div class="message-text text-sm whitespace-pre-wrap break-words text-zinc-100">${escapeHtml(m.text)}</div>${att}`;
+    const delivery = document.createElement('div');
+    delivery.className = 'delivery-state mt-2 text-xs';
+    delivery.dataset.deliveryMessage = m.id;
+    bubble.appendChild(delivery);
+    wrap.appendChild(bubble);
+    SpConversation.decorate(wrap, m);
+    return wrap;
+  }
+
+  const DELIVERY_LABELS = {"cancelled": "\u041e\u0442\u043f\u0440\u0430\u0432\u043a\u0430 \u043e\u0442\u043c\u0435\u043d\u0435\u043d\u0430", "delivered": "", "failed": "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0434\u043e\u0441\u0442\u0430\u0432\u0438\u0442\u044c", "pending": "\u0412 \u043e\u0447\u0435\u0440\u0435\u0434\u0438 \u043d\u0430 \u043e\u0442\u043f\u0440\u0430\u0432\u043a\u0443", "retry": "\u041e\u0436\u0438\u0434\u0430\u0435\u0442 \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u043e\u0433\u043e \u043f\u043e\u0432\u0442\u043e\u0440\u0430", "sending": "\u041e\u0442\u043f\u0440\u0430\u0432\u043b\u044f\u0435\u0442\u0441\u044f\u2026", "uncertain": "\u0414\u043e\u0441\u0442\u0430\u0432\u043a\u0430 \u043d\u0435 \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043d\u0430"};
+  function updateDelivery(item) {
+    const box = timeline.querySelector(`[data-delivery-message="${Number(item.message_id)}"]`);
+    const state = item.status + ':' + Boolean(item.can_retry);
+    if (!box || box.dataset.deliveryStatus === state) return;
+    box.dataset.deliveryStatus = state;
+    box.replaceChildren();
+    if (!DELIVERY_LABELS[item.status]) return;
+    const badge = document.createElement('span');
+    badge.className = item.status === 'delivered' ? 'text-zinc-500' : 'text-amber-400';
+    badge.textContent = DELIVERY_LABELS[item.status];
+    box.appendChild(badge);
+    if (!item.can_retry || !['failed', 'uncertain'].includes(item.status)) return;
+    const form = document.createElement('form');
+    form.method = 'post';
+    form.action = `/tickets/${ticketId}/message/${Number(item.message_id)}/retry`;
+    form.className = 'mt-2';
+    const csrf = document.createElement('input');
+    csrf.type = 'hidden'; csrf.name = 'csrf_token'; csrf.value = CSRF_TOKEN;
+    form.appendChild(csrf);
+    if (item.status === 'uncertain') {
+      const label = document.createElement('label');
+      label.className = 'flex gap-2 items-start text-zinc-400';
+      const check = document.createElement('input');
+      check.type = 'checkbox'; check.name = 'acknowledge_duplicate'; check.value = 'yes'; check.required = true;
+      label.append(check, document.createTextNode("\u041a\u043b\u0438\u0435\u043d\u0442 \u043c\u043e\u0433 \u0443\u0436\u0435 \u043f\u043e\u043b\u0443\u0447\u0438\u0442\u044c \u044d\u0442\u043e \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435. \u042f \u043f\u0440\u0438\u043d\u0438\u043c\u0430\u044e \u0440\u0438\u0441\u043a \u043e\u0442\u043f\u0440\u0430\u0432\u043a\u0438 \u0434\u0443\u0431\u043b\u0438\u043a\u0430\u0442\u0430."));
+      form.appendChild(label);
+    }
+    const button = document.createElement('button');
+    button.className = 'mt-1 text-brand-400 hover:text-brand-300';
+    button.textContent = "\u041f\u043e\u0432\u0442\u043e\u0440\u0438\u0442\u044c \u0434\u043e\u0441\u0442\u0430\u0432\u043a\u0443";
+    form.appendChild(button); box.appendChild(form);
+  }
+
+  const liveDot = document.getElementById('live-dot');
+  async function poll() {
+    try {
+      const r = await fetch(`/tickets/${ticketId}/messages.json?after_id=${lastSeenId}`);
+      if (!r.ok) return;
+      const data = await r.json();
+      if (!data.ok) return;
+      if (liveDot) liveDot.className = 'text-emerald-500';
+
+      if (data.messages && data.messages.length) {
+        // Stay pinned to the bottom only if the operator was already there —
+        // yanking the view while they read older messages is worse than a
+        // missed scroll.
+        const atBottom = timeline.scrollHeight - timeline.scrollTop - timeline.clientHeight < 100;
+        data.messages.forEach(m => timeline.appendChild(renderMessage(m)));
+        if (atBottom) timeline.scrollTop = timeline.scrollHeight;
+      }
+      // Advance even on an empty batch: the server reports the newest id it
+      // knows, which is also how the cursor recovers if a message is deleted.
+      if (typeof data.latest_id === 'number') lastSeenId = data.latest_id;
+      (data.deliveries || []).forEach(updateDelivery);
+      SpConversation.updates(data.updates || []);
+      if (data.status !== 'active') {
+        document.getElementById('composer')?.classList.add('hidden');
+        document.getElementById('closed-note')?.classList.remove('hidden');
+        const badge = document.getElementById('status-badge');
+        if (badge) badge.innerHTML = '<span class="px-2 py-0.5 rounded-full text-xs bg-zinc-700/40 text-zinc-400 border border-zinc-700">closed</span>';
+      }
+    } catch (e) {
+      if (liveDot) liveDot.className = 'text-zinc-600';  // dim the dot on network hiccup
+    }
+  }
+
+  timeline.scrollTop = timeline.scrollHeight;
+  // Once the poll only carries what is new, a second costs less than four used
+  // to: ~105 bytes, and the time is per-request overhead we'd pay either way.
+  setInterval(poll, 1000);
+})();
+</script>
+
+
+<script>
+(function () {
+  // ---- CSRF: inject the token as a hidden field into every POST form ----
+  // (AJAX requests are covered by the fetch() patch in <head>.)
+  (function () {
+    var meta = document.querySelector('meta[name="csrf-token"]');
+    var token = meta ? meta.getAttribute('content') : '';
+    if (!token) return;
+    document.querySelectorAll('form[method="post" i]').forEach(function (form) {
+      if (form.querySelector('input[name="csrf_token"]')) return;
+      var inp = document.createElement('input');
+      inp.type = 'hidden';
+      inp.name = 'csrf_token';
+      inp.value = token;
+      form.appendChild(inp);
+    });
+  })();
+
+  // ---- Mobile sidebar drawer ----
+  var sidebar = document.getElementById('sidebar');
+  var backdrop = document.getElementById('sidebar-backdrop');
+  var sbToggle = document.getElementById('sidebar-toggle');
+
+  function drawer(open) {
+    if (!sidebar || !backdrop) return;
+    sidebar.classList.toggle('-translate-x-full', !open);
+    backdrop.classList.toggle('hidden', !open);
+  }
+  if (sbToggle) sbToggle.addEventListener('click', function () {
+    drawer(sidebar.classList.contains('-translate-x-full'));
+  });
+  if (backdrop) backdrop.addEventListener('click', function () { drawer(false); });
+  // Selecting a nav item closes the drawer (page will navigate anyway,
+  // but this feels instant on slow connections).
+  if (sidebar) sidebar.addEventListener('click', function (e) {
+    if (e.target.closest('a')) drawer(false);
+  });
+
+  // ---- Theme toggle ----
+  var btn = document.getElementById('theme-toggle');
+  if (btn) {
+    btn.addEventListener('click', function () {
+      var isDark = document.documentElement.classList.toggle('dark');
+      localStorage.setItem('spooldesk-demo-theme', isDark ? 'dark' : 'light');
+    });
+  }
+
+  // ---- Toast system ----
+  var container = document.getElementById('toast-container');
+
+  var _icons = {
+    success: 'ti-circle-check',
+    error:   'ti-alert-circle',
+    info:    'ti-info-circle',
+    warning: 'ti-alert-triangle',
+  };
+  var _colors = {
+    success: 'border-emerald-500/30 text-emerald-400',
+    error:   'border-red-500/30 text-red-400',
+    info:    'border-brand-500/30 text-brand-400',
+    warning: 'border-amber-500/30 text-amber-400',
+  };
+
+  window.showToast = function (msg, type) {
+    if (!container || !msg) return;
+    type = type || 'success';
+    var color = _colors[type] || _colors.info;
+    var icon  = _icons[type]  || _icons.info;
+
+    var el = document.createElement('div');
+    el.className = [
+      'pointer-events-auto flex items-center gap-3',
+      'bg-zinc-950 border rounded-xl px-4 py-3',
+      'text-sm shadow-xl',
+      'translate-y-2 opacity-0 transition-all duration-200',
+      color,
+    ].join(' ');
+    el.innerHTML =
+      '<i class="ti ' + icon + ' text-base shrink-0" aria-hidden="true"></i>' +
+      '<span class="text-zinc-100"></span>' +
+      '<button onclick="this.parentElement.remove()" ' +
+              'class="ml-auto text-zinc-500 hover:text-zinc-300" aria-label="Dismiss">' +
+        '<i class="ti ti-x" style="font-size:14px" aria-hidden="true"></i>' +
+      '</button>';
+    // Toasts may come from a URL query parameter, so their message is text.
+    el.querySelector('span').textContent = msg;
+
+    container.appendChild(el);
+    // Animate in
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        el.classList.remove('translate-y-2', 'opacity-0');
+      });
+    });
+    // Auto-dismiss after 4s
+    setTimeout(function () {
+      el.classList.add('opacity-0', 'translate-y-2');
+      setTimeout(function () { el.remove(); }, 200);
+    }, 4000);
+  };
+
+  // Read toast from URL params on page load
+  (function () {
+    var p = new URLSearchParams(window.location.search);
+    var msg  = p.get('toast');
+    var type = p.get('toast_type') || 'success';
+    if (msg) {
+      window.showToast(msg, type);
+      // Clean the param from URL without page reload
+      var url = new URL(window.location);
+      url.searchParams.delete('toast');
+      url.searchParams.delete('toast_type');
+      history.replaceState(null, '', url.toString());
+    }
+  })();
+
+  // ---- Queue badge + new-ticket notifications ----
+  // One 20s poll feeds both: the amber "awaiting reply" badge on the Tickets
+  // nav item and (opt-in via the bell) browser notifications for new tickets.
+  var queueBadge = document.getElementById('nav-queue-badge');
+  var notifyBtn  = document.getElementById('notify-toggle');
+  var notificationsWanted = false;
+  var LAST_KEY = 'spooldesk-demo-last-ticket-1';
+
+  function notifyEnabled() {
+    return notificationsWanted
+        && 'Notification' in window
+        && Notification.permission === 'granted';
+  }
+
+  function renderBell() {
+    if (!notifyBtn) return;
+    var on = notifyEnabled();
+    document.getElementById('notify-icon-on').classList.toggle('hidden', !on);
+    document.getElementById('notify-icon-off').classList.toggle('hidden', on);
+  }
+
+  if (notifyBtn) {
+    async function saveNotifications(enabled) {
+      const body = new FormData(); body.append('enabled', enabled ? '1' : '0');
+      const result = await fetch('/me/notifications', {method:'POST', body});
+      if (!result.ok) return false;
+      notificationsWanted = enabled;
+      renderBell();
+      return true;
+    }
+    notifyBtn.addEventListener('click', async function () {
+      if (notifyEnabled()) {
+        if (await saveNotifications(false)) window.showToast('Уведомления о новых тикетах выключены', 'info');
+        return;
+      }
+      if (!('Notification' in window)) {
+        window.showToast('Браузер не поддерживает уведомления', 'warning');
+        return;
+      }
+      Promise.resolve(
+        Notification.permission === 'granted'
+          ? 'granted' : Notification.requestPermission()
+      ).then(async function (perm) {
+        if (perm === 'granted') {
+          if (await saveNotifications(true)) window.showToast('Уведомления о новых тикетах включены', 'success');
+        } else {
+          window.showToast('Разрешение на уведомления не выдано', 'warning');
+        }
+      });
+    });
+  }
+
+  function pollQueue() {
+    fetch('/api/queue-status', { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d || typeof d.awaiting !== 'number') return;
+        if (queueBadge) {
+          if (d.awaiting > 0) {
+            queueBadge.textContent = d.awaiting;
+            queueBadge.classList.remove('hidden');
+          } else {
+            queueBadge.classList.add('hidden');
+          }
+        }
+        var last = parseInt(localStorage.getItem(LAST_KEY) || '0', 10);
+        // Notify only about tickets that appeared AFTER we set a baseline —
+        // the very first poll stays silent.
+        if (last && d.latest_ticket_id > last) {
+          var tid = d.latest_ticket_id;
+          if (notificationsWanted) window.showToast('Новый тикет #' + tid, 'info');
+          if (notifyEnabled()) {
+            var n = new Notification('Новый тикет #' + tid, {
+              tag: 'new-ticket-' + tid,
+            });
+            n.onclick = function () {
+              window.focus();
+              window.demoNavigate('/tickets/' + tid);
+            };
+          }
+        }
+        if (d.latest_ticket_id > last) {
+          localStorage.setItem(LAST_KEY, String(d.latest_ticket_id));
+        }
+      })
+      .catch(function () { /* transient — retry next tick */ });
+  }
+
+  renderBell();
+  pollQueue();
+  setInterval(pollQueue, 20000);
+})();
+</script>
+
+<script>
+  /* Labels ui.js needs but cannot look up: it is a static file, outside Jinja. */
+  window.UI_WEEKDAYS = "\u041f,\u0412,\u0421,\u0427,\u041f,\u0421,\u0412".split(',');
+  window.UI_TODAY = "\u0421\u0435\u0433\u043e\u0434\u043d\u044f";
+  window.UI_CLEAR = "\u041e\u0447\u0438\u0441\u0442\u0438\u0442\u044c";
+</script>
+<script src="/demo/static/ui.js" defer></script>
+
+<script>
+/* One submit per click.
+ *
+ * Every POST here does something outward-facing — sends a message, closes a
+ * ticket, starts a broadcast — and the page does not repaint until the server
+ * answers. An operator who thinks nothing happened clicks again, and the
+ * customer gets the message twice. Applies to every form on every page, so a
+ * new form is protected without anyone remembering to.
+ *
+ * The server refuses duplicates too; this is the half that keeps the button
+ * from lying about what it is doing.
+ */
+(function () {
+  // Bubble phase, not capture. A form's own `onsubmit="return confirm(...)"`
+  // runs on the element before this runs on the document, so by now the event
+  // says whether the operator actually went through with it. On capture the
+  // guard committed first and never rolled back, which left the button dead
+  // for ten seconds after a cancelled confirmation — most visible when
+  // closing tickets one after another, which is the rhythm the queue mode
+  // encourages.
+  document.addEventListener('submit', function (e) {
+    const form = e.target;
+    if (!(form instanceof HTMLFormElement) || form.method.toLowerCase() !== 'post') return;
+
+    // Somebody said no, or a validator refused. Nothing was sent, so nothing
+    // needs guarding against being sent twice.
+    if (e.defaultPrevented) return;
+
+    if (form.dataset.submitting === '1') {
+      e.preventDefault();
+      return;
+    }
+    form.dataset.submitting = '1';
+
+    const buttons = form.querySelectorAll('button[type=submit], button:not([type]), input[type=submit]');
+    buttons.forEach(function (b) {
+      b.disabled = true;
+      b.classList.add('opacity-60', 'cursor-not-allowed');
+    });
+
+    // If the navigation never happens — a validation bounce, a dropped
+    // connection — the operator must not be left with a dead button.
+    setTimeout(function () {
+      form.dataset.submitting = '';
+      buttons.forEach(function (b) {
+        b.disabled = false;
+        b.classList.remove('opacity-60', 'cursor-not-allowed');
+      });
+    }, 10000);
+  }, false);
+})();
+</script>
+
+<!-- Keyboard shortcuts: the overlay ? opens, and the keys themselves. -->
+<div id="keys-overlay"
+     class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-sm p-4 overflow-y-auto"
+     role="dialog" aria-modal="true" aria-label="Горячие клавиши">
+  <div class="max-w-2xl mx-auto mt-16 bg-white dark:bg-zinc-950 border border-gray-200
+              dark:border-zinc-800 rounded-xl shadow-2xl p-5">
+    <div class="flex items-center justify-between mb-1">
+      <div class="text-sm font-medium">Горячие клавиши</div>
+      <button type="button" id="keys-close"
+              class="text-gray-400 dark:text-zinc-600 hover:text-gray-700 dark:hover:text-zinc-300"
+              aria-label="Закрыть открытое">
+        <i class="ti ti-x" style="font-size:16px" aria-hidden="true"></i>
+      </button>
+    </div>
+    
+<div class="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-sm">
+  <div>
+    <div class="text-[10px] uppercase tracking-wide text-gray-400 dark:text-zinc-600 mt-3 mb-1.5">
+      Перемещение
+    </div>
+    
+      <div class="flex items-center justify-between gap-4 py-1">
+        <span class="text-gray-600 dark:text-zinc-400">К заявкам</span>
+        <span class="shrink-0 flex items-center gap-1">
+          
+            
+            <kbd class="px-1.5 py-0.5 rounded border border-gray-200 dark:border-zinc-700
+                        bg-gray-50 dark:bg-zinc-900 text-xs font-mono">g</kbd>
+          
+            <span class="text-[10px] text-gray-400 dark:text-zinc-600">затем</span>
+            <kbd class="px-1.5 py-0.5 rounded border border-gray-200 dark:border-zinc-700
+                        bg-gray-50 dark:bg-zinc-900 text-xs font-mono">t</kbd>
+          
+        </span>
+      </div>
+    
+      <div class="flex items-center justify-between gap-4 py-1">
+        <span class="text-gray-600 dark:text-zinc-400">К доске</span>
+        <span class="shrink-0 flex items-center gap-1">
+          
+            
+            <kbd class="px-1.5 py-0.5 rounded border border-gray-200 dark:border-zinc-700
+                        bg-gray-50 dark:bg-zinc-900 text-xs font-mono">g</kbd>
+          
+            <span class="text-[10px] text-gray-400 dark:text-zinc-600">затем</span>
+            <kbd class="px-1.5 py-0.5 rounded border border-gray-200 dark:border-zinc-700
+                        bg-gray-50 dark:bg-zinc-900 text-xs font-mono">b</kbd>
+          
+        </span>
+      </div>
+    
+      <div class="flex items-center justify-between gap-4 py-1">
+        <span class="text-gray-600 dark:text-zinc-400">К настройкам</span>
+        <span class="shrink-0 flex items-center gap-1">
+          
+            
+            <kbd class="px-1.5 py-0.5 rounded border border-gray-200 dark:border-zinc-700
+                        bg-gray-50 dark:bg-zinc-900 text-xs font-mono">g</kbd>
+          
+            <span class="text-[10px] text-gray-400 dark:text-zinc-600">затем</span>
+            <kbd class="px-1.5 py-0.5 rounded border border-gray-200 dark:border-zinc-700
+                        bg-gray-50 dark:bg-zinc-900 text-xs font-mono">p</kbd>
+          
+        </span>
+      </div>
+    
+      <div class="flex items-center justify-between gap-4 py-1">
+        <span class="text-gray-600 dark:text-zinc-400">Поиск</span>
+        <span class="shrink-0 flex items-center gap-1">
+          
+            
+            <kbd class="px-1.5 py-0.5 rounded border border-gray-200 dark:border-zinc-700
+                        bg-gray-50 dark:bg-zinc-900 text-xs font-mono">/</kbd>
+          
+        </span>
+      </div>
+    
+      <div class="flex items-center justify-between gap-4 py-1">
+        <span class="text-gray-600 dark:text-zinc-400">Показать этот список</span>
+        <span class="shrink-0 flex items-center gap-1">
+          
+            
+            <kbd class="px-1.5 py-0.5 rounded border border-gray-200 dark:border-zinc-700
+                        bg-gray-50 dark:bg-zinc-900 text-xs font-mono">?</kbd>
+          
+        </span>
+      </div>
+    
+      <div class="flex items-center justify-between gap-4 py-1">
+        <span class="text-gray-600 dark:text-zinc-400">Закрыть открытое</span>
+        <span class="shrink-0 flex items-center gap-1">
+          
+            
+            <kbd class="px-1.5 py-0.5 rounded border border-gray-200 dark:border-zinc-700
+                        bg-gray-50 dark:bg-zinc-900 text-xs font-mono">Esc</kbd>
+          
+        </span>
+      </div>
+    
+  </div>
+
+  <div>
+    <div class="text-[10px] uppercase tracking-wide text-gray-400 dark:text-zinc-600 mt-3 mb-1.5">
+      Внутри заявки
+    </div>
+    
+      <div class="flex items-center justify-between gap-4 py-1">
+        <span class="text-gray-600 dark:text-zinc-400">Написать ответ</span>
+        <span class="shrink-0 flex items-center gap-1">
+          
+            
+            
+            <kbd class="px-1.5 py-0.5 rounded border border-gray-200 dark:border-zinc-700
+                        bg-gray-50 dark:bg-zinc-900 text-xs font-mono">r</kbd>
+          
+        </span>
+      </div>
+    
+      <div class="flex items-center justify-between gap-4 py-1">
+        <span class="text-gray-600 dark:text-zinc-400">Написать внутреннюю заметку</span>
+        <span class="shrink-0 flex items-center gap-1">
+          
+            
+            
+            <kbd class="px-1.5 py-0.5 rounded border border-gray-200 dark:border-zinc-700
+                        bg-gray-50 dark:bg-zinc-900 text-xs font-mono">n</kbd>
+          
+        </span>
+      </div>
+    
+      <div class="flex items-center justify-between gap-4 py-1">
+        <span class="text-gray-600 dark:text-zinc-400">Отправить</span>
+        <span class="shrink-0 flex items-center gap-1">
+          
+            
+            
+            <kbd class="px-1.5 py-0.5 rounded border border-gray-200 dark:border-zinc-700
+                        bg-gray-50 dark:bg-zinc-900 text-xs font-mono">Ctrl</kbd>
+          
+            
+            <span class="text-[10px] text-gray-400 dark:text-zinc-600">+</span>
+            <kbd class="px-1.5 py-0.5 rounded border border-gray-200 dark:border-zinc-700
+                        bg-gray-50 dark:bg-zinc-900 text-xs font-mono">Enter</kbd>
+          
+        </span>
+      </div>
+    
+      <div class="flex items-center justify-between gap-4 py-1">
+        <span class="text-gray-600 dark:text-zinc-400">Следующая заявка</span>
+        <span class="shrink-0 flex items-center gap-1">
+          
+            
+            
+            <kbd class="px-1.5 py-0.5 rounded border border-gray-200 dark:border-zinc-700
+                        bg-gray-50 dark:bg-zinc-900 text-xs font-mono">j</kbd>
+          
+        </span>
+      </div>
+    
+      <div class="flex items-center justify-between gap-4 py-1">
+        <span class="text-gray-600 dark:text-zinc-400">Назад к списку</span>
+        <span class="shrink-0 flex items-center gap-1">
+          
+            
+            
+            <kbd class="px-1.5 py-0.5 rounded border border-gray-200 dark:border-zinc-700
+                        bg-gray-50 dark:bg-zinc-900 text-xs font-mono">Esc</kbd>
+          
+        </span>
+      </div>
+    
+  </div>
+</div>
+    <a href="/me" class="inline-block mt-4 text-xs text-brand-500 hover:text-brand-400">
+      Личные настройки →
+    </a>
+  </div>
+</div>
+
+<script>
+/* Keyboard shortcuts.
+ *
+ * A fixed set rather than a remapping UI: the value is in not reaching for
+ * the mouse forty times an hour, and every operator inventing their own
+ * bindings makes that harder to teach, not easier. The set is small enough
+ * to learn in a day and is written down in one place — templates/_shortcuts.html
+ * — which both this overlay and the preferences page render, so the list can
+ * never drift from the keys.
+ *
+ * Nothing fires while the operator is typing. A support reply contains the
+ * letters r, n, j and g rather a lot.
+ */
+(function () {
+  if (!true) return;
+
+  const overlay = document.getElementById('keys-overlay');
+  let pending = null;      // the 'g' of a 'g t' pair
+  let pendingAt = 0;
+
+  function typing(el) {
+    if (!el) return false;
+    const tag = el.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+  }
+
+  function showKeys(show) {
+    overlay.classList.toggle('hidden', !show);
+    if (show) document.getElementById('keys-close').focus();
+  }
+
+  document.getElementById('keys-close').addEventListener('click', () => showKeys(false));
+  overlay.addEventListener('click', e => { if (e.target === overlay) showKeys(false); });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.defaultPrevented || e.isComposing || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+
+    // Escape works everywhere, including out of a field the operator is
+    // stuck in — it is the way back, so it cannot itself need the way back.
+    if (e.key === 'Escape') {
+      if (!overlay.classList.contains('hidden')) { showKeys(false); return; }
+      if (typing(document.activeElement)) { document.activeElement.blur(); return; }
+      const back = document.querySelector('[data-back-link]');
+      if (back) back.click();
+      return;
+    }
+
+    if (typing(document.activeElement)) return;
+    if (!overlay.classList.contains('hidden')) return;
+    // Physical keys also work with Russian/Ukrainian keyboard layouts.
+    const key = /^Key[A-Z]$/.test(e.code || '') ? e.code.slice(3).toLowerCase()
+      : e.code === 'Slash' ? (e.shiftKey ? '?' : '/') : e.key.toLowerCase();
+
+    // 'g' opens a pair; a second key within two seconds completes it, and
+    // after that it is just a letter again.
+    if (pending === 'g' && Date.now() - pendingAt < 2000) {
+      pending = null;
+      const target = {t: '/tickets', b: '/board', p: '/me'}[key];
+      if (target) { e.preventDefault(); window.demoNavigate(target); }
+      return;
+    }
+    pending = null;
+
+    switch (key) {
+      case 'g':
+        pending = 'g'; pendingAt = Date.now();
+        break;
+      case '?':
+        e.preventDefault(); showKeys(true);
+        break;
+      case '/': {
+        const search = document.querySelector('input[name="q"]');
+        if (search) { e.preventDefault(); search.focus(); search.select(); }
+        break;
+      }
+      case 'r': {
+        const box = document.getElementById('reply-text');
+        const reply = document.getElementById('mode-reply');
+        if (box) { e.preventDefault(); if (reply) reply.click(); box.focus(); }
+        break;
+      }
+      case 'n': {
+        const box = document.getElementById('reply-text');
+        const note = document.getElementById('mode-note');
+        if (box && note) { e.preventDefault(); note.click(); box.focus(); }
+        break;
+      }
+      case 'j': {
+        // Whatever "next" means on this page: the queue button on a ticket,
+        // the first row on a list.
+        const next = document.querySelector('[data-queue-next]');
+        if (next) { e.preventDefault(); next.click(); break; }
+        const row = document.querySelector('tbody tr[data-href], tbody tr');
+        if (row) { e.preventDefault(); row.click(); }
+        break;
+      }
+    }
+  });
+})();
+</script>
+
+</body>
+</html>

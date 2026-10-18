@@ -1,5 +1,8 @@
 # Workspace AI assistant
 
+This is the employee-facing assistant. For automatic replies and ongoing customer
+conversations, see [Customer AI agent](AI_CUSTOMER_AGENT.md).
+
 Enable **AI settings → AI assistant**, with the main AI switch on and a configured
 provider/model. The assistant defaults off. It uses the existing provider API key;
 the local Claude development worker is unrelated to customer-facing AI.

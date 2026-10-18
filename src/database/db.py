@@ -131,7 +131,7 @@ async def init_db() -> None:
 
     # Import optional table modules before metadata.create_all so every
     # process sees the complete schema, regardless of its enabled channels.
-    from src.database import delivery_models, inbound_models, workspace_models, assistant_models  # noqa: F401
+    from src.database import delivery_models, inbound_models, workspace_models, assistant_models, ai_models  # noqa: F401
     from src.database.migrations import migrate
 
     async with engine.begin() as conn:

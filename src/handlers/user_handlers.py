@@ -635,6 +635,8 @@ async def handle_user_message(message: Message, bot: Bot) -> None:
                 active_ticket.stage = "in_progress"
             await session.flush()
             ticket_id, message_id = active_ticket.id, record.id
+            from src.ai.customer_agent import enqueue as enqueue_ai
+            await enqueue_ai(session, record)
             # Intake survives a Telegram administrator-chat outage.
             await session.commit()
             from src.services import announce_service
@@ -708,6 +710,8 @@ async def handle_user_message(message: Message, bot: Bot) -> None:
         session.add(record)
         await session.flush()
         ticket_id, message_id, language = ticket.id, record.id, user.language
+        from src.ai.customer_agent import enqueue as enqueue_ai
+        await enqueue_ai(session, record)
         await session.commit()
 
     from src.services import announce_service, settings_service, work_hours_service
@@ -723,6 +727,3 @@ async def handle_user_message(message: Message, bot: Bot) -> None:
             await message.reply(note)
     except Exception:
         logger.exception("Could not acknowledge ticket %s", ticket_id)
-    from src.ai.deflect import deflect_and_offer
-    asyncio.create_task(deflect_and_offer(bot, ticket_id, text_content,
-                                         user_tg_id, language))

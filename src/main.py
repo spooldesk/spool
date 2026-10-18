@@ -141,11 +141,14 @@ async def main() -> None:
         logger.info('Telegram is optional and currently disabled; configure it in Integrations.')
         return
     refresh_task = asyncio.create_task(channel_runtime.refresh_loop())
+    from src.ai import customer_agent
+    ai_task = asyncio.create_task(customer_agent.poll_loop())
     try:
         await channel_runtime.telegram_loop()
     finally:
         refresh_task.cancel()
-        await asyncio.gather(refresh_task, return_exceptions=True)
+        ai_task.cancel()
+        await asyncio.gather(refresh_task, ai_task, return_exceptions=True)
         await close_bot()
 
 

@@ -60,17 +60,18 @@ Replace both placeholders with verified details. Send only after approving the s
 
 ### Show HN
 
-Title: **Show HN: Spooldesk – a self-hosted multichannel helpdesk with an optional AI assistant**
+The founder must write the title, post and comments personally and submit them manually. The [HN guidelines](https://news.ycombinator.com/newsguidelines.html), checked 15 October 2026, prohibit generated text and automated posting. Do not use an AI-generated draft or have an assistant rewrite the submission.
 
-Submit the [runnable GitHub release](https://github.com/spooldesk/spool/releases/tag/v0.1.0-rc.9), with an introductory comment:
+Factual checklist for the author, not copy to submit:
 
-> I built Spooldesk to keep support requests and their context in one workspace while letting a team operate it on its own infrastructure. It supports email, Slack, Telegram and a web widget. Docker is required; the release is still a candidate. The source is available under BSL 1.1 with an internal-production-use grant.
->
-> There is also a scripted browser demo with fictional data: https://spooldesk.net/?utm_source=hackernews&utm_medium=community&utm_campaign=first-pilots-2026-10#product
->
-> I’d especially appreciate feedback on installation and handling an enquiry across channels. I’ll be here to answer technical questions.
+- Prefix the title with `Show HN:` and describe the actual project plainly.
+- Link the [runnable GitHub release](https://github.com/spooldesk/spool/releases/tag/v0.1.0-rc.9). A landing page alone is not a Show HN project.
+- Explain the personal motivation and the feedback being sought in the founder's own words.
+- Disclose that this is a release candidate, Docker is required, and the license is BSL 1.1. Link the license rather than promising broader rights.
+- If mentioning the browser demo, describe its fictional data and scripted responses accurately.
+- Be available to answer technical questions; do not solicit votes.
 
-Read [Show HN rules](https://news.ycombinator.com/showhn.html) immediately before posting. A landing page alone is not a Show HN project. Post only when the founder can answer replies. For Reddit/self-hosted communities, check their current self-promotion rules and licensing criteria before submitting; do not assume every directory accepts BSL.
+Read [Show HN rules](https://news.ycombinator.com/showhn.html) immediately before posting. For Reddit/self-hosted communities, check their current self-promotion rules and licensing criteria before submitting; do not assume every directory accepts BSL.
 
 ## Measurement and sales automation
 

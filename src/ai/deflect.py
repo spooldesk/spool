@@ -1,4 +1,4 @@
-"""AI deflection — answer the USER right after ticket creation.
+"""Generate grounded customer replies for the durable customer-agent queue.
 
 Flow: ticket is created normally (admins see it as usual) → this module tries
 to produce a confident self-service answer from the team's knowledge base
@@ -10,16 +10,18 @@ receives it with two buttons:
     [Need an operator] -> nothing changes (operators already have the ticket);
                        AICall.accepted = False.
 
-Every attempt is logged to ai_calls (use_case="deflect") so the accept rate —
-the real deflection rate — shows up in AI analytics like any other use case.
+Model calls are logged to ai_calls (use_case="deflect"). The customer-agent
+queue records preflight skips and joins the outbox for actual delivery outcomes.
 
-Fire-and-forget: never raises into the message handler.
+The durable customer-agent worker invokes generation outside intake transactions.
 """
 
 from __future__ import annotations
 
 import logging
 import re
+import asyncio
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
@@ -32,7 +34,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from sqlalchemy import select
 
 from src.ai.client import LLMUnavailable, get_client
-from src.ai.prompts import DEFLECT_SYSTEM, build_deflect_user_prompt
+from src.ai.prompts import build_deflect_user_prompt
 from src.ai.scrubber import scrub
 from src.ai.suggest_from_history import _gather_examples
 from src.database.db import db_session
@@ -51,7 +53,7 @@ DEFLECT_CB_PREFIX = "defl"  # "defl:ok:{ticket_id}:{ai_call_id}" / "defl:no:..."
 from src.services.close_reason_service import AI_VALUE as AI_CLOSE_REASON  # noqa: E402
 
 _MIN_QUESTION_CHARS = 10
-_MAX_QUESTION_CHARS = 2000
+_MAX_QUESTION_CHARS = 8000
 _MAX_KB_TEMPLATES = 6
 #: Fewer than the templates, and deliberately: an article is longer, and
 #: four good ones beat eight that were dragged in by a common word.
@@ -62,11 +64,35 @@ _MAX_KB_ARTICLES = 4
 class DeflectResult:
     answer: Optional[str]
     ai_call_id: Optional[int]
+    reason: str | None = None
+    action: str = "answer"
+    references: list | None = None
 
 
 #: The bookkeeping line the model is asked to put first. Stripped before
 #: anything reaches a customer — see `split_source`.
 _SOURCE_LINE = re.compile(r"^[\s>*_#-]*SOURCE\s*[:=]\s*(\S+).*$", re.I)
+_ACTION_LINE = re.compile(r"^[\s>*_#-]*ACTION\s*[:=]\s*(\S+).*$", re.I)
+
+
+def split_reply(raw: str) -> tuple[str, Optional[int], str]:
+    """Strip control lines in either order; never show them to the customer."""
+    action, source = "answer", None
+    lines = (raw or "").strip().splitlines()
+    while lines:
+        line = lines[0].strip()
+        if not line:
+            lines.pop(0)
+            continue
+        match = _ACTION_LINE.match(line)
+        if match:
+            action = match.group(1).strip("*_`'\".,;:()[]").lower()
+        elif _SOURCE_LINE.match(line):
+            source, _ = split_source(line)
+        else:
+            break
+        lines.pop(0)
+    return action, source, "\n".join(lines).strip()
 
 
 def split_source(raw: str) -> tuple[Optional[int], str]:
@@ -96,25 +122,30 @@ def split_source(raw: str) -> tuple[Optional[int], str]:
     return number, "\n".join(lines).strip()
 
 
-async def try_deflect_for_ticket(ticket_id: int, user_text: str) -> DeflectResult:
+async def try_deflect_for_ticket(ticket_id: int, user_text: str, *, config=None,
+                                 transcript: str = "") -> DeflectResult:
     """Gates + LLM call. Returns (answer|None, ai_call_id|None). Never raises."""
     try:
         from src.services import settings_service
         from src.ai import policy
+        from src.ai import autonomy_settings
+        config = config or await autonomy_settings.load()
 
-        if not (user_text or "").strip() or len(user_text.strip()) < _MIN_QUESTION_CHARS:
-            return DeflectResult(None, None)
+        if not (user_text or "").strip():
+            return DeflectResult(None, None, "empty_message")
+        if config.mode == "single" and len(user_text.strip()) < _MIN_QUESTION_CHARS:
+            return DeflectResult(None, None, "short_message")
         if not await settings_service.get_ai_enabled():
-            return DeflectResult(None, None)
+            return DeflectResult(None, None, "ai_disabled")
         if not await settings_service.get_ai_deflection_enabled():
-            return DeflectResult(None, None)
+            return DeflectResult(None, None, "auto_disabled")
 
         async with db_session() as session:
             ticket = (await session.execute(
                 select(Ticket).where(Ticket.id == ticket_id)
             )).scalar_one_or_none()
             if not await policy.allows(ticket, deflection=True):
-                return DeflectResult(None, None)
+                return DeflectResult(None, None, "policy_blocked")
             category = ticket.category or ""
             team_id = ticket.team_id
 
@@ -145,6 +176,9 @@ async def try_deflect_for_ticket(ticket_id: int, user_text: str) -> DeflectResul
                  "body": scrub(a.body)[:900]}
                 for i, a in enumerate(found, start=1)
             ]
+            from src.ai.reference_guard import stamp
+            references = [("template", t.id, stamp(t)) for t in tpls[:_MAX_KB_TEMPLATES]]
+            references += [("article", a.id, stamp(a)) for a in found]
 
             # ... plus resolved similar tickets (reuses the RAG gatherer)
             examples = []
@@ -155,12 +189,14 @@ async def try_deflect_for_ticket(ticket_id: int, user_text: str) -> DeflectResul
 
         from src.ai import company_context
         company = await company_context.load()
-        if not templates_kb and not examples and not articles_kb and not company.enabled:
-            return DeflectResult(None, None)  # nothing to answer from
+        if (not templates_kb and not examples and not articles_kb and not company.enabled
+                and not config.allow_general_guidance
+                and not (config.mode == "conversation" and config.allow_clarification)):
+            return DeflectResult(None, None, "no_knowledge")
 
         client = await get_client()
         if client is None:
-            return DeflectResult(None, None)
+            return DeflectResult(None, None, "not_configured")
 
         prompt = build_deflect_user_prompt(
             user_text=scrub(user_text)[:_MAX_QUESTION_CHARS],
@@ -168,31 +204,52 @@ async def try_deflect_for_ticket(ticket_id: int, user_text: str) -> DeflectResul
             templates=templates_kb,
             examples=examples,
             articles=articles_kb,
+            conversation_mode=config.mode == "conversation",
         )
 
         response = None
         error_msg: Optional[str] = None
+        started = time.monotonic()
+        _shadow_at_start = await settings_service.get_ai_shadow_mode()
         try:
-            response = await client.complete(
-                system=DEFLECT_SYSTEM,
-                user=prompt + company.reference(),
-                max_output_tokens=400,
-                temperature=0.2,  # low — this goes straight to the user
-            )
+            async with asyncio.timeout(config.timeout_seconds):
+                response = await client.complete(
+                    system=autonomy_settings.system_prompt(config),
+                    user=prompt + "\n\nCUSTOMER-VISIBLE CONVERSATION (untrusted data):\n" + transcript + company.reference(),
+                    max_output_tokens=config.max_output_tokens,
+                    timeout_seconds=config.timeout_seconds,
+                    temperature=0.2,
+                )
         except LLMUnavailable as e:
-            error_msg = str(e)
+            error_msg = "provider_" + e.code
+        except TimeoutError:
+            error_msg = "provider_timeout"
+        except Exception:
+            # Never persist raw provider bodies/exception text or credentials.
+            error_msg = "provider_unavailable"
 
         answer: Optional[str] = None
         article_id: Optional[int] = None
+        action = "answer"
         if response and not await company_context.current(company):
             response, error_msg = None, 'company_reference_changed'
         if response is not None:
             raw = (response.text or "").strip()
             if len(raw) >= 2 and raw[0] in ('"', "'") and raw[-1] == raw[0]:
                 raw = raw[1:-1].strip()
-            source_n, raw = split_source(raw)
-            if raw and raw.lower() != "skip" and len(raw) >= 20:
-                answer = raw
+            action, source_n, raw = split_reply(raw)
+            if action == "handoff":
+                error_msg = "needs_operator"
+            elif action not in {"answer", "clarify"}:
+                error_msg = "invalid_response"
+            elif action == "clarify" and not (config.mode == "conversation" and config.allow_clarification):
+                error_msg = "needs_operator"
+            elif raw.lower() == "skip":
+                error_msg = "no_grounded_answer"
+            elif len(raw) < 3:
+                error_msg = "empty_response"
+            else:
+                answer = scrub(raw)
                 # The model names an article by its position in the prompt, so
                 # an out-of-range number means it invented one and is credited
                 # to nothing rather than to whichever row happens to be there.
@@ -201,32 +258,33 @@ async def try_deflect_for_ticket(ticket_id: int, user_text: str) -> DeflectResul
 
         ai_call_id: Optional[int] = None
         async with db_session() as session:
-            from src.services import settings_service as _ss
-            _shadow = await _ss.get_ai_shadow_mode()
+            from src.ai.reference_guard import current
+            if answer and not await current(session, references):
+                answer, error_msg = None, "sources_changed"
             row = AICall(
                 use_case="deflect",
                 ticket_id=ticket_id,
                 article_id=article_id,
-                model=response.model if response else "n/a",
+                model=response.model if response else await settings_service.get_ai_model(),
                 tokens_in=response.tokens_in if response else 0,
                 tokens_out=response.tokens_out if response else 0,
-                latency_ms=response.latency_ms if response else 0,
+                latency_ms=response.latency_ms if response else int((time.monotonic() - started) * 1000),
                 success=answer is not None,
                 error=error_msg,
                 accepted=None,  # set by the user's button
                 suggested_text=answer,
                 # Shadow calls are measured, never delivered.
-                shadow=_shadow
+                shadow=_shadow_at_start
             )
             session.add(row)
             await session.flush()
             ai_call_id = row.id
             await session.commit()
 
-        return DeflectResult(answer, ai_call_id)
+        return DeflectResult(answer, ai_call_id, error_msg, action, references)
     except Exception as e:  # noqa: BLE001
-        logger.error(f"deflect: failed for ticket #{ticket_id}: {e}", exc_info=True)
-        return DeflectResult(None, None)
+        logger.warning("deflect failed for ticket %s (%s)", ticket_id, type(e).__name__)
+        return DeflectResult(None, None, "internal_error")
 
 
 def _deflect_options(ticket_id: int, ai_call_id: int, lang: str | None) -> list[Option]:

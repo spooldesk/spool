@@ -677,8 +677,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "ai_key_unreadable": "stored, but unreadable",
         "ai_enable": "AI suggestions enabled",
         "ai_enable_hint": "Draft replies from your team’s knowledge base and resolved tickets. Operators review drafts before sending.",
-        "ai_deflection": "AI deflection: answer the user before an operator",
-        "ai_deflection_hint": "Right after a ticket is created the bot tries to solve it from templates and resolved tickets. If the user taps «Solved», the ticket closes automatically (reason «Solved by AI»). Low-confidence answers are never sent.",
+        "ai_deflection": "Automatic AI replies to customers",
+        "ai_deflection_hint": "Apply the customer-agent policy to new incoming messages. The agent uses company information, published articles, team templates and resolved examples. In conversation mode it can continue the dialogue. A supported «Solved» choice closes the ticket after the customer confirms; delivery and handoff reasons are visible in AI Analytics.",
         "ai_blacklist": "Exclude categories from AI",
         "ai_blacklist_hint": "Tickets in these categories never leave this server — the AI is not shown them at all (for anything with sensitive data in it).",
         "ai_analytics_hint": "Detailed AI analytics (accept rate, tokens, latency) — in",
@@ -1638,8 +1638,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "ai_key_unreadable": "сохранён, но не читается",
         "ai_enable": "ИИ-подсказки включены",
         "ai_enable_hint": "Черновики ответов на основе базы знаний команды и решённых обращений. Оператор проверяет черновик перед отправкой.",
-        "ai_deflection": "AI-дефлексия: отвечать пользователю до оператора",
-        "ai_deflection_hint": "Сразу после создания тикета бот пытается решить вопрос сам — по шаблонам и закрытым тикетам. Если пользователь нажмёт «Решено», тикет закрывается автоматически (причина «Решено ИИ»). Неуверенные ответы не отправляются.",
+        "ai_deflection": "Автоматические ответы ИИ клиентам",
+        "ai_deflection_hint": "Применять настройки клиентского агента к новым входящим сообщениям. Он использует информацию компании, опубликованные статьи, шаблоны команды и примеры решений. В режиме диалога может продолжать переписку. Кнопка «Решено» в поддерживаемом канале закрывает тикет после подтверждения клиента; причины передачи оператору и ошибок доставки видны в аналитике ИИ.",
         "ai_blacklist": "Исключить категории из ИИ",
         "ai_blacklist_hint": "Тикеты этих категорий не покидают сервер — ИИ их вообще не видит (для всего, где чувствительные данные).",
         "ai_analytics_hint": "Детальная аналитика ИИ (accept rate, токены, latency) — в разделе",
@@ -2067,6 +2067,9 @@ _STRINGS['ru'].update(_connection_ru)
 from src.dashboard.assistant_i18n import EN as _assistant_en, RU as _assistant_ru
 _STRINGS['en'].update(_assistant_en)
 _STRINGS['ru'].update(_assistant_ru)
+from src.dashboard.customer_ai_i18n import EN as _customer_ai_en, RU as _customer_ai_ru
+_STRINGS['en'].update(_customer_ai_en)
+_STRINGS['ru'].update(_customer_ai_ru)
 
 
 def t(key: str, lang: str | None = None, **kwargs) -> str:

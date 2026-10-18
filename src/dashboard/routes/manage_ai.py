@@ -72,9 +72,11 @@ async def ai_settings_page(request: Request, sent: str | None = None,
     price_in, price_out = await settings_service.get_ai_pricing()
 
     from src.ai import company_context
+    from src.ai import autonomy_settings
     from src.ai.assistant_access import ENABLED_KEY
     return templates.TemplateResponse(request, "ai_settings.html", {
         "company": await company_context.load(),
+        "customer_policy": await autonomy_settings.load(),
         "active_page": "ai_settings",
         "enabled": enabled,
         "assistant_on": await settings_service.get_value(ENABLED_KEY, "0") == "1",
@@ -91,6 +93,23 @@ async def ai_settings_page(request: Request, sent: str | None = None,
         "price_out": price_out,
         "assist_minutes": await settings_service.get_ai_assist_minutes(),
     })
+
+
+@router.post('/manage/ai/customer-policy')
+async def customer_policy_save(request: Request):
+    from src.ai import autonomy_settings
+    form = await request.form()
+    data = {key: form.get(key, "") for key in (
+        "mode", "tone", "instructions", "max_turns", "history_messages",
+        "max_output_tokens", "timeout_seconds")}
+    for key in ("allow_clarification", "allow_general_guidance"):
+        data[key] = form.get(key) == "1"
+    operator = current_user(request)
+    try:
+        await autonomy_settings.save(data, operator.id if operator else 0)
+    except ValueError:
+        return RedirectResponse('/manage/ai?err=ai_policy_invalid#customer-agent', status_code=303)
+    return RedirectResponse('/manage/ai?sent=saved#customer-agent', status_code=303)
 
 
 @router.post('/manage/ai/assistant')

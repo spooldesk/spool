@@ -512,6 +512,8 @@ async def _startup() -> None:
         app.state.outbound_task = asyncio.create_task(outbound.poll_loop())
         app.state.sla_task = asyncio.create_task(sla_service.poll_loop())
         app.state.mirror_task = asyncio.create_task(announce_service.poll_loop())
+        from src.ai import customer_agent
+        app.state.customer_ai_task = asyncio.create_task(customer_agent.poll_loop())
 
     # Expose brand_name as a Jinja2 global so every template can reference
     # {{ g_brand_name }} without each route having to pass it explicitly.
@@ -559,7 +561,7 @@ async def _shutdown() -> None:
     # already in flight does not fail against a bot session that has gone.
     # Neither was cancelled before, which is where "Task was destroyed but it
     # is pending" on every restart came from.
-    for name in ("channel_config_task", "telegram_task", "mail_task", "watchdog_task", "inbound_task", "outbound_task", "sla_task", "mirror_task"):
+    for name in ("channel_config_task", "telegram_task", "mail_task", "watchdog_task", "inbound_task", "outbound_task", "sla_task", "mirror_task", "customer_ai_task"):
         task = getattr(app.state, name, None)
         if task is not None and not task.done():
             task.cancel()

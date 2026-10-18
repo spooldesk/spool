@@ -27,6 +27,7 @@ ALLOWED = {
     "src/dashboard/workspace_i18n.py",
     "src/dashboard/connection_i18n.py",
     "src/dashboard/assistant_i18n.py",
+    "src/dashboard/customer_ai_i18n.py",
     "src/utils/i18n.py",
     # Legacy sentinels kept only so old databases keep rendering. They are
     # matched, never displayed — see LEGACY_CUSTOM_VALUES / LEGACY_AI_VALUES.
@@ -48,6 +49,11 @@ ALLOWED = {
     #   people's software emits, so translating them would stop the quoted
     #   history being trimmed and put four screens of it in every ticket.
     "src/channels/email_parse.py",
+    #   The customer agent hands a conversation to a person when the customer
+    #   asks for one — "хочу оператора", "позовите человека" as well as "I
+    #   want a human". Translating that pattern would stop it recognising the
+    #   request in the languages customers actually write in.
+    "src/ai/customer_agent.py",
 }
 
 # Where user-visible text actually gets produced.
