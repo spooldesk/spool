@@ -81,3 +81,7 @@ secrets.key
 
 # Explicitly exported public landing assets.
 /site/
+
+# Walkthrough video captures, renders and encodes; only the finished copy is
+# kept, in docs/video/. The narration in scripts/video/narration/ is committed.
+/scripts/video/build/
