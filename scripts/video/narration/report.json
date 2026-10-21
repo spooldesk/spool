@@ -1,0 +1,110 @@
+[
+ {
+  "scene": 1,
+  "name": "intro",
+  "expected": "Your customers write from everywhere — email, your website, Slack, Telegram. Spooldesk brings all of it into one place, on a server you control. Let me show you how it works.",
+  "take": 0,
+  "score": 1.0,
+  "heard": "Your customers write from everywhere, email, your website, Slack, Telegram. Spooldesk brings all of it into one place on a server you control. Let me show you how it works.",
+  "seconds": 9.03
+ },
+ {
+  "scene": 2,
+  "name": "queue",
+  "expected": "This is the ticket queue. Every conversation lands here, whatever channel it came from. Filter by team, category or operator — or just search for what you remember.",
+  "take": 0,
+  "score": 1.0,
+  "heard": "This is the Ticket Queue. Every conversation lands here, whatever channel it came from. Filter by team, category or operator, or just search for what you remember.",
+  "seconds": 8.83
+ },
+ {
+  "scene": 3,
+  "name": "reply",
+  "expected": "Open a ticket and you get the whole story: who's asking, what they wrote, and where it came from. Type your reply right here. The moment you send it, the ticket moves to waiting for the customer — nobody has to track that by hand.",
+  "take": 0,
+  "score": 1.0,
+  "heard": "Open a ticket and you get the whole story who's asking what they wrote and where it came from. Type your reply right here. The moment you send it, the ticket moves to waiting for the customer. Nobody has to track that by hand.",
+  "seconds": 10.22
+ },
+ {
+  "scene": 4,
+  "name": "note",
+  "expected": "Need a colleague's help? Leave an internal note. Your team sees it. The customer never does.",
+  "take": 1,
+  "score": 1.0,
+  "heard": "Need a colleague's help? Leave an internal note. Your team sees it. The customer never does.",
+  "seconds": 4.92
+ },
+ {
+  "scene": 5,
+  "name": "board",
+  "expected": "The board shows the same work by stage — new, in progress, waiting. One look, and you know what needs you next.",
+  "take": 4,
+  "score": 1.0,
+  "heard": "The board shows the same work by stage, new in progress, waiting. One look, and you know what needs you next.",
+  "seconds": 6.05
+ },
+ {
+  "scene": 6,
+  "name": "templates",
+  "expected": "The answers you give every day become templates. One click, instead of typing the same thing for the fortieth time.",
+  "take": 0,
+  "score": 0.95,
+  "heard": "the answers you give every day become templates. One click, instead of typing the same thing for the 40th time.",
+  "seconds": 5.48
+ },
+ {
+  "scene": 7,
+  "name": "help",
+  "expected": "And when an answer deserves to last, put it in the help centre. Customers find it on their own, and every article has a link you can send.",
+  "take": 0,
+  "score": 0.9642857142857143,
+  "heard": "And when an answer deserves to last, put it in the Help Center. Customers find it on their own, and every article has a link you can send.",
+  "seconds": 6.29
+ },
+ {
+  "scene": 8,
+  "name": "channels",
+  "expected": "Channels are switched on in Integrations. Connect only what your team actually uses — each one comes with a checklist, so you know it really works.",
+  "take": 0,
+  "score": 1.0,
+  "heard": "Channels are switched on in integrations. Connect only what your team actually uses, each one comes with a checklist, so you know it really works.",
+  "seconds": 6.45
+ },
+ {
+  "scene": 9,
+  "name": "assistant",
+  "expected": "Then there's the AI assistant. Ask it in plain words — which tickets still need a reply? — and you get the answer in seconds. It can also suggest a change, like moving a ticket forward. But nothing happens until you confirm.",
+  "take": 0,
+  "score": 1.0,
+  "heard": "Then, there's the AI assistant. Ask it in plain words, which tickets still need a reply, and you get the answer in seconds. It can also suggest a change, like moving a ticket forward. But nothing happens until you confirm.",
+  "seconds": 10.93
+ },
+ {
+  "scene": 10,
+  "name": "agent",
+  "expected": "You can also let AI answer customers directly. Choose a single reply or a whole conversation, and set the limits. It steps aside the moment a person takes over, or the customer asks for one.",
+  "take": 0,
+  "score": 1.0,
+  "heard": "You can also let AI answer customers directly. Choose a single reply or a whole conversation and set the limits. It steps aside the moment a person takes over or the customer asks for one.",
+  "seconds": 9.59
+ },
+ {
+  "scene": 11,
+  "name": "reports",
+  "expected": "Reports show how you're doing: response times, resolution, customer satisfaction — by team and by operator.",
+  "take": 0,
+  "score": 1.0,
+  "heard": "Reports show how you're doing, response times, resolution, customer satisfaction, by team and by operator.",
+  "seconds": 5.26
+ },
+ {
+  "scene": 12,
+  "name": "outro",
+  "expected": "Spooldesk runs on your own server, so your data stays under your control. Try the live demo at spooldesk dot net — and when you're ready, install it yourself.",
+  "take": 0,
+  "score": 1.0,
+  "heard": "Spooldesk runs on your own server, so your data stays under your control. Try the live demo at spooldesk.net, and when you're ready, install it yourself.",
+  "seconds": 7.03
+ }
+]
