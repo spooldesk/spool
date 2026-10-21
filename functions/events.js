@@ -1,13 +1,13 @@
 // Website conversion counts only. No ticket data, visitor IDs, cookies or raw URLs.
 const origins = new Set(['https://spooldesk.net', 'https://www.spooldesk.net']);
 const allowed = {
-  event: ['download_click', 'demo_open', 'sales_contact', 'landing_visit'],
+  event: ['download_click', 'demo_open', 'sales_contact', 'landing_visit', 'video_complete'],
   page: ['/', '/ru/'],
   source: ['direct', 'github', 'linkedin', 'hackernews', 'selfhosted', 'indiehackers', 'partner', 'outreach', 'google', 'bing', 'other'],
   medium: ['none', 'social', 'community', 'referral', 'email', 'organic'],
   campaign: ['none', 'first-pilots-2026-10', ...Array.from({length:100}, (_, i) =>
     'outreach-2026-10-16-c' + String(i + 1).padStart(2, '0'))],
-  demo: ['none', 'product', 'ai'],
+  demo: ['none', 'product', 'ai', 'video'],
 };
 function response(status) {
   return new Response(null, {status, headers: {'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex'}});

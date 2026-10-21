@@ -22,10 +22,13 @@ class Page(HTMLParser):
         attrs = dict(attrs)
         if "id" in attrs:
             self.ids.append(attrs["id"])
-        if tag in {"a", "link", "script"}:
+        if tag in {"a", "link", "script", "source", "track"}:
             target = attrs.get("href", attrs.get("src", ""))
             if target:
                 self.targets.append(target)
+        if tag == "video":
+            assert attrs.get("aria-label"), "The walkthrough needs an accessible name"
+            self.targets.append(attrs["poster"])
         if tag == "img":
             assert attrs.get("alt"), "Product images need descriptive alt text"
             self.images.append(attrs["src"])
@@ -51,8 +54,12 @@ def test_exported_site_has_resolvable_local_links_and_no_internal_reports(tmp_pa
     destination = tmp_path / "site"
     build_landing.export_site(destination)
     actual = {p.relative_to(destination).as_posix() for p in destination.rglob("*") if p.is_file()}
-    assert len(actual - {p for p in actual if p.startswith('demo/')}) == 24
+    assert len(actual - {p for p in actual if p.startswith('demo/')}) == 28
     assert {'demo/index.html', 'demo/manifest.json', 'demo/bridge.js', 'demo/poster.jpg'} <= actual
+    assert {'video/spooldesk-walkthrough.mp4', 'video/spooldesk-walkthrough-en.vtt',
+            'video/spooldesk-walkthrough-ru.vtt', 'video/spooldesk-walkthrough-poster.jpg'} <= actual
+    # Cloudflare Pages refuses files over 25 MiB.
+    assert all((destination / name).stat().st_size < 25 * 1024 * 1024 for name in actual)
     assert {'brand.css', 'product-demo.js', 'product-demo.css',
             'icons/favicon-96x96.png'} <= actual
     assert not any(name.endswith((".md", ".json", ".py", ".env", ".db")) for name in actual - {"_routes.json", "demo/manifest.json"})

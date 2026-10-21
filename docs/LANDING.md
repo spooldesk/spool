@@ -14,8 +14,8 @@ python -m http.server 8765 --bind 127.0.0.1 --directory site
 ```
 
 Export requires a **new** output directory; choose a different directory for
-another build. It copies only twenty-four public assets, including both languages, legal-information pages, the current license text, search discovery files,
-the interactive demo, shared brand tokens and fallback screenshots. Do not deploy `docs/`: it contains internal audits
+another build. It copies only twenty-eight public assets, including both languages, legal-information pages, the current license text, search discovery files,
+the interactive demo, shared brand tokens, fallback screenshots and the narrated walkthrough video. Do not deploy `docs/`: it contains internal audits
 and planning documents. CI validates generation and retains the public site as
 an artifact named with the commit SHA; it does not publish it.
 
@@ -39,6 +39,16 @@ After an approved deployment, verify `/`, `/ru/`, language links, screenshots,
 mobile layout and contact links on the actual HTTPS domain. Check that
 `/RELEASE_READINESS_2026-09-22.md` is not publicly served. The canonical domain is
 `spooldesk.net` in the template; change it there before using another domain.
+
+## Walkthrough video
+
+`docs/video/` holds the narrated walkthrough shown below the hero: a 1080p H.264
+MP4 (keep it under Cloudflare Pages' 25 MiB file limit), a poster and WebVTT
+subtitles in English and Russian. The narration is English, so the Russian page
+turns its Russian subtitles on by default. It is filmed from the public demo
+with fictional data; when the dashboard changes visibly, re-record it rather
+than letting the video drift from the product. `analytics.js` counts a started
+play (`demo_open` / `video`) and a play that reaches 90% (`video_complete`).
 
 ## Search discovery
 
