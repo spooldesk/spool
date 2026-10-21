@@ -1,4 +1,6 @@
 # Maintenance/CI tools only: install in a separate virtual environment.
-# Fix CVE-2026-104843 in Windows wheel installation.
-uv==0.12.18
+# 0.13.4 fixes PYSEC-2026-4321 (0.12.18 fixed CVE-2026-104843 on Windows).
+uv==0.13.4
 pip-audit==2.10.1
+# Transitive (pip-audit → requests): 2026.10.19 fixes PYSEC-2026-4320.
+certifi>=2026.10.19
