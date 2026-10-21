@@ -24,7 +24,9 @@ test('endpoint writes only fixed event dimensions, not request identifiers',asyn
   assert.equal(result.status,204);
   assert.deepEqual(result.points,[{indexes:['download_click'],blobs:['download_click','/','direct','none','none','none'],doubles:[1]}]);
   assert.equal(result.cache,'no-store');
-  for(const demo of ['product','ai']) assert.equal((await send({...payload,event:'demo_open',demo})).status,204);
+  for(const demo of ['product','ai','video']) assert.equal((await send({...payload,event:'demo_open',demo})).status,204);
+  assert.equal((await send({...payload,event:'video_complete'})).status,204);
+  assert.equal((await send({...payload,event:'video_complete',demo:'video'})).status,400);
   assert.equal((await send({...payload,event:'sales_contact',page:'/ru/'})).status,204);
 });
 test('endpoint rejects wrong origin, preview, method, content type and oversized bodies',async()=>{
@@ -52,7 +54,8 @@ function browser(options={}) {
   vm.runInNewContext(code,{
     location:{hostname:'spooldesk.net',pathname:'/',search:'',...options.location},
     navigator:options.navigator || {},
-    document:{referrer:options.referrer || '',addEventListener(name,fn){assert.equal(name,'click');click=fn;}},
+    document:{referrer:options.referrer || '',addEventListener(name,fn){assert.equal(name,'click');click=fn;},
+      getElementById(id){assert.equal(id,'walkthrough-video');return options.video || null;}},
     URL,URLSearchParams,Set,fetch(url,settings){calls.push({url,...settings});return Promise.resolve();}
   });
   function act(action,demo,trusted=true){
@@ -67,6 +70,15 @@ test('client records three types of intent, deduplicates and ignores scripted cl
   assert.equal(b.calls.length,4);
   for(const call of b.calls){assert.equal(call.url,'/events');assert.equal(call.credentials,'omit');assert.equal(call.keepalive,true);}
   assert.deepEqual(b.calls.map(c=>JSON.parse(c.body).event),['download_click','sales_contact','demo_open','demo_open']);
+});
+test('client counts a started and a nearly finished walkthrough once each',()=>{
+  const on={};const video={duration:110,currentTime:0,addEventListener(name,fn){on[name]=fn;}};
+  const b=browser({video});
+  on.play({isTrusted:false});assert.equal(b.calls.length,0);
+  on.play({isTrusted:true});on.play({isTrusted:true});
+  video.currentTime=60;on.timeupdate();assert.equal(b.calls.length,1);
+  video.currentTime=100;on.timeupdate();on.timeupdate();
+  assert.deepEqual(b.calls.map(c=>{const p=JSON.parse(c.body);return [p.event,p.demo];}),[['demo_open','video'],['video_complete','none']]);
 });
 test('client never counts previews, unrelated pages or opted-out browsers',()=>{
   for(const options of [{location:{hostname:'spooldesk.pages.dev'}},{location:{hostname:'localhost'}},{location:{pathname:'/404.html'}},{navigator:{doNotTrack:'1'}},{navigator:{globalPrivacyControl:true}}]) assert.equal(browser(options).enabled,false);

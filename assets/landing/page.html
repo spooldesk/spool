@@ -54,7 +54,7 @@
         <p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> $hero_eyebrow</p>
         <h1>$hero_title<br><em>$hero_emphasis</em></h1>
         <p class="hero-description">$hero_description</p>
-        <div class="hero-actions"><a class="button button-ink" href="#ai">$hero_primary <span aria-hidden="true">↓</span></a><a class="text-link" href="#start">$hero_secondary <span aria-hidden="true">↗</span></a></div>
+        <div class="hero-actions"><a class="button button-ink" href="#walkthrough">$hero_primary <span aria-hidden="true">↓</span></a><a class="text-link" href="#start">$hero_secondary <span aria-hidden="true">↗</span></a></div>
         <p class="hero-note">$hero_note</p>
       </div>
       <div class="intake-scene" aria-label="$scene_label">
@@ -74,6 +74,22 @@
         <p class="scene-caption">$scene_caption</p>
         <span hidden id="sample-email">$sample_email</span><span hidden id="sample-widget">$sample_widget</span><span hidden id="sample-slack">$sample_slack</span><span hidden id="sample-telegram">$sample_telegram</span>
       </div>
+    </section>
+
+    <section class="walkthrough wrap" id="walkthrough" aria-labelledby="walkthrough-heading">
+      <div class="walkthrough-heading">
+        <div><p class="eyebrow">$video_eyebrow</p><h2 id="walkthrough-heading">$video_title<br><em>$video_emphasis</em></h2></div>
+        <p>$video_intro</p>
+      </div>
+      <figure class="walkthrough-frame">
+        <video id="walkthrough-video" controls playsinline preload="none" width="1920" height="1080" poster="${prefix}video/spooldesk-walkthrough-poster.jpg" aria-label="$video_label">
+          <source src="${prefix}video/spooldesk-walkthrough.mp4" type="video/mp4">
+          <track kind="subtitles" srclang="en" label="English" src="${prefix}video/spooldesk-walkthrough-en.vtt">
+          <track kind="subtitles" srclang="ru" label="Русский" src="${prefix}video/spooldesk-walkthrough-ru.vtt"${video_ru_default}>
+          <a href="${prefix}video/spooldesk-walkthrough.mp4">$video_fallback</a>
+        </video>
+        <figcaption><span>$video_note</span><a class="text-link" href="${prefix}demo/?lang=$lang">$video_demo_link <span aria-hidden="true">↗</span></a></figcaption>
+      </figure>
     </section>
 
     <section class="ai-showcase wrap" id="ai" aria-labelledby="ai-heading">

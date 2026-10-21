@@ -48,4 +48,10 @@
     if (target.closest('#product-demo')) record('demo_open', 'product');
     if (target.closest('#ai') && target.matches('button')) record('demo_open', 'ai');
   });
+  // The walkthrough: started by the visitor, and watched to (nearly) the end.
+  const video = document.getElementById('walkthrough-video');
+  video?.addEventListener('play', event => { if (event.isTrusted) record('demo_open', 'video'); });
+  video?.addEventListener('timeupdate', () => {
+    if (video.duration && video.currentTime >= video.duration * 0.9) record('video_complete');
+  });
 })();

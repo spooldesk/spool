@@ -50,7 +50,9 @@ def build(*, check: bool = False) -> None:
                         ai_style_version=hashlib.sha256((ROOT / 'docs/ai-demo.css').read_text(encoding='utf-8').encode()).hexdigest()[:12],
                         page_path="" if language == "en" else "ru/",
                         other_language_url="ru/" if language == "en" else "../",
-                        other_language="Русский" if language == "en" else "English", legal_url='legal/')
+                        other_language="Русский" if language == "en" else "English", legal_url='legal/',
+                        # The walkthrough is narrated in English: Russian visitors get subtitles on.
+                        video_ru_default="" if language == "en" else " default")
         render(template, messages, destination, check)
         legal = json.loads((source / f'{language}-legal.json').read_text(encoding='utf-8'))
         legal.update({key: messages[key] for key in ('lang','skip','theme_label','other_language','other_language_code')})
@@ -73,7 +75,9 @@ def export_site(destination: Path) -> None:
              "product-demo.js", "product-demo.css", "ai-demo.js", "ai-demo.css", "robots.txt", "sitemap.xml",
              "404.html", "ru/404.html", "analytics.js", "_routes.json",
              "icons/favicon.ico", "icons/apple-touch-icon.png", "icons/favicon-96x96.png",
-             "img/01_board.png", "img/03_ticket_detail.png", "img/16_widget_help.png"]
+             "img/01_board.png", "img/03_ticket_detail.png", "img/16_widget_help.png",
+             "video/spooldesk-walkthrough.mp4", "video/spooldesk-walkthrough-poster.jpg",
+             "video/spooldesk-walkthrough-en.vtt", "video/spooldesk-walkthrough-ru.vtt"]
     destination.mkdir(parents=True, exist_ok=False)
     for name in paths:
         target = destination / name
